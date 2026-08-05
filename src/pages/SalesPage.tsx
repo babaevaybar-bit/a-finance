@@ -4,22 +4,20 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/contexts/AuthContext';
 import { getManagers, getDeals, getSalesPlans, upsertSalesPlan } from '@/lib/api';
 import { getCurrentMonthYear, getAvailableMonths, monthYearToLabel } from '@/lib/utils';
 import type { Manager, Deal, SalesPlan } from '@/types/types';
-import { ROLES, SALES_PAGE_ROLES } from '@/types/types';
+import { ROLES } from '@/types/types';
 import ManagerSalesSection from '@/components/sales/ManagerSalesSection';
 
 export default function SalesPage() {
-  const { isAdmin, profile } = useAuth();
   const [monthYear, setMonthYear] = useState(getCurrentMonthYear());
   const [managers, setManagers]   = useState<Manager[]>([]);
   const [deals, setDeals]         = useState<Record<string, Deal[]>>({});
   const [plans, setPlans]         = useState<SalesPlan[]>([]);
   const [loading, setLoading]     = useState(true);
 
-  // Filters (admin-only)
+  // Filters
   const [roleFilter, setRoleFilter]         = useState<string>('all');
   const [employeeFilter, setEmployeeFilter] = useState<string>('all');
 
@@ -57,7 +55,6 @@ export default function SalesPage() {
     const key = `${managerId}:${monthYear}`;
     clearTimeout(planSaveTimers.current[key]);
     planSaveTimers.current[key] = setTimeout(async () => {
-      // Read from latest ref snapshot to avoid stale closure
       const currentPlan = plans.find(p => p.manager_id === managerId && p.month_year === monthYear);
       const updated = { ...(currentPlan || { plan_amount: 0, net_profit_plan: null, dividends_plan: null }), [field]: value };
       await upsertSalesPlan({
@@ -70,20 +67,10 @@ export default function SalesPage() {
     }, 800);
   }
 
-  // ── Filtering ──────────────────────────────────────────────────────────────
-  // Employees always see only their own manager section
-  // Admins see all by default (filtered to sales roles), can switch role/employee
+  // ── Filtering — auth disabled, show all managers, admin can filter ──────────
   const visibleManagers = managers.filter(m => {
-    if (!isAdmin) {
-      // employee sees only their own section
-      return m.id === profile?.manager_id;
-    }
-    // admin: role filter
     if (roleFilter !== 'all' && m.role !== roleFilter) return false;
-    // admin: employee filter
     if (employeeFilter !== 'all' && m.id !== employeeFilter) return false;
-    // admin default: show only sales roles unless filter overridden
-    if (roleFilter === 'all' && !SALES_PAGE_ROLES.includes(m.role)) return false;
     return true;
   });
 
@@ -108,41 +95,37 @@ export default function SalesPage() {
           </Select>
         </div>
 
-        {/* Filters — admin only */}
-        {isAdmin && (
-          <div className="flex flex-wrap gap-2 items-center">
-            {/* Role filter */}
-            <Select value={roleFilter} onValueChange={v => { setRoleFilter(v); setEmployeeFilter('all'); }}>
-              <SelectTrigger className="w-52 h-8 text-sm">
-                <SelectValue placeholder="Должность" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Только менеджеры (по умолч.)</SelectItem>
-                {ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-              </SelectContent>
-            </Select>
+        {/* Filters */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <Select value={roleFilter} onValueChange={v => { setRoleFilter(v); setEmployeeFilter('all'); }}>
+            <SelectTrigger className="w-52 h-8 text-sm">
+              <SelectValue placeholder="Все должности" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все должности</SelectItem>
+              {ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+            </SelectContent>
+          </Select>
 
-            {/* Employee filter */}
-            <Select value={employeeFilter} onValueChange={setEmployeeFilter}>
-              <SelectTrigger className="w-48 h-8 text-sm">
-                <SelectValue placeholder="Сотрудник" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все</SelectItem>
-                {managers
-                  .filter(m => roleFilter === 'all' ? SALES_PAGE_ROLES.includes(m.role) : m.role === roleFilter)
-                  .map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+          <Select value={employeeFilter} onValueChange={setEmployeeFilter}>
+            <SelectTrigger className="w-48 h-8 text-sm">
+              <SelectValue placeholder="Все сотрудники" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все сотрудники</SelectItem>
+              {managers
+                .filter(m => roleFilter === 'all' ? true : m.role === roleFilter)
+                .map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
 
-            {(roleFilter !== 'all' || employeeFilter !== 'all') && (
-              <Button variant="ghost" size="sm" className="h-8 text-xs"
-                onClick={() => { setRoleFilter('all'); setEmployeeFilter('all'); }}>
-                Сбросить
-              </Button>
-            )}
-          </div>
-        )}
+          {(roleFilter !== 'all' || employeeFilter !== 'all') && (
+            <Button variant="ghost" size="sm" className="h-8 text-xs"
+              onClick={() => { setRoleFilter('all'); setEmployeeFilter('all'); }}>
+              Сбросить
+            </Button>
+          )}
+        </div>
 
         {loading ? (
           <div className="space-y-4">
@@ -151,7 +134,7 @@ export default function SalesPage() {
         ) : visibleManagers.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
             <p>Нет сотрудников для отображения.</p>
-            {isAdmin && <p className="text-sm mt-1">Измените фильтр или добавьте сотрудников.</p>}
+            <p className="text-sm mt-1">Измените фильтр или добавьте сотрудников.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -162,7 +145,7 @@ export default function SalesPage() {
                 monthYear={monthYear}
                 deals={deals[m.id] || []}
                 plan={getPlan(m.id)}
-                onPlanChange={isAdmin ? handlePlanChange : undefined}
+                onPlanChange={handlePlanChange}
                 onRefresh={loadData}
               />
             ))}

@@ -249,7 +249,10 @@ export async function upsertSalarySetting(
 ): Promise<void> {
   const { error } = await supabase
     .from('salary_settings')
-    .upsert({ ...s, updated_at: new Date().toISOString() }, { onConflict: 'manager_id' });
+    .upsert(
+      { ...s, updated_at: new Date().toISOString() },
+      { onConflict: 'manager_id' }
+    );
   if (error) throw error;
 }
 

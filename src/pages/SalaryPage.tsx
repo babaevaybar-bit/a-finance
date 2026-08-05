@@ -23,31 +23,43 @@ import { SALES_ROLES } from '@/types/types';
 interface RowProps {
   manager: Manager;
   setting: SalarySetting | undefined;
-  revenue: number;        // pre-computed revenue for this manager
+  revenue: number;         // личные сделки менеджера
+  companyRevenue: number;  // общая выручка компании
   onSaved: () => void;
 }
 
-function ManagerSalaryRow({ manager, setting, revenue, onSaved }: RowProps) {
+function ManagerSalaryRow({ manager, setting, revenue, companyRevenue, onSaved }: RowProps) {
   const [editing, setEditing] = useState(false);
-  const [base, setBase] = useState(String(setting?.base_salary ?? 0));
-  const [pct, setPct] = useState(String(setting?.commission_pct ?? 0));
+  const [base, setBase]       = useState(String(setting?.base_salary ?? 0));
+  const [pct, setPct]         = useState(String(setting?.commission_pct ?? 0));
+  // usePersonal: true = личные сделки, false = общая выручка
+  const [usePersonal, setUsePersonal] = useState<boolean>(
+    setting?.use_personal_revenue ?? SALES_ROLES.includes(manager.role)
+  );
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setBase(String(setting?.base_salary ?? 0));
     setPct(String(setting?.commission_pct ?? 0));
-  }, [setting]);
+    setUsePersonal(setting?.use_personal_revenue ?? SALES_ROLES.includes(manager.role));
+  }, [setting, manager.role]);
 
-  const baseSalary  = Number(base) || 0;
-  const commPct     = Number(pct) || 0;
-  const commission  = revenue * (commPct / 100);
+  const baseSalary = Number(base) || 0;
+  const commPct    = Number(pct)  || 0;
+  const revenueBase = usePersonal ? revenue : companyRevenue;
+  const commission  = revenueBase * (commPct / 100);
   const total       = baseSalary + commission;
 
   async function save() {
     if (baseSalary < 0 || commPct < 0) { toast.error('Значения не могут быть отрицательными'); return; }
     setSaving(true);
     try {
-      await upsertSalarySetting({ manager_id: manager.id, base_salary: baseSalary, commission_pct: commPct });
+      await upsertSalarySetting({
+        manager_id: manager.id,
+        base_salary: baseSalary,
+        commission_pct: commPct,
+        use_personal_revenue: usePersonal,
+      });
       toast.success('Настройки сохранены');
       onSaved();
       setEditing(false);
@@ -57,37 +69,56 @@ function ManagerSalaryRow({ manager, setting, revenue, onSaved }: RowProps) {
   function cancel() {
     setBase(String(setting?.base_salary ?? 0));
     setPct(String(setting?.commission_pct ?? 0));
+    setUsePersonal(setting?.use_personal_revenue ?? SALES_ROLES.includes(manager.role));
     setEditing(false);
   }
 
-  const isSalesRole = SALES_ROLES.includes(manager.role);
-
   return (
     <tr className="border-b border-border last:border-0">
+      {/* Сотрудник */}
       <td className="whitespace-nowrap py-3 pr-4 text-sm font-medium">
         <div>{manager.name}</div>
-        <div className="flex gap-1 mt-0.5">
-          <Badge variant={isSalesRole ? 'default' : 'secondary'} className="text-xs">
-            {manager.role || '—'}
-          </Badge>
-          <Badge variant="outline" className="text-xs text-muted-foreground">
-            {isSalesRole ? 'Личные сделки' : 'Общая выручка'}
-          </Badge>
+        <div className="mt-0.5">
+          <Badge variant="secondary" className="text-xs">{manager.role || '—'}</Badge>
         </div>
       </td>
-      <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums">{formatCurrency(revenue)}</td>
+      {/* База выручки */}
+      <td className="whitespace-nowrap py-3 px-3 text-sm">
+        {editing ? (
+          <Select value={usePersonal ? 'personal' : 'company'} onValueChange={v => setUsePersonal(v === 'personal')}>
+            <SelectTrigger className="h-7 w-36 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="personal">Личные сделки</SelectItem>
+              <SelectItem value="company">Общая выручка</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : (
+          <Badge variant={usePersonal ? 'default' : 'outline'} className="text-xs">
+            {usePersonal ? 'Личные сделки' : 'Общая выручка'}
+          </Badge>
+        )}
+      </td>
+      {/* Сумма базы */}
+      <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums text-muted-foreground">
+        {formatCurrency(revenueBase)}
+      </td>
+      {/* Оклад */}
       <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums">
         {editing
           ? <Input type="number" min="0" step="1000" className="h-7 w-28 text-right text-sm px-2" value={base} onChange={e => setBase(e.target.value)} />
           : formatCurrency(baseSalary)}
       </td>
+      {/* % */}
       <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums">
         {editing
           ? <Input type="number" min="0" max="100" step="0.5" className="h-7 w-20 text-right text-sm px-2" value={pct} onChange={e => setPct(e.target.value)} />
           : `${commPct}%`}
       </td>
+      {/* Комиссия */}
       <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums text-muted-foreground">{formatCurrency(commission)}</td>
+      {/* Итого */}
       <td className="whitespace-nowrap py-3 pl-3 text-right text-sm tabular-nums font-semibold">{formatCurrency(total)}</td>
+      {/* Действия */}
       <td className="whitespace-nowrap py-3 pl-3">
         {editing ? (
           <div className="flex gap-1">
@@ -131,19 +162,18 @@ export default function SalaryPage() {
     .filter(d => d.status === 'approved')
     .reduce((s, d) => s + Number(d.salary_amount ?? d.total_amount), 0);
 
-  // Revenue per manager: sales roles → own approved deals; others → company total
-  function managerRevenue(m: Manager): number {
-    if (SALES_ROLES.includes(m.role)) {
-      return deals
-        .filter(d => d.manager_id === m.id && d.status === 'approved')
-        .reduce((s, d) => s + Number(d.salary_amount ?? d.total_amount), 0);
-    }
-    return companyRevenue;
+  // Revenue per manager (own approved deals)
+  function managerPersonalRevenue(m: Manager): number {
+    return deals
+      .filter(d => d.manager_id === m.id && d.status === 'approved')
+      .reduce((s, d) => s + Number(d.salary_amount ?? d.total_amount), 0);
   }
 
+  // Total salary fund
   const totalSalary = managers.reduce((s, m) => {
     const sett  = settings.find(ss => ss.manager_id === m.id);
-    const rev   = managerRevenue(m);
+    const usePersonal = sett?.use_personal_revenue ?? SALES_ROLES.includes(m.role);
+    const rev   = usePersonal ? managerPersonalRevenue(m) : companyRevenue;
     const base  = Number(sett?.base_salary ?? 0);
     const pct   = Number(sett?.commission_pct ?? 0);
     return s + base + rev * (pct / 100);
@@ -204,7 +234,8 @@ export default function SalaryPage() {
                   <thead>
                     <tr className="border-b border-border">
                       <th className="text-left whitespace-nowrap py-2 pr-4 font-medium text-muted-foreground">Сотрудник</th>
-                      <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">База (₸)</th>
+                      <th className="text-left whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">База ЗП</th>
+                      <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">Сумма базы (₸)</th>
                       <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">Оклад (₸)</th>
                       <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">% комиссии</th>
                       <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">Комиссия (₸)</th>
@@ -214,16 +245,17 @@ export default function SalaryPage() {
                   </thead>
                   <tbody>
                     {managers.map(m => (
-                      <ManagerSalaryRow
-                        key={m.id}
-                        manager={m}
-                        setting={settings.find(s => s.manager_id === m.id)}
-                        revenue={managerRevenue(m)}
-                        onSaved={load}
-                      />
+                       <ManagerSalaryRow
+                         key={m.id}
+                         manager={m}
+                         setting={settings.find(s => s.manager_id === m.id)}
+                         revenue={managerPersonalRevenue(m)}
+                         companyRevenue={companyRevenue}
+                         onSaved={load}
+                       />
                     ))}
                     <tr className="border-t border-border bg-muted/30">
-                      <td className="py-2.5 pr-4 text-sm font-semibold" colSpan={5}>ИТОГО ФОТ</td>
+                      <td className="py-2.5 pr-4 text-sm font-semibold" colSpan={6}>ИТОГО ФОТ</td>
                       <td className="py-2.5 pl-3 text-right text-sm font-semibold tabular-nums">{formatCurrency(totalSalary)}</td>
                       <td></td>
                     </tr>

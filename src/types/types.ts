@@ -85,6 +85,7 @@ export interface SalarySetting {
   manager_id: string;
   base_salary: number;
   commission_pct: number;
+  use_personal_revenue: boolean; // true = личные сделки, false = общая выручка
   created_at: string;
   updated_at: string;
 }

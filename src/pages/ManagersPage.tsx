@@ -50,7 +50,7 @@ function SalaryInlineRow({ manager, setting, onSaved }: SalaryRowProps) {
     if (b < 0 || p < 0) { toast.error('Значения не могут быть отрицательными'); return; }
     setSaving(true);
     try {
-      await upsertSalarySetting({ manager_id: manager.id, base_salary: b, commission_pct: p });
+      await upsertSalarySetting({ manager_id: manager.id, base_salary: b, commission_pct: p, use_personal_revenue: true });
       toast.success('ЗП обновлена');
       onSaved();
       setEditing(false);
@@ -96,12 +96,14 @@ export default function ManagersPage() {
   const [loading, setLoading]       = useState(true);
   const [newName, setNewName]       = useState('');
   const [newRole, setNewRole]       = useState<string>(ROLES[0]);
+  const [newRoleCustom, setNewRoleCustom] = useState('');
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [saving, setSaving]         = useState(false);
   const [editManager, setEditManager]   = useState<Manager | null>(null);
   const [editName, setEditName]         = useState('');
   const [editRole, setEditRole]         = useState('');
+  const [editRoleCustom, setEditRoleCustom] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [editSaving, setEditSaving]     = useState(false);
@@ -128,6 +130,9 @@ export default function ManagersPage() {
   async function handleCreate() {
     const name = newName.trim();
     if (!name) { toast.error('Введите имя сотрудника'); return; }
+    // Если выбрана "Другая должность" — берём из поля ввода
+    const role = newRole === '__custom__' ? newRoleCustom.trim() : newRole;
+    if (!role) { toast.error('Введите должность'); return; }
     setSaving(true);
     try {
       let userId: string | null = null;
@@ -135,7 +140,7 @@ export default function ManagersPage() {
         userId = await createAuthUser(newUsername, newPassword);
         if (!userId) { setSaving(false); return; }
       }
-      const managerId = await createManager(name, newRole, userId);
+      const managerId = await createManager(name, role, userId);
       if (userId) {
         const { error: profErr } = await supabase.from('profiles').insert({
           id: userId,
@@ -145,7 +150,7 @@ export default function ManagersPage() {
         });
         if (profErr) toast.warning('Аккаунт создан, но профиль не сохранился');
       }
-      setNewName(''); setNewRole(ROLES[0]); setNewUsername(''); setNewPassword('');
+      setNewName(''); setNewRole(ROLES[0]); setNewRoleCustom(''); setNewUsername(''); setNewPassword('');
       toast.success(`Сотрудник «${name}» добавлен${userId ? ' с аккаунтом' : ''}`);
       await load();
     } catch { toast.error('Не удалось добавить'); }
@@ -155,7 +160,10 @@ export default function ManagersPage() {
   function openEdit(m: Manager) {
     setEditManager(m);
     setEditName(m.name);
-    setEditRole(m.role || ROLES[0]);
+    // Если роль не из стандартного списка — показываем «Другая должность» + custom поле
+    const isKnownRole = (ROLES as readonly string[]).includes(m.role);
+    setEditRole(isKnownRole ? m.role : '__custom__');
+    setEditRoleCustom(isKnownRole ? '' : (m.role || ''));
     setEditUsername('');
     setEditPassword('');
   }
@@ -164,6 +172,8 @@ export default function ManagersPage() {
     if (!editManager) return;
     const name = editName.trim();
     if (!name) { toast.error('Введите имя'); return; }
+    const role = editRole === '__custom__' ? editRoleCustom.trim() : editRole;
+    if (!role) { toast.error('Введите должность'); return; }
     setEditSaving(true);
     try {
       let userId = editManager.user_id;
@@ -180,7 +190,7 @@ export default function ManagersPage() {
           if (profErr) toast.warning('Аккаунт создан, но профиль не сохранился');
         }
       }
-      await updateManager(editManager.id, name, editRole, userId);
+      await updateManager(editManager.id, name, role, userId);
       toast.success('Данные обновлены');
       setEditManager(null);
       await load();
@@ -223,12 +233,21 @@ export default function ManagersPage() {
               </div>
               <div className="space-y-1">
                 <Label>Должность *</Label>
-                <Select value={newRole} onValueChange={setNewRole}>
+                <Select value={newRole} onValueChange={v => { setNewRole(v); if (v !== '__custom__') setNewRoleCustom(''); }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                    <SelectItem value="__custom__">Другая должность...</SelectItem>
                   </SelectContent>
                 </Select>
+                {newRole === '__custom__' && (
+                  <Input
+                    className="mt-1.5"
+                    placeholder="Введите должность"
+                    value={newRoleCustom}
+                    onChange={e => setNewRoleCustom(e.target.value)}
+                  />
+                )}
               </div>
             </div>
             <div className="rounded-md border border-border p-3 space-y-2">
@@ -334,12 +353,21 @@ export default function ManagersPage() {
               </div>
               <div className="space-y-1">
                 <Label>Должность</Label>
-                <Select value={editRole} onValueChange={setEditRole}>
+                <Select value={editRole} onValueChange={v => { setEditRole(v); if (v !== '__custom__') setEditRoleCustom(''); }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                    <SelectItem value="__custom__">Другая должность...</SelectItem>
                   </SelectContent>
                 </Select>
+                {editRole === '__custom__' && (
+                  <Input
+                    className="mt-1.5"
+                    placeholder="Введите должность"
+                    value={editRoleCustom}
+                    onChange={e => setEditRoleCustom(e.target.value)}
+                  />
+                )}
               </div>
             </div>
             <div className="rounded-md border border-border p-3 space-y-2">
