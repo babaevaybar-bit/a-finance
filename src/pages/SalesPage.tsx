@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { getManagers, getDeals, getSalesPlans, upsertSalesPlan } from '@/lib/api';
 import { getCurrentMonthYear, getAvailableMonths, monthYearToLabel } from '@/lib/utils';
 import type { Manager, Deal, SalesPlan } from '@/types/types';
-import { ROLES } from '@/types/types';
+import { ROLES, SALES_PAGE_ROLES } from '@/types/types';
 import ManagerSalesSection from '@/components/sales/ManagerSalesSection';
 
 export default function SalesPage() {
@@ -67,9 +67,15 @@ export default function SalesPage() {
     }, 800);
   }
 
-  // ── Filtering — auth disabled, show all managers, admin can filter ──────────
+  // ── Filtering — show only SALES_PAGE_ROLES by default ──────────────────────
   const visibleManagers = managers.filter(m => {
-    if (roleFilter !== 'all' && m.role !== roleFilter) return false;
+    // role filter overrides default
+    if (roleFilter !== 'all') {
+      if (m.role !== roleFilter) return false;
+    } else {
+      // default: only sales page roles
+      if (!SALES_PAGE_ROLES.includes(m.role)) return false;
+    }
     if (employeeFilter !== 'all' && m.id !== employeeFilter) return false;
     return true;
   });
@@ -99,10 +105,10 @@ export default function SalesPage() {
         <div className="flex flex-wrap gap-2 items-center">
           <Select value={roleFilter} onValueChange={v => { setRoleFilter(v); setEmployeeFilter('all'); }}>
             <SelectTrigger className="w-52 h-8 text-sm">
-              <SelectValue placeholder="Все должности" />
+              <SelectValue placeholder="Только менеджеры" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Все должности</SelectItem>
+              <SelectItem value="all">Только менеджеры</SelectItem>
               {ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -114,7 +120,7 @@ export default function SalesPage() {
             <SelectContent>
               <SelectItem value="all">Все сотрудники</SelectItem>
               {managers
-                .filter(m => roleFilter === 'all' ? true : m.role === roleFilter)
+                .filter(m => roleFilter === 'all' ? SALES_PAGE_ROLES.includes(m.role) : m.role === roleFilter)
                 .map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
             </SelectContent>
           </Select>

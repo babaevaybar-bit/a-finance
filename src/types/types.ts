@@ -98,13 +98,54 @@ export const ROLES = [
   'Лидоруб',
   'Технолог',
   'Установщик',
+  'Монтажник',
+  'Замерщик',
+  'Дизайнер',
   'Маркетолог',
   'Бренд-менеджер',
   'Бухгалтер',
   'Управляющий',
+  'Администратор',
+  'Кладовщик',
+  'Логист',
+  'Снабженец',
+  'Сервисный инженер',
+  'Водитель',
+  'HR-менеджер',
 ] as const;
 
 // Roles that earn commission from their OWN deals
 export const SALES_ROLES: string[] = ['Менеджер по продажам'];
-// Roles shown on Sales page by default
+// Roles shown on Sales page
 export const SALES_PAGE_ROLES: string[] = ['Менеджер по продажам'];
+
+// ─── Employee Permission ───────────────────────────────────────────────────────
+export interface EmployeePermission {
+  id: string;
+  manager_id: string;
+  page: string;
+  can_view: boolean;
+  can_edit: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Pages that can be toggled per-employee
+export const PERMISSION_PAGES = [
+  { key: 'dashboard', label: 'Дашборд' },
+  { key: 'sales',     label: 'Продажи' },
+] as const;
+
+// ─── Profit Row ────────────────────────────────────────────────────────────────
+export interface ProfitRow {
+  id: string;
+  sort_order: number;
+  label: string;
+  formula: string;
+  value: number;
+  is_auto: boolean;
+  row_type: 'manual' | 'revenue' | 'expenses' | 'salary';
+  month_year: string;
+  created_at: string;
+  updated_at: string;
+}

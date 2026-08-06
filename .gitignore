@@ -33,3 +33,4 @@ history/*.json
 /.skills
 /tasks
 .native-wind-cache
+.vite

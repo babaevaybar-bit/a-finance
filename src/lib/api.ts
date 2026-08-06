@@ -1,5 +1,5 @@
 import { supabase } from '@/db/supabase';
-import type { Manager, Profile, SalesPlan, Deal, Expense, Income, Transfer, SalarySetting } from '@/types/types';
+import type { Manager, Profile, SalesPlan, Deal, Expense, Income, Transfer, SalarySetting, EmployeePermission, ProfitRow } from '@/types/types';
 
 // ─── Profiles ─────────────────────────────────────────────────────────────────
 
@@ -265,4 +265,60 @@ export async function getCompanyPlan(monthYear: string): Promise<number> {
     .eq('month_year', monthYear);
   if (error) throw error;
   return (Array.isArray(data) ? data : []).reduce((s: number, r: { plan_amount: number }) => s + Number(r.plan_amount), 0);
+}
+
+// ─── Employee Permissions ─────────────────────────────────────────────────────
+
+export async function getPermissionsForManager(managerId: string): Promise<EmployeePermission[]> {
+  const { data, error } = await supabase
+    .from('employee_permissions')
+    .select('*')
+    .eq('manager_id', managerId);
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function getAllPermissions(): Promise<EmployeePermission[]> {
+  const { data, error } = await supabase
+    .from('employee_permissions')
+    .select('*');
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function upsertPermission(
+  p: Omit<EmployeePermission, 'id' | 'created_at' | 'updated_at'>
+): Promise<void> {
+  const { error } = await supabase
+    .from('employee_permissions')
+    .upsert(
+      { ...p, updated_at: new Date().toISOString() },
+      { onConflict: 'manager_id,page' }
+    );
+  if (error) throw error;
+}
+
+// ─── Profit Rows ──────────────────────────────────────────────────────────────
+
+export async function getProfitRows(monthYear: string): Promise<ProfitRow[]> {
+  const { data, error } = await supabase
+    .from('profit_rows')
+    .select('*')
+    .eq('month_year', monthYear)
+    .order('sort_order', { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function upsertProfitRow(
+  row: Omit<ProfitRow, 'id' | 'created_at' | 'updated_at'> & { id?: string }
+): Promise<void> {
+  const payload = { ...row, updated_at: new Date().toISOString() };
+  const { error } = await supabase.from('profit_rows').upsert(payload);
+  if (error) throw error;
+}
+
+export async function deleteProfitRow(id: string): Promise<void> {
+  const { error } = await supabase.from('profit_rows').delete().eq('id', id);
+  if (error) throw error;
 }
