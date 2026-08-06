@@ -1,0 +1,5 @@
+[auth.email]
+enable_confirmations = false
+
+[auth.phone]
+enable_confirmations = false

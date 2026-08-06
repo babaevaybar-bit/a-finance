@@ -1,0 +1,7 @@
+display_name: Legal Contract Assistant
+short_description: Analyze contracts, legal risks, obligations, and redline suggestions.
+default_prompt:
+  - Summarize this contract and flag key risks.
+  - Extract each party's obligations, deadlines, and penalties.
+  - Review these clauses and propose redline suggestions.
+  - Analyze this legal or compliance risk scenario.

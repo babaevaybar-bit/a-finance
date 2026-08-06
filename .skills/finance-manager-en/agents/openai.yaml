@@ -1,0 +1,7 @@
+display_name: Finance Manager
+short_description: Analyze spending, budgets, savings, cash flow, and debt plans.
+default_prompt:
+  - Analyze my spending and tell me where my money is going.
+  - Create a monthly budget from this income and expense data.
+  - Build a personal finance report from these transactions.
+  - Make a savings or debt payoff plan from these numbers.

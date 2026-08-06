@@ -1,0 +1,7 @@
+display_name: Fitness Plan
+short_description: Create safe workout plans, training splits, progressions, and fitness habit plans.
+default_prompt:
+  - Build me a weekly fitness plan for my goal and schedule.
+  - Create a gym workout program with progression rules.
+  - Make a home workout plan with limited equipment.
+  - Review my training log and adjust next week's plan.
