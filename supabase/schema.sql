@@ -105,6 +105,102 @@ SET default_tablespace = '';
 SET default_table_access_method = "heap";
 
 --
+-- Name: client_change_log; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS "public"."client_change_log" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "client_id" "uuid" NOT NULL,
+    "changed_by" "uuid",
+    "field_name" "text" NOT NULL,
+    "old_value" "text",
+    "new_value" "text",
+    "changed_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+--
+-- Name: client_interactions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS "public"."client_interactions" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "client_id" "uuid" NOT NULL,
+    "author_id" "uuid",
+    "interaction_type" "text" DEFAULT 'comment'::"text" NOT NULL,
+    "content" "text" NOT NULL,
+    "interacted_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+--
+-- Name: client_reports; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS "public"."client_reports" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "report_date" "date" DEFAULT CURRENT_DATE NOT NULL,
+    "manager_id" "uuid",
+    "client_name" "text" NOT NULL,
+    "client_phone" "text",
+    "client_quality" "text" DEFAULT 'cold'::"text" NOT NULL,
+    "address" "text",
+    "property_type" "text",
+    "area_sqm" numeric(10,2),
+    "budget" numeric(15,2),
+    "source" "text",
+    "contact_type" "text",
+    "deal_stage" "text" DEFAULT 'new'::"text",
+    "next_action" "text",
+    "next_action_date" "date",
+    "is_deal_closed" boolean DEFAULT false NOT NULL,
+    "deal_amount" numeric(15,2) DEFAULT 0,
+    "comment" "text",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "tags" "text"[] DEFAULT '{}'::"text"[],
+    "lead_source" "text" DEFAULT 'other'::"text"
+);
+
+
+--
+-- Name: client_tasks; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS "public"."client_tasks" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "client_id" "uuid" NOT NULL,
+    "assigned_to" "uuid",
+    "title" "text" NOT NULL,
+    "due_date" "date",
+    "is_done" boolean DEFAULT false NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+--
+-- Name: daily_reports; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS "public"."daily_reports" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "report_date" "date" NOT NULL,
+    "channel" "text" NOT NULL,
+    "new_clients" integer DEFAULT 0 NOT NULL,
+    "leads" integer DEFAULT 0 NOT NULL,
+    "closed_deals" integer DEFAULT 0 NOT NULL,
+    "sales_amount" numeric(15,2) DEFAULT 0 NOT NULL,
+    "ad_cost" numeric(15,2) DEFAULT 0 NOT NULL,
+    "comment" "text",
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+--
 -- Name: deals; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -140,8 +236,16 @@ CREATE TABLE IF NOT EXISTS "public"."employee_permissions" (
     "can_view" boolean DEFAULT true NOT NULL,
     "can_edit" boolean DEFAULT true NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "can_approve" boolean DEFAULT false NOT NULL
 );
+
+
+--
+-- Name: COLUMN "employee_permissions"."can_approve"; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN "public"."employee_permissions"."can_approve" IS 'Право подтверждать/отклонять сделки (старший менеджер)';
 
 
 --
@@ -218,7 +322,9 @@ CREATE TABLE IF NOT EXISTS "public"."profit_rows" (
     "row_type" "text" DEFAULT 'manual'::"text" NOT NULL,
     "month_year" "text" DEFAULT ''::"text" NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "row_type_v2" "text",
+    "percent" numeric(8,4) DEFAULT 0
 );
 
 
@@ -268,6 +374,121 @@ CREATE TABLE IF NOT EXISTS "public"."transfers" (
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     CONSTRAINT "transfers_amount_check" CHECK (("amount" > (0)::numeric))
 );
+
+
+--
+-- Name: client_change_log client_change_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE con.conname = 'client_change_log_pkey'
+      AND n.nspname = 'public'
+      AND c.relname = 'client_change_log'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+ALTER TABLE ONLY "public"."client_change_log"
+    ADD CONSTRAINT "client_change_log_pkey" PRIMARY KEY ("id");
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: client_interactions client_interactions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE con.conname = 'client_interactions_pkey'
+      AND n.nspname = 'public'
+      AND c.relname = 'client_interactions'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+ALTER TABLE ONLY "public"."client_interactions"
+    ADD CONSTRAINT "client_interactions_pkey" PRIMARY KEY ("id");
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: client_reports client_reports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE con.conname = 'client_reports_pkey'
+      AND n.nspname = 'public'
+      AND c.relname = 'client_reports'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+ALTER TABLE ONLY "public"."client_reports"
+    ADD CONSTRAINT "client_reports_pkey" PRIMARY KEY ("id");
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: client_tasks client_tasks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE con.conname = 'client_tasks_pkey'
+      AND n.nspname = 'public'
+      AND c.relname = 'client_tasks'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+ALTER TABLE ONLY "public"."client_tasks"
+    ADD CONSTRAINT "client_tasks_pkey" PRIMARY KEY ("id");
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: daily_reports daily_reports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE con.conname = 'daily_reports_pkey'
+      AND n.nspname = 'public'
+      AND c.relname = 'daily_reports'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+ALTER TABLE ONLY "public"."daily_reports"
+    ADD CONSTRAINT "daily_reports_pkey" PRIMARY KEY ("id");
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
 
 
 --
@@ -593,10 +814,264 @@ $pg_schema_restore$;
 
 
 --
+-- Name: ccl_client_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS "ccl_client_idx" ON "public"."client_change_log" USING "btree" ("client_id");
+
+
+--
+-- Name: ci_client_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS "ci_client_idx" ON "public"."client_interactions" USING "btree" ("client_id");
+
+
+--
+-- Name: client_reports_date_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS "client_reports_date_idx" ON "public"."client_reports" USING "btree" ("report_date");
+
+
+--
+-- Name: client_reports_manager_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS "client_reports_manager_idx" ON "public"."client_reports" USING "btree" ("manager_id");
+
+
+--
+-- Name: client_reports_quality_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS "client_reports_quality_idx" ON "public"."client_reports" USING "btree" ("client_quality");
+
+
+--
+-- Name: client_reports_stage_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS "client_reports_stage_idx" ON "public"."client_reports" USING "btree" ("deal_stage");
+
+
+--
+-- Name: ct_client_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS "ct_client_idx" ON "public"."client_tasks" USING "btree" ("client_id");
+
+
+--
+-- Name: ct_due_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS "ct_due_idx" ON "public"."client_tasks" USING "btree" ("due_date");
+
+
+--
+-- Name: daily_reports_channel_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS "daily_reports_channel_idx" ON "public"."daily_reports" USING "btree" ("channel");
+
+
+--
+-- Name: daily_reports_date_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS "daily_reports_date_idx" ON "public"."daily_reports" USING "btree" ("report_date");
+
+
+--
 -- Name: managers_user_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX IF NOT EXISTS "managers_user_id_idx" ON "public"."managers" USING "btree" ("user_id");
+
+
+--
+-- Name: client_change_log client_change_log_changed_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE con.conname = 'client_change_log_changed_by_fkey'
+      AND n.nspname = 'public'
+      AND c.relname = 'client_change_log'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+ALTER TABLE ONLY "public"."client_change_log"
+    ADD CONSTRAINT "client_change_log_changed_by_fkey" FOREIGN KEY ("changed_by") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: client_change_log client_change_log_client_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE con.conname = 'client_change_log_client_id_fkey'
+      AND n.nspname = 'public'
+      AND c.relname = 'client_change_log'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+ALTER TABLE ONLY "public"."client_change_log"
+    ADD CONSTRAINT "client_change_log_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "public"."client_reports"("id") ON DELETE CASCADE;
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: client_interactions client_interactions_author_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE con.conname = 'client_interactions_author_id_fkey'
+      AND n.nspname = 'public'
+      AND c.relname = 'client_interactions'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+ALTER TABLE ONLY "public"."client_interactions"
+    ADD CONSTRAINT "client_interactions_author_id_fkey" FOREIGN KEY ("author_id") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: client_interactions client_interactions_client_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE con.conname = 'client_interactions_client_id_fkey'
+      AND n.nspname = 'public'
+      AND c.relname = 'client_interactions'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+ALTER TABLE ONLY "public"."client_interactions"
+    ADD CONSTRAINT "client_interactions_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "public"."client_reports"("id") ON DELETE CASCADE;
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: client_reports client_reports_manager_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE con.conname = 'client_reports_manager_id_fkey'
+      AND n.nspname = 'public'
+      AND c.relname = 'client_reports'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+ALTER TABLE ONLY "public"."client_reports"
+    ADD CONSTRAINT "client_reports_manager_id_fkey" FOREIGN KEY ("manager_id") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: client_tasks client_tasks_assigned_to_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE con.conname = 'client_tasks_assigned_to_fkey'
+      AND n.nspname = 'public'
+      AND c.relname = 'client_tasks'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+ALTER TABLE ONLY "public"."client_tasks"
+    ADD CONSTRAINT "client_tasks_assigned_to_fkey" FOREIGN KEY ("assigned_to") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: client_tasks client_tasks_client_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE con.conname = 'client_tasks_client_id_fkey'
+      AND n.nspname = 'public'
+      AND c.relname = 'client_tasks'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+ALTER TABLE ONLY "public"."client_tasks"
+    ADD CONSTRAINT "client_tasks_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "public"."client_reports"("id") ON DELETE CASCADE;
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: daily_reports daily_reports_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE con.conname = 'daily_reports_created_by_fkey'
+      AND n.nspname = 'public'
+      AND c.relname = 'daily_reports'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+ALTER TABLE ONLY "public"."daily_reports"
+    ADD CONSTRAINT "daily_reports_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
 
 
 --
@@ -826,6 +1301,146 @@ $pg_schema_sql$;
 END
 $pg_schema_restore$;
 
+
+--
+-- Name: client_change_log auth_all_changelog; Type: POLICY; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policy pol
+    JOIN pg_class c ON c.oid = pol.polrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE pol.polname = 'auth_all_changelog'
+      AND n.nspname = 'public'
+      AND c.relname = 'client_change_log'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+CREATE POLICY "auth_all_changelog" ON "public"."client_change_log" TO "authenticated" USING (true) WITH CHECK (true);
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: client_reports auth_all_client_reports; Type: POLICY; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policy pol
+    JOIN pg_class c ON c.oid = pol.polrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE pol.polname = 'auth_all_client_reports'
+      AND n.nspname = 'public'
+      AND c.relname = 'client_reports'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+CREATE POLICY "auth_all_client_reports" ON "public"."client_reports" TO "authenticated" USING (true) WITH CHECK (true);
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: daily_reports auth_all_daily_reports; Type: POLICY; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policy pol
+    JOIN pg_class c ON c.oid = pol.polrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE pol.polname = 'auth_all_daily_reports'
+      AND n.nspname = 'public'
+      AND c.relname = 'daily_reports'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+CREATE POLICY "auth_all_daily_reports" ON "public"."daily_reports" TO "authenticated" USING (true) WITH CHECK (true);
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: client_interactions auth_all_interactions; Type: POLICY; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policy pol
+    JOIN pg_class c ON c.oid = pol.polrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE pol.polname = 'auth_all_interactions'
+      AND n.nspname = 'public'
+      AND c.relname = 'client_interactions'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+CREATE POLICY "auth_all_interactions" ON "public"."client_interactions" TO "authenticated" USING (true) WITH CHECK (true);
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: client_tasks auth_all_tasks; Type: POLICY; Schema: public; Owner: -
+--
+
+DO $pg_schema_restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policy pol
+    JOIN pg_class c ON c.oid = pol.polrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE pol.polname = 'auth_all_tasks'
+      AND n.nspname = 'public'
+      AND c.relname = 'client_tasks'
+  ) THEN
+    EXECUTE $pg_schema_sql$
+CREATE POLICY "auth_all_tasks" ON "public"."client_tasks" TO "authenticated" USING (true) WITH CHECK (true);
+$pg_schema_sql$;
+  END IF;
+END
+$pg_schema_restore$;
+
+
+--
+-- Name: client_change_log; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE "public"."client_change_log" ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: client_interactions; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE "public"."client_interactions" ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: client_reports; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE "public"."client_reports" ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: client_tasks; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE "public"."client_tasks" ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: daily_reports; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE "public"."daily_reports" ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: deals; Type: ROW SECURITY; Schema: public; Owner: -

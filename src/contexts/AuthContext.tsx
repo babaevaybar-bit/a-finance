@@ -13,6 +13,7 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   isAdmin: boolean;
+  canApprove: boolean;    // может подтверждать/отклонять сделки
   loading: boolean;
   permissions: EmployeePermission[];
   canView: (page: string) => boolean;
@@ -31,6 +32,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading]         = useState(true);
 
   const isAdmin = profile?.role === 'admin';
+
+  // Может подтверждать/отклонять сделки: admin всегда, остальные — если есть can_approve на странице approvals
+  const canApprove = isAdmin || permissions.some(p => p.page === 'approvals' && p.can_approve);
 
   async function loadPermissions(managerId: string | null | undefined) {
     if (!managerId) { setPermissions([]); return; }
@@ -86,22 +90,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPermissions([]);
   };
 
-  // Admin always has full access; employees follow their permission record
-  // Default (no record) = can_view:true, can_edit:true
+  // Разделы, скрытые по умолчанию для сотрудников (adminOnly).
+  // Становятся видимыми только если администратор явно разрешил через PermissionsPage.
+  const ADMIN_ONLY_PAGES = new Set(['approvals','finance','reports','salary','profit','managers','permissions']);
+
+  // Admin — полный доступ; сотрудник — по записи в employee_permissions.
+  // Для adminOnly-разделов умолчание false (скрыто), для остальных — true (открыто).
   function canView(page: string): boolean {
     if (isAdmin) return true;
     const perm = permissions.find(p => p.page === page);
-    return perm ? perm.can_view : true;
+    if (perm) return perm.can_view;
+    return !ADMIN_ONLY_PAGES.has(page); // adminOnly → false по умолчанию
   }
 
   function canEdit(page: string): boolean {
     if (isAdmin) return true;
     const perm = permissions.find(p => p.page === page);
-    return perm ? perm.can_edit : true;
+    if (perm) return perm.can_edit;
+    return !ADMIN_ONLY_PAGES.has(page);
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile, isAdmin, loading, permissions, canView, canEdit, signIn, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, isAdmin, canApprove, loading, permissions, canView, canEdit, signIn, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

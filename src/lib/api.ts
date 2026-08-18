@@ -1,5 +1,5 @@
 import { supabase } from '@/db/supabase';
-import type { Manager, Profile, SalesPlan, Deal, Expense, Income, Transfer, SalarySetting, EmployeePermission, ProfitRow } from '@/types/types';
+import type { Manager, Profile, SalesPlan, Deal, Expense, Income, Transfer, SalarySetting, EmployeePermission, ProfitRow, DailyReport, ClientReport, ClientInteraction, ClientTask, ClientChangeLog, InteractionType, DealStage, ClientQuality } from '@/types/types';
 
 // ─── Profiles ─────────────────────────────────────────────────────────────────
 
@@ -78,6 +78,7 @@ export async function getDeals(managerId: string, monthYear: string): Promise<De
     .select('*')
     .eq('manager_id', managerId)
     .eq('month_year', monthYear)
+    .neq('status', 'rejected')          // отклонённые не показываем в продажах
     .order('deal_date', { ascending: true })
     .limit(500);
   if (error) throw error;
@@ -89,6 +90,7 @@ export async function getAllDealsForMonth(monthYear: string): Promise<Deal[]> {
     .from('deals')
     .select('*')
     .eq('month_year', monthYear)
+    .neq('status', 'rejected')          // отклонённые не показываем в отчётах
     .order('deal_date', { ascending: true })
     .limit(1000);
   if (error) throw error;
@@ -99,10 +101,24 @@ export async function getAllDeals(): Promise<Deal[]> {
   const { data, error } = await supabase
     .from('deals')
     .select('*')
+    .neq('status', 'rejected')          // отклонённые не показываем
     .order('month_year', { ascending: true })
     .limit(2000);
   if (error) throw error;
   return Array.isArray(data) ? data : [];
+}
+
+// Возвращает последний month_year с хотя бы одной не-rejected сделкой
+export async function getLastDealsMonth(): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('deals')
+    .select('month_year')
+    .neq('status', 'rejected')
+    .order('month_year', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return null;
+  return data?.month_year ?? null;
 }
 
 export async function createDeal(deal: Omit<Deal, 'id' | 'created_at' | 'updated_at'>): Promise<void> {
@@ -292,7 +308,7 @@ export async function upsertPermission(
   const { error } = await supabase
     .from('employee_permissions')
     .upsert(
-      { ...p, updated_at: new Date().toISOString() },
+      { ...p, can_approve: p.can_approve ?? false, updated_at: new Date().toISOString() },
       { onConflict: 'manager_id,page' }
     );
   if (error) throw error;
@@ -322,3 +338,150 @@ export async function deleteProfitRow(id: string): Promise<void> {
   const { error } = await supabase.from('profit_rows').delete().eq('id', id);
   if (error) throw error;
 }
+
+// ─── Daily Reports ────────────────────────────────────────────────────────────
+
+export async function getDailyReports(filters?: { from?: string; to?: string; channel?: string }): Promise<DailyReport[]> {
+  let q = supabase.from('daily_reports').select('*').order('report_date', { ascending: false });
+  if (filters?.from)    q = q.gte('report_date', filters.from);
+  if (filters?.to)      q = q.lte('report_date', filters.to);
+  if (filters?.channel) q = q.eq('channel', filters.channel);
+  const { data, error } = await q;
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function upsertDailyReport(
+  r: Partial<Pick<DailyReport, 'id'>> & Omit<DailyReport, 'id' | 'created_at' | 'updated_at'>
+): Promise<void> {
+  const payload = { ...r, updated_at: new Date().toISOString() };
+  const { error } = await supabase.from('daily_reports').upsert(payload);
+  if (error) throw error;
+}
+
+export async function deleteDailyReport(id: string): Promise<void> {
+  const { error } = await supabase.from('daily_reports').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── Client Reports ───────────────────────────────────────────────────────────
+
+export async function getClientReports(filters?: {
+  from?: string; to?: string; manager_id?: string;
+  quality?: string; stage?: string;
+}): Promise<ClientReport[]> {
+  let q = supabase.from('client_reports').select('*').order('report_date', { ascending: false });
+  if (filters?.from)       q = q.gte('report_date', filters.from);
+  if (filters?.to)         q = q.lte('report_date', filters.to);
+  if (filters?.manager_id) q = q.eq('manager_id', filters.manager_id);
+  if (filters?.quality)    q = q.eq('client_quality', filters.quality);
+  if (filters?.stage)      q = q.eq('deal_stage', filters.stage);
+  const { data, error } = await q;
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function upsertClientReport(
+  r: Partial<Pick<ClientReport, 'id'>> & Omit<ClientReport, 'id' | 'created_at' | 'updated_at'>
+): Promise<void> {
+  const payload = { ...r, updated_at: new Date().toISOString() };
+  const { error } = await supabase.from('client_reports').upsert(payload);
+  if (error) throw error;
+}
+
+export async function deleteClientReport(id: string): Promise<void> {
+  const { error } = await supabase.from('client_reports').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── Client Interactions ──────────────────────────────────────────────────────
+export async function getClientInteractions(clientId: string): Promise<ClientInteraction[]> {
+  const { data, error } = await supabase
+    .from('client_interactions')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('interacted_at', { ascending: false });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function addClientInteraction(r: Omit<ClientInteraction, 'id' | 'created_at'>): Promise<void> {
+  const { error } = await supabase.from('client_interactions').insert(r);
+  if (error) throw error;
+}
+
+export async function deleteClientInteraction(id: string): Promise<void> {
+  const { error } = await supabase.from('client_interactions').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── Client Tasks ─────────────────────────────────────────────────────────────
+export async function getClientTasks(clientId: string): Promise<ClientTask[]> {
+  const { data, error } = await supabase
+    .from('client_tasks')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('due_date', { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function upsertClientTask(r: Partial<Pick<ClientTask, 'id'>> & Omit<ClientTask, 'id' | 'created_at' | 'updated_at'>): Promise<void> {
+  const { error } = await supabase.from('client_tasks').upsert({ ...r, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
+
+export async function deleteClientTask(id: string): Promise<void> {
+  const { error } = await supabase.from('client_tasks').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── Client Change Log ────────────────────────────────────────────────────────
+export async function getClientChangeLog(clientId: string): Promise<ClientChangeLog[]> {
+  const { data, error } = await supabase
+    .from('client_change_log')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('changed_at', { ascending: false });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function addClientChangeLog(r: Omit<ClientChangeLog, 'id' | 'changed_at'>): Promise<void> {
+  const { error } = await supabase.from('client_change_log').insert({ ...r, changed_at: new Date().toISOString() });
+  if (error) throw error;
+}
+
+// ─── upsertClientReport with change-log support ───────────────────────────────
+export async function upsertClientReportWithLog(
+  r: Partial<Pick<ClientReport, 'id'>> & Omit<ClientReport, 'id' | 'created_at' | 'updated_at'>,
+  previous: ClientReport | null,
+  changedBy: string | null
+): Promise<string> {
+  const payload = { ...r, updated_at: new Date().toISOString() };
+  const { data, error } = await supabase.from('client_reports').upsert(payload).select('id').single();
+  if (error) throw error;
+  const clientId = (data as { id: string }).id ?? r.id;
+
+  // Log tracked field changes
+  if (previous && clientId) {
+    const trackedFields: { key: keyof ClientReport; label: string }[] = [
+      { key: 'deal_stage', label: 'Стадия сделки' },
+      { key: 'client_quality', label: 'Качество клиента' },
+      { key: 'is_deal_closed', label: 'Закрыта' },
+      { key: 'deal_amount', label: 'Сумма сделки' },
+    ];
+    for (const { key, label } of trackedFields) {
+      const oldVal = String((previous as unknown as Record<string, unknown>)[key as string] ?? '');
+      const newVal = String((r as unknown as Record<string, unknown>)[key as string] ?? '');
+      if (oldVal !== newVal) {
+        await addClientChangeLog({
+          client_id: clientId, changed_by: changedBy,
+          field_name: label, old_value: oldVal, new_value: newVal,
+        });
+      }
+    }
+  }
+  return clientId;
+}
+

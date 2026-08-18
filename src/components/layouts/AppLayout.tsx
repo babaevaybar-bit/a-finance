@@ -9,20 +9,21 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   Menu, LayoutDashboard, TrendingUp, Wallet, BarChart2,
-  Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown,
+  Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 const navItems = [
-  { path: '/',            label: 'Дашборд',        icon: LayoutDashboard, adminOnly: false, pageKey: 'dashboard' },
-  { path: '/sales',       label: 'Продажи',         icon: TrendingUp,      adminOnly: false, pageKey: 'sales'     },
-  { path: '/approvals',   label: 'Подтверждения',   icon: CheckSquare,     adminOnly: true,  pageKey: null        },
-  { path: '/finance',     label: 'Финансы',          icon: Wallet,          adminOnly: true,  pageKey: null        },
-  { path: '/reports',     label: 'Отчёты',           icon: BarChart2,       adminOnly: true,  pageKey: null        },
-  { path: '/salary',      label: 'Зарплаты',         icon: Banknote,        adminOnly: true,  pageKey: null        },
-  { path: '/profit',      label: 'Чистая прибыль',   icon: TrendingDown,    adminOnly: true,  pageKey: null        },
-  { path: '/managers',    label: 'Сотрудники',       icon: Users,           adminOnly: true,  pageKey: null        },
-  { path: '/permissions', label: 'Доступ',           icon: ShieldCheck,     adminOnly: true,  pageKey: null        },
+  { path: '/',             label: 'Дашборд',          icon: LayoutDashboard, adminOnly: false, pageKey: 'dashboard'    },
+  { path: '/sales',        label: 'Продажи',           icon: TrendingUp,      adminOnly: false, pageKey: 'sales'        },
+  { path: '/approvals',    label: 'Подтверждения',     icon: CheckSquare,     adminOnly: true,  pageKey: 'approvals'    },
+  { path: '/finance',      label: 'Финансы',           icon: Wallet,          adminOnly: true,  pageKey: 'finance'      },
+  { path: '/reports',      label: 'Отчёты',            icon: BarChart2,       adminOnly: true,  pageKey: 'reports'      },
+  { path: '/salary',       label: 'Зарплаты',          icon: Banknote,        adminOnly: true,  pageKey: 'salary'       },
+  { path: '/profit',       label: 'Чистая прибыль',    icon: TrendingDown,    adminOnly: true,  pageKey: 'profit'       },
+  { path: '/daily-report', label: 'Ежедневный отчёт',  icon: ClipboardList,   adminOnly: false, pageKey: 'daily-report' },
+  { path: '/managers',     label: 'Сотрудники',        icon: Users,           adminOnly: true,  pageKey: 'managers'     },
+  { path: '/permissions',  label: 'Доступ',            icon: ShieldCheck,     adminOnly: true,  pageKey: 'permissions'  },
 ];
 
 function NavLinks({ onClose }: { onClose?: () => void }) {
@@ -30,9 +31,13 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
   const { isAdmin, canView } = useAuth();
 
   const visibleItems = navItems.filter(item => {
-    if (item.adminOnly && !isAdmin) return false;
-    if (!isAdmin && item.pageKey && !canView(item.pageKey)) return false;
-    return true;
+    // Администратор видит всё
+    if (isAdmin) return true;
+    // Для обычного сотрудника: показываем только если canView вернул true
+    // (по умолчанию canView=true для разделов без записи в employee_permissions,
+    //  но adminOnly-разделы по умолчанию скрыты — их можно открыть через PermissionsPage)
+    if (item.adminOnly) return canView(item.pageKey);
+    return canView(item.pageKey);
   });
 
   return (

@@ -9,17 +9,20 @@ import {
   AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { CheckCircle, XCircle, Clock } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, ShieldOff } from 'lucide-react';
 import { getPendingDeals, approveDeal, rejectDeal, getManagers } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, Manager } from '@/types/types';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function ApprovalsPage() {
-  const [deals, setDeals]     = useState<Deal[]>([]);
+  const { canApprove } = useAuth();
+  const [deals, setDeals]       = useState<Deal[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]   = useState(true);
 
   const load = useCallback(async () => {
+    if (!canApprove) return;
     setLoading(true);
     try {
       const [pending, mgrs] = await Promise.all([getPendingDeals(), getManagers()]);
@@ -27,7 +30,7 @@ export default function ApprovalsPage() {
       setManagers(mgrs);
     } catch { toast.error('Ошибка загрузки'); }
     finally { setLoading(false); }
-  }, []);
+  }, [canApprove]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -36,19 +39,25 @@ export default function ApprovalsPage() {
   }
 
   async function handleApprove(id: string) {
-    try {
-      await approveDeal(id);
-      toast.success('Сделка подтверждена');
-      await load();
-    } catch { toast.error('Ошибка'); }
+    try { await approveDeal(id); toast.success('Сделка подтверждена'); await load(); }
+    catch { toast.error('Ошибка'); }
   }
 
   async function handleReject(id: string) {
-    try {
-      await rejectDeal(id);
-      toast.success('Сделка отклонена');
-      await load();
-    } catch { toast.error('Ошибка'); }
+    try { await rejectDeal(id); toast.success('Сделка отклонена'); await load(); }
+    catch { toast.error('Ошибка'); }
+  }
+
+  // Нет права — показываем заглушку вместо пустой страницы
+  if (!canApprove) {
+    return (
+      <AppLayout>
+        <div className="flex flex-col items-center justify-center min-h-[50vh] gap-3 text-muted-foreground">
+          <ShieldOff size={40} className="opacity-30" />
+          <p className="text-sm">У вас нет доступа к подтверждению сделок</p>
+        </div>
+      </AppLayout>
+    );
   }
 
   return (
@@ -110,11 +119,7 @@ export default function ApprovalsPage() {
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
-                      <Button
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => handleApprove(d.id)}
-                      >
+                      <Button size="sm" className="h-7 text-xs" onClick={() => handleApprove(d.id)}>
                         <CheckCircle size={13} className="mr-1" />Подтвердить
                       </Button>
                     </div>

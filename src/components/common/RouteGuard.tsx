@@ -1,17 +1,38 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
+import AppLayout from '@/components/layouts/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
+import { ShieldOff } from 'lucide-react';
 
 interface RouteGuardProps {
   children: React.ReactNode;
   adminOnly?: boolean;
+  pageKey?: string;
 }
 
-export function RouteGuard({ children, adminOnly }: RouteGuardProps) {
-  const { user, profile, isAdmin, loading } = useAuth();
+// ─── Заглушка «Доступ запрещён» ───────────────────────────────────────────────
+function AccessDenied() {
+  return (
+    <AppLayout>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-4">
+        <ShieldOff size={44} className="text-muted-foreground/30" strokeWidth={1.5} />
+        <div className="space-y-1">
+          <h2 className="text-lg font-medium">Доступ запрещён</h2>
+          <p className="text-sm text-muted-foreground max-w-xs">
+            У вас нет прав для просмотра этого раздела.<br />
+            Обратитесь к администратору.
+          </p>
+        </div>
+      </div>
+    </AppLayout>
+  );
+}
+
+export function RouteGuard({ children, adminOnly, pageKey }: RouteGuardProps) {
+  const { user, isAdmin, loading, canView } = useAuth();
   const location = useLocation();
 
-  // Показываем пустой экран пока идёт загрузка сессии
+  // Загрузка сессии
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -25,10 +46,14 @@ export function RouteGuard({ children, adminOnly }: RouteGuardProps) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Есть сессия, но нет профиля — администратор зашёл без профиля (технический случай)
-  // Пускаем дальше, isAdmin=false в этом случае закроет adminOnly маршруты
+  // adminOnly-раздел: не-администраторы видят заглушку
   if (adminOnly && !isAdmin) {
-    return <Navigate to="/" replace />;
+    return <AccessDenied />;
+  }
+
+  // Проверка per-employee разрешения по pageKey
+  if (pageKey && !isAdmin && !canView(pageKey)) {
+    return <AccessDenied />;
   }
 
   return <>{children}</>;

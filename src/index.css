@@ -1,8 +1,9 @@
-/* stylelint-disable */
 @import url('https://resource-static.bj.bcebos.com/fonts/Montserrat-VariableFont_wght.woff2');
+/* stylelint-disable */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
 
 
 @layer base {

@@ -120,35 +120,44 @@ export default function ManagersPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function createAuthUser(username: string, password: string): Promise<string | null> {
-    const email = `${username.trim().toLowerCase()}@aybar.app`;
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) { toast.error(`Ошибка создания аккаунта: ${error.message}`); return null; }
-    return data.user?.id ?? null;
+  // Создаём auth-пользователя через Edge Function (Admin API на сервере),
+  // чтобы signUp не переключал сессию текущего администратора.
+  async function createAuthUser(username: string, password: string, managerId: string): Promise<string | null> {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await supabase.functions.invoke('create-employee', {
+      body: { username: username.trim().toLowerCase(), password, managerId },
+      headers: session?.access_token
+        ? { Authorization: `Bearer ${session.access_token}` }
+        : {},
+    });
+    if (res.error || res.data?.error) {
+      toast.error(`Ошибка создания аккаунта: ${res.data?.error ?? res.error?.message}`);
+      return null;
+    }
+    return res.data?.userId ?? null;
   }
 
   async function handleCreate() {
     const name = newName.trim();
     if (!name) { toast.error('Введите имя сотрудника'); return; }
-    // Если выбрана "Другая должность" — берём из поля ввода
     const role = newRole === '__custom__' ? newRoleCustom.trim() : newRole;
     if (!role) { toast.error('Введите должность'); return; }
     setSaving(true);
     try {
+      // Сначала создаём менеджера, чтобы получить его ID для Edge Function
+      const managerId = await createManager(name, role, null);
       let userId: string | null = null;
       if (newUsername.trim() && newPassword) {
-        userId = await createAuthUser(newUsername, newPassword);
-        if (!userId) { setSaving(false); return; }
-      }
-      const managerId = await createManager(name, role, userId);
-      if (userId) {
-        const { error: profErr } = await supabase.from('profiles').insert({
-          id: userId,
-          username: newUsername.trim().toLowerCase(),
-          role: 'employee',
-          manager_id: managerId,
-        });
-        if (profErr) toast.warning('Аккаунт создан, но профиль не сохранился');
+        // Edge Function создаёт auth-пользователя + профиль атомарно
+        userId = await createAuthUser(newUsername, newPassword, managerId);
+        if (!userId) {
+          // Откатываем запись менеджера если аккаунт не создался
+          await deleteManager(managerId);
+          setSaving(false);
+          return;
+        }
+        // Привязываем user_id к записи менеджера
+        await updateManager(managerId, name, role, userId);
       }
       setNewName(''); setNewRole(ROLES[0]); setNewRoleCustom(''); setNewUsername(''); setNewPassword('');
       toast.success(`Сотрудник «${name}» добавлен${userId ? ' с аккаунтом' : ''}`);
@@ -178,17 +187,9 @@ export default function ManagersPage() {
     try {
       let userId = editManager.user_id;
       if (editUsername.trim() && editPassword) {
-        const newUserId = await createAuthUser(editUsername, editPassword);
-        if (newUserId) {
-          userId = newUserId;
-          const { error: profErr } = await supabase.from('profiles').insert({
-            id: newUserId,
-            username: editUsername.trim().toLowerCase(),
-            role: 'employee',
-            manager_id: editManager.id,
-          });
-          if (profErr) toast.warning('Аккаунт создан, но профиль не сохранился');
-        }
+        // Edge Function создаёт auth-пользователя + профиль атомарно, без смены сессии
+        const newUserId = await createAuthUser(editUsername, editPassword, editManager.id);
+        if (newUserId) userId = newUserId;
       }
       await updateManager(editManager.id, name, role, userId);
       toast.success('Данные обновлены');

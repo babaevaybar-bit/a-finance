@@ -4,14 +4,17 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { getManagers, getDeals, getSalesPlans, upsertSalesPlan } from '@/lib/api';
+import { getManagers, getDeals, getSalesPlans, upsertSalesPlan, getLastDealsMonth } from '@/lib/api';
 import { getCurrentMonthYear, getAvailableMonths, monthYearToLabel } from '@/lib/utils';
 import type { Manager, Deal, SalesPlan } from '@/types/types';
 import { ROLES, SALES_PAGE_ROLES } from '@/types/types';
 import ManagerSalesSection from '@/components/sales/ManagerSalesSection';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function SalesPage() {
+  const { profile, isAdmin } = useAuth();
   const [monthYear, setMonthYear] = useState(getCurrentMonthYear());
+  const isInitialLoad = useRef(true); // флаг первой загрузки для автопереключения
   const [managers, setManagers]   = useState<Manager[]>([]);
   const [deals, setDeals]         = useState<Record<string, Deal[]>>({});
   const [plans, setPlans]         = useState<SalesPlan[]>([]);
@@ -36,6 +39,19 @@ export default function SalesPage() {
       const dealsMap: Record<string, Deal[]> = {};
       mgrs.forEach((m, i) => { dealsMap[m.id] = dealsByManager[i] as Deal[]; });
       setDeals(dealsMap);
+
+      // Автопереключение на последний месяц с данными — ТОЛЬКО при первом открытии.
+      // При ручной смене месяца пользователем этот блок не выполняется.
+      if (isInitialLoad.current) {
+        isInitialLoad.current = false;
+        const totalThisMonth = (dealsByManager as Deal[][]).reduce((s, arr) => s + arr.length, 0);
+        if (totalThisMonth === 0) {
+          const lastMonth = await getLastDealsMonth();
+          if (lastMonth && lastMonth !== monthYear) {
+            setMonthYear(lastMonth); // useEffect перезапустит loadData с нужным месяцем
+          }
+        }
+      }
     } catch { /* silent */ }
     finally { setLoading(false); }
   }, [monthYear]);
@@ -68,12 +84,15 @@ export default function SalesPage() {
   }
 
   // ── Filtering — show only SALES_PAGE_ROLES by default ──────────────────────
+  // Non-admin: see only own manager record
   const visibleManagers = managers.filter(m => {
-    // role filter overrides default
+    if (!isAdmin) {
+      // employee sees only their own manager record
+      return m.user_id === profile?.id;
+    }
     if (roleFilter !== 'all') {
       if (m.role !== roleFilter) return false;
     } else {
-      // default: only sales page roles
       if (!SALES_PAGE_ROLES.includes(m.role)) return false;
     }
     if (employeeFilter !== 'all' && m.id !== employeeFilter) return false;
@@ -101,7 +120,8 @@ export default function SalesPage() {
           </Select>
         </div>
 
-        {/* Filters */}
+        {/* Filters — admin only */}
+        {isAdmin && (
         <div className="flex flex-wrap gap-2 items-center">
           <Select value={roleFilter} onValueChange={v => { setRoleFilter(v); setEmployeeFilter('all'); }}>
             <SelectTrigger className="w-52 h-8 text-sm">
@@ -132,6 +152,7 @@ export default function SalesPage() {
             </Button>
           )}
         </div>
+        )}
 
         {loading ? (
           <div className="space-y-4">

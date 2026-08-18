@@ -26,7 +26,7 @@ interface Props {
   onRefresh: () => void;
 }
 
-export default function ManagerSalesSection({ manager, monthYear, deals, plan, onPlanChange, onRefresh }: Props) {
+export default React.memo(function ManagerSalesSection({ manager, monthYear, deals, plan, onPlanChange, onRefresh }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
@@ -229,4 +229,4 @@ export default function ManagerSalesSection({ manager, monthYear, deals, plan, o
       />
     </Card>
   );
-}
+});
