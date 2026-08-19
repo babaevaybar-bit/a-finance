@@ -32,7 +32,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading]         = useState(true);
 
   // Dev shortcut: disable real auth when VITE_DISABLE_AUTH=true
-  const DISABLE_AUTH = Boolean(import.meta.env.VITE_DISABLE_AUTH);
+  // Also allow immediate bypass via URL query `?disable_auth=1` for testing without restarting dev server
+  const DISABLE_AUTH_ENV = Boolean(import.meta.env.VITE_DISABLE_AUTH);
+  const [disableAuth, setDisableAuth] = useState<boolean>(DISABLE_AUTH_ENV);
 
   const isAdmin = profile?.role === 'admin';
 
@@ -55,7 +57,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    if (DISABLE_AUTH) {
+    const runtimeDisable = DISABLE_AUTH_ENV || new URLSearchParams(window.location.search).get('disable_auth') === '1';
+    setDisableAuth(runtimeDisable);
+
+    if (runtimeDisable) {
       // Provide a fake user/profile for local development to bypass auth
       const fakeUser = { id: 'dev-user', email: 'dev@local' } as unknown as User;
       setUser(fakeUser);
@@ -73,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }).finally(() => setLoading(false));
     }
 
-    if (DISABLE_AUTH) return;
+    if (disableAuth) return;
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_e, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -98,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // eslint-disable-next-line no-console
       console.debug('Auth: signIn attempt', { email });
 
-      if (DISABLE_AUTH) {
+      if (disableAuth) {
         // In dev mode just accept any credentials
         // eslint-disable-next-line no-console
         console.debug('Auth: dev signIn bypass', { email });
