@@ -118,6 +118,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) console.debug('Auth: signIn response error', { message: error.message, status: (error as any)?.status });
 
       if (error) return { error: error.message ?? 'Неверный логин или пароль' };
+      // После успешного входа подгружаем профиль и права заново
+      try {
+        await refreshProfile();
+      } catch {
+        // ignore
+      }
       return { error: null };
     } catch (err: any) {
       // На случай сетевых/неожиданных ошибок — возвращаем понятное сообщение
