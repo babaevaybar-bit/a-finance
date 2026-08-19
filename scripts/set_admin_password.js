@@ -10,10 +10,18 @@ if (!email || !password) {
   process.exit(1);
 }
 
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
+let SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+let SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (SERVICE_ROLE) SERVICE_ROLE = String(SERVICE_ROLE).trim();
+if (SUPABASE_URL) SUPABASE_URL = String(SUPABASE_URL).trim();
 if (!SUPABASE_URL || !SERVICE_ROLE) {
   console.error('Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.');
+  process.exit(1);
+}
+
+// Basic validation: service role key must not contain newlines or control characters
+if (/\r|\n/.test(SERVICE_ROLE)) {
+  console.error('The SUPABASE_SERVICE_ROLE_KEY contains line breaks. Re-copy the key and set the environment variable without newlines.');
   process.exit(1);
 }
 
