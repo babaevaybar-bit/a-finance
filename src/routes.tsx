@@ -27,3 +27,4 @@ export const routes: RouteConfig[] = [
   { name: 'Сотрудники',       path: '/managers',    element: <ManagersPage />,     adminOnly: true  },
   { name: 'Доступ',           path: '/permissions', element: <PermissionsPage />,  adminOnly: true  },
 ];
+<Route path="/" element={<HomePage />} />

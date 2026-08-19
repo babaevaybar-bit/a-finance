@@ -31,6 +31,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [permissions, setPermissions] = useState<EmployeePermission[]>([]);
   const [loading, setLoading]         = useState(true);
 
+  // Dev shortcut: disable real auth when VITE_DISABLE_AUTH=true
+  const DISABLE_AUTH = Boolean(import.meta.env.VITE_DISABLE_AUTH);
+
   const isAdmin = profile?.role === 'admin';
 
   // Может подтверждать/отклонять сделки: admin всегда, остальные — если есть can_approve на странице approvals
@@ -52,15 +55,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        const p = await fetchProfile(session.user.id);
-        setProfile(p);
-        await loadPermissions(p?.manager_id);
-      }
-    }).finally(() => setLoading(false));
+    if (DISABLE_AUTH) {
+      // Provide a fake user/profile for local development to bypass auth
+      const fakeUser = { id: 'dev-user', email: 'dev@local' } as unknown as User;
+      setUser(fakeUser);
+      setProfile({ id: 'dev-user', name: 'Dev User', role: 'admin', manager_id: null } as any);
+      setPermissions([]);
+      setLoading(false);
+    } else {
+      supabase.auth.getSession().then(async ({ data: { session } }) => {
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          const p = await fetchProfile(session.user.id);
+          setProfile(p);
+          await loadPermissions(p?.manager_id);
+        }
+      }).finally(() => setLoading(false));
+    }
 
+    if (DISABLE_AUTH) return;
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_e, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -77,10 +90,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async (username: string, password: string) => {
-    const email = `${username.trim().toLowerCase()}@aybar.app`;
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: 'Неверный логин или пароль' };
-    return { error: null };
+    try {
+      const trimmed = username.trim().toLowerCase();
+      const email = trimmed.includes('@') ? trimmed : `${trimmed}@aybar.app`;
+
+      // Логируем используемый email и ошибки для диагностики (НЕ логируем пароль)
+      // eslint-disable-next-line no-console
+      console.debug('Auth: signIn attempt', { email });
+
+      if (DISABLE_AUTH) {
+        // In dev mode just accept any credentials
+        // eslint-disable-next-line no-console
+        console.debug('Auth: dev signIn bypass', { email });
+        setUser({ id: email, email } as unknown as User);
+        setProfile({ id: email, name: 'Dev User', role: 'admin', manager_id: null } as any);
+        return { error: null };
+      }
+
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+      // eslint-disable-next-line no-console
+      if (error) console.debug('Auth: signIn response error', { message: error.message, status: (error as any)?.status });
+
+      if (error) return { error: error.message ?? 'Неверный логин или пароль' };
+      return { error: null };
+    } catch (err: any) {
+      // На случай сетевых/неожиданных ошибок — возвращаем понятное сообщение
+      const msg = err?.message ?? String(err) ?? 'Ошибка при подключении к серверу аутентификации';
+      // eslint-disable-next-line no-console
+      console.error('Auth: signIn exception', err);
+      return { error: msg };
+    }
   };
 
   const signOut = async () => {
