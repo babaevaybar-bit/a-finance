@@ -5,7 +5,8 @@ import type { Profile, EmployeePermission } from '@/types/types';
 import { getPermissionsForManager } from '@/lib/api';
 
 async function fetchProfile(userId: string): Promise<Profile | null> {
-  const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+  if (error) throw error;
   return data ?? null;
 }
 
@@ -67,31 +68,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile({ id: 'dev-user', name: 'Dev User', role: 'admin', manager_id: null } as any);
       setPermissions([]);
       setLoading(false);
-    } else {
-      supabase.auth.getSession().then(async ({ data: { session } }) => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          const p = await fetchProfile(session.user.id);
-          setProfile(p);
-          await loadPermissions(p?.manager_id);
-        }
-      }).finally(() => setLoading(false));
+      return;
     }
 
-    if (disableAuth) return;
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_e, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        const p = await fetchProfile(session.user.id);
+    let cancelled = false;
+    // requestId защищает от гонки состояний: если пока грузился профиль
+    // пришло новое auth-событие, применяем только самый свежий результат.
+    let requestId = 0;
+
+    async function applySession(session: { user: User } | null) {
+      const myRequestId = ++requestId;
+      const u = session?.user ?? null;
+      if (cancelled) return;
+      setUser(u);
+
+      if (!u) {
+        setProfile(null);
+        setPermissions([]);
+        return;
+      }
+
+      try {
+        const p = await fetchProfile(u.id);
+        if (cancelled || myRequestId !== requestId) return;
         setProfile(p);
         await loadPermissions(p?.manager_id);
-      } else {
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Auth: failed to load profile', err);
+        if (cancelled || myRequestId !== requestId) return;
         setProfile(null);
         setPermissions([]);
       }
+    }
+
+    // Начальная сессия при загрузке страницы
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => applySession(session))
+      .catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error('Auth: getSession failed', err);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    // Реакция на login/logout/обновление токена
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      applySession(session);
     });
 
-    return () => subscription.unsubscribe();
+    // Chrome/Safari иногда восстанавливают страницу из bfcache со старым,
+    // замороженным состоянием React — принудительно перезагружаем в этом случае,
+    // чтобы не залипать на бесконечном спиннере.
+    function handlePageShow(event: PageTransitionEvent) {
+      if (event.persisted) {
+        window.location.reload();
+      }
+    }
+    window.addEventListener('pageshow', handlePageShow);
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+      window.removeEventListener('pageshow', handlePageShow);
+    };
   }, []);
 
   const signIn = async (username: string, password: string) => {
