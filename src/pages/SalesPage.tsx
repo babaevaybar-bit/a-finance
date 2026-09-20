@@ -12,7 +12,7 @@ import ManagerSalesSection from '@/components/sales/ManagerSalesSection';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function SalesPage() {
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, isDirector, canViewAllManagers } = useAuth();
   const [monthYear, setMonthYear] = useState(getCurrentMonthYear());
   const isInitialLoad = useRef(true); // флаг первой загрузки для автопереключения
   const [managers, setManagers]   = useState<Manager[]>([]);
@@ -86,8 +86,8 @@ export default function SalesPage() {
   // ── Filtering — show only SALES_PAGE_ROLES by default ──────────────────────
   // Non-admin: see only own manager record
   const visibleManagers = managers.filter(m => {
-    if (!isAdmin) {
-      // employee sees only their own manager record
+    if (!canViewAllManagers) {
+      // обычный менеджер видит только свою собственную карточку
       return m.user_id === profile?.id;
     }
     if (roleFilter !== 'all') {
@@ -120,8 +120,8 @@ export default function SalesPage() {
           </Select>
         </div>
 
-        {/* Filters — admin only */}
-        {isAdmin && (
+        {/* Filters — director/rop only */}
+        {canViewAllManagers && (
         <div className="flex flex-wrap gap-2 items-center">
           <Select value={roleFilter} onValueChange={v => { setRoleFilter(v); setEmployeeFilter('all'); }}>
             <SelectTrigger className="w-52 h-8 text-sm">
@@ -172,7 +172,7 @@ export default function SalesPage() {
                 monthYear={monthYear}
                 deals={deals[m.id] || []}
                 plan={getPlan(m.id)}
-                onPlanChange={handlePlanChange}
+                onPlanChange={isDirector ? handlePlanChange : undefined}
                 onRefresh={loadData}
               />
             ))}

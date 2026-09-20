@@ -477,7 +477,7 @@ function buildRevenueChart(reports: ClientReport[]) {
 
 // ─── Компонент вкладки «Клиенты» ──────────────────────────────────────────────
 function ClientsTab() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, canViewAllManagers, isManager } = useAuth();
   const [reports, setReports]         = useState<ClientReport[]>([]);
   const [managers, setManagers]       = useState<Manager[]>([]);
   const [loading, setLoading]         = useState(true);
@@ -500,6 +500,8 @@ function ClientsTab() {
   const [filterQuality, setFilterQuality] = useState('all');
   const [filterStage,   setFilterStage]   = useState('all');
   const [filterMgr,     setFilterMgr]     = useState('all');
+  // Обычный менеджер видит только своих клиентов — фильтр всегда зафиксирован на себе
+  const effectiveFilterMgr = canViewAllManagers ? filterMgr : (user?.id ?? 'none');
 
   // Массовые действия
   const [selected, setSelected]       = useState<Set<string>>(new Set());
@@ -518,14 +520,14 @@ function ClientsTab() {
           to:         filterTo     || undefined,
           quality:    filterQuality !== 'all' ? filterQuality : undefined,
           stage:      filterStage  !== 'all' ? filterStage  : undefined,
-          manager_id: filterMgr    !== 'all' ? filterMgr    : undefined,
+          manager_id: effectiveFilterMgr !== 'all' ? effectiveFilterMgr : undefined,
         }),
         getManagers(),
       ]);
       setReports(data); setManagers(mgrs);
     } catch { toast.error('Ошибка загрузки'); }
     finally { setLoading(false); }
-  }, [filterFrom, filterTo, filterQuality, filterStage, filterMgr]);
+  }, [filterFrom, filterTo, filterQuality, filterStage, effectiveFilterMgr]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -704,7 +706,7 @@ function ClientsTab() {
                   <SelectItem key={k} value={k}>{v}</SelectItem>)}
               </SelectContent>
             </Select></div>
-          {isAdmin && (
+          {canViewAllManagers && (
             <div className="flex flex-col gap-1"><Label className="text-xs">Менеджер</Label>
               <Select value={filterMgr} onValueChange={setFilterMgr}>
                 <SelectTrigger className="h-8 text-sm w-36"><SelectValue /></SelectTrigger>
@@ -734,7 +736,7 @@ function ClientsTab() {
               </SelectContent>
             </Select>
             <Button size="sm" className="h-8 text-xs" onClick={applyBulkStage} disabled={bulkStage === 'none'}>Применить стадию</Button>
-            {isAdmin && (
+            {canViewAllManagers && (
               <>
                 <Select value={bulkMgr} onValueChange={setBulkMgr}>
                   <SelectTrigger className="h-8 text-xs w-40"><SelectValue placeholder="Менеджер…" /></SelectTrigger>
@@ -977,7 +979,7 @@ function ClientsTab() {
               <div className="space-y-1"><Label className="text-xs">Канал привлечения</Label>
                 <Input placeholder="Instagram…" value={form.source ?? ''} onChange={e => sf('source', e.target.value)} /></div>
               <div className="space-y-1"><Label className="text-xs">Менеджер</Label>
-                <Select value={form.manager_id ?? 'none'} onValueChange={v => sf('manager_id', v === 'none' ? null : v)}>
+                <Select value={form.manager_id ?? 'none'} onValueChange={v => sf('manager_id', v === 'none' ? null : v)} disabled={!canViewAllManagers}>
                   <SelectTrigger className="h-9"><SelectValue placeholder="Выбрать" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">—</SelectItem>
