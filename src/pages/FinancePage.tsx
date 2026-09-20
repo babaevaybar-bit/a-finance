@@ -29,7 +29,7 @@ import {
 } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Expense, Income, Manager, Transfer } from '@/types/types';
-import { CHANNELS } from '@/types/types';
+import { CHANNELS, EXPENSE_CATEGORIES } from '@/types/types';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function inRange(dateStr: string, from: string, to: string): boolean {
@@ -127,7 +127,9 @@ const EMPTY_EXP: Omit<Expense, 'id' | 'created_at' | 'updated_at'> = {
   expense_date: new Date().toISOString().slice(0, 10),
   amount: 0,
   channel: 'Kaspi Bank',
+  category: 'прочее',
   description: '',
+  month_year: null,
 };
 
 function ExpenseFormDialog({ open, onClose, onSaved, expense }: {
@@ -138,7 +140,11 @@ function ExpenseFormDialog({ open, onClose, onSaved, expense }: {
   const set = (k: keyof typeof form, v: string | number) => setForm(f => ({ ...f, [k]: v }));
 
   useEffect(() => {
-    if (expense) setForm({ expense_date: expense.expense_date, amount: expense.amount, channel: expense.channel, description: expense.description });
+    if (expense) setForm({
+      expense_date: expense.expense_date, amount: expense.amount, channel: expense.channel,
+      category: expense.category ?? 'прочее', description: expense.description,
+      month_year: expense.expense_date.slice(0, 7),
+    });
     else setForm(EMPTY_EXP);
   }, [expense, open]);
 
@@ -147,8 +153,9 @@ function ExpenseFormDialog({ open, onClose, onSaved, expense }: {
     if (Number(form.amount) <= 0) { toast.error('Сумма должна быть больше 0'); return; }
     setSaving(true);
     try {
-      if (expense) { await updateExpense(expense.id, form); toast.success('Расход обновлён'); }
-      else { await createExpense(form); toast.success('Расход добавлен'); }
+      const payload = { ...form, month_year: form.expense_date.slice(0, 7) };
+      if (expense) { await updateExpense(expense.id, payload); toast.success('Расход обновлён'); }
+      else { await createExpense(payload); toast.success('Расход добавлен'); }
       onSaved(); onClose();
     } catch { toast.error('Ошибка'); } finally { setSaving(false); }
   }
@@ -170,6 +177,13 @@ function ExpenseFormDialog({ open, onClose, onSaved, expense }: {
                 <SelectContent>{CHANNELS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="space-y-1">
+            <Label>Категория *</Label>
+            <Select value={form.category} onValueChange={v => set('category', v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{EXPENSE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+            </Select>
           </div>
           <div className="space-y-1">
             <Label>Сумма (₸) *</Label>
@@ -198,6 +212,7 @@ const EMPTY_INC: Omit<Income, 'id' | 'created_at' | 'updated_at'> = {
   quantity: null,
   channel: 'Kaspi Bank',
   comment: null,
+  month_year: null,
 };
 
 function IncomeFormDialog({ open, onClose, onSaved, income, managers }: {
@@ -208,7 +223,7 @@ function IncomeFormDialog({ open, onClose, onSaved, income, managers }: {
   const set = (k: string, v: string | number | null) => setForm(f => ({ ...f, [k]: v }));
 
   useEffect(() => {
-    if (income) setForm({ manager_id: income.manager_id, income_date: income.income_date, from_whom: income.from_whom, total_amount: income.total_amount, quantity: income.quantity, channel: income.channel, comment: income.comment });
+    if (income) setForm({ manager_id: income.manager_id, income_date: income.income_date, from_whom: income.from_whom, total_amount: income.total_amount, quantity: income.quantity, channel: income.channel, comment: income.comment, month_year: income.income_date.slice(0, 7) });
     else setForm(EMPTY_INC);
   }, [income, open]);
 
@@ -217,7 +232,7 @@ function IncomeFormDialog({ open, onClose, onSaved, income, managers }: {
     if (Number(form.total_amount) <= 0) { toast.error('Сумма должна быть больше 0'); return; }
     setSaving(true);
     try {
-      const payload = { ...form, from_whom: form.from_whom.trim(), comment: form.comment || null, manager_id: form.manager_id || null };
+      const payload = { ...form, from_whom: form.from_whom.trim(), comment: form.comment || null, manager_id: form.manager_id || null, month_year: form.income_date.slice(0, 7) };
       if (income) { await updateIncome(income.id, payload); toast.success('Поступление обновлено'); }
       else { await createIncome(payload); toast.success('Поступление добавлено'); }
       onSaved(); onClose();
@@ -503,6 +518,7 @@ export default function FinancePage() {
                         <TableHeader>
                           <TableRow>
                             <TableHead className="whitespace-nowrap">Дата</TableHead>
+                            <TableHead className="whitespace-nowrap">Категория</TableHead>
                             <TableHead className="whitespace-nowrap">Описание</TableHead>
                             <TableHead className="whitespace-nowrap">Канал</TableHead>
                             <TableHead className="whitespace-nowrap text-right">Сумма</TableHead>
@@ -513,6 +529,7 @@ export default function FinancePage() {
                           {filteredExp.map(e => (
                             <TableRow key={e.id}>
                               <TableCell className="whitespace-nowrap text-sm">{formatDate(e.expense_date)}</TableCell>
+                              <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{e.category || '—'}</TableCell>
                               <TableCell className="text-sm">{e.description}</TableCell>
                               <TableCell className="whitespace-nowrap text-sm">{e.channel}</TableCell>
                               <TableCell className="whitespace-nowrap text-sm text-right text-destructive">{formatCurrency(e.amount)}</TableCell>

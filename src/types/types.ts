@@ -52,12 +52,18 @@ export interface Deal {
   updated_at: string;
 }
 
+export const EXPENSE_CATEGORIES = [
+  'закуп товара', 'реклама', 'аренда', 'зарплата', 'логистика', 'монтаж', 'налоги', 'прочее',
+] as const;
+
 export interface Expense {
   id: string;
   expense_date: string;
   amount: number;
   channel: string;
+  category: string;
   description: string;
+  month_year: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -71,6 +77,7 @@ export interface Income {
   quantity: number | null;
   channel: string;
   comment: string | null;
+  month_year: string | null;
   created_at: string;
   updated_at: string;
 }

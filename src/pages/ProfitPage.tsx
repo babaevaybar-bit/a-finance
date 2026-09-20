@@ -19,6 +19,9 @@ import {
   getAllDealsForMonth, getExpenses, getSalarySettings, getManagers,
 } from '@/lib/api';
 import { formatCurrency, getCurrentMonthYear, getAvailableMonths, monthYearToLabel } from '@/lib/utils';
+import {
+  ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
+} from 'recharts';
 import type { ProfitRow } from '@/types/types';
 import { SALES_ROLES } from '@/types/types';
 
@@ -51,6 +54,8 @@ export default function ProfitPage() {
 
   // Авто-переменные из других разделов
   const [autoVars, setAutoVars]   = useState({ revenue: 0, expenses: 0, salary: 0 });
+  const [categoryBreakdown, setCategoryBreakdown] = useState<{ category: string; amount: number }[]>([]);
+  const [monthlyTrend, setMonthlyTrend] = useState<{ month: string; profit: number }[]>([]);
 
   const months = getAvailableMonths();
 
@@ -64,7 +69,8 @@ export default function ProfitPage() {
       ]);
       const approved = deals.filter(d => d.status === 'approved');
       const revenue  = approved.reduce((s, d) => s + Number(d.salary_amount ?? d.total_amount), 0);
-      const expenses = exps.reduce((s, e) => s + Number(e.amount), 0);
+      const expsThisMonth = exps.filter(e => (e.month_year ?? e.expense_date.slice(0, 7)) === my);
+      const expenses = expsThisMonth.reduce((s, e) => s + Number(e.amount), 0);
       // Зарплата: оклад + комиссия
       const salary = mgrs.reduce((s, m) => {
         const sett = setts.find(ss => ss.manager_id === m.id);
@@ -77,6 +83,40 @@ export default function ProfitPage() {
         return s + base + rev * (pct / 100);
       }, 0);
       setAutoVars({ revenue, expenses, salary });
+
+      // Структура расходов по категориям за выбранный месяц
+      const byCategory = new Map<string, number>();
+      expsThisMonth.forEach(e => {
+        const cat = e.category || 'прочее';
+        byCategory.set(cat, (byCategory.get(cat) ?? 0) + Number(e.amount));
+      });
+      setCategoryBreakdown(
+        Array.from(byCategory.entries())
+          .map(([category, amount]) => ({ category, amount }))
+          .sort((a, b) => b.amount - a.amount)
+      );
+
+      // Динамика чистой прибыли (выручка − расходы − ФОТ) за последние доступные месяцы
+      const months = getAvailableMonths().slice(-6);
+      const trend = await Promise.all(months.map(async (mm) => {
+        const [mDeals, mExps] = await Promise.all([getAllDealsForMonth(mm), Promise.resolve(exps)]);
+        const mApproved = mDeals.filter(d => d.status === 'approved');
+        const mRevenue = mApproved.reduce((s, d) => s + Number(d.salary_amount ?? d.total_amount), 0);
+        const mExpenses = mExps.filter(e => (e.month_year ?? e.expense_date.slice(0, 7)) === mm)
+          .reduce((s, e) => s + Number(e.amount), 0);
+        const mSalary = mgrs.reduce((s, m) => {
+          const sett = setts.find(ss => ss.manager_id === m.id);
+          const usePersonal = sett?.use_personal_revenue ?? SALES_ROLES.includes(m.role);
+          const base = Number(sett?.base_salary ?? 0);
+          const pct  = Number(sett?.commission_pct ?? 0);
+          const rev  = usePersonal
+            ? mApproved.filter(d => d.manager_id === m.id).reduce((a, d) => a + Number(d.salary_amount ?? d.total_amount), 0)
+            : mRevenue;
+          return s + base + rev * (pct / 100);
+        }, 0);
+        return { month: monthYearToLabel(mm), profit: mRevenue - mExpenses - mSalary };
+      }));
+      setMonthlyTrend(trend);
     } catch { /* silent */ }
   }, []);
 
@@ -186,7 +226,7 @@ export default function ProfitPage() {
         </div>
 
         {/* Авто-переменные */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
             { key: 'revenue',  label: 'Выручка (авто)',  val: autoVars.revenue  },
             { key: 'expenses', label: 'Расходы (авто)',  val: autoVars.expenses },
@@ -198,7 +238,64 @@ export default function ProfitPage() {
               <p className="text-xs text-muted-foreground mt-0.5 font-mono">{`{${key}}`}</p>
             </div>
           ))}
+          <div className="rounded-md border border-border p-3">
+            <p className="text-xs text-muted-foreground">Рентабельность продаж (ROS)</p>
+            <p className={`text-sm font-semibold mt-0.5 ${totalProfit >= 0 ? '' : 'text-destructive'}`}>
+              {autoVars.revenue > 0 ? `${((totalProfit / autoVars.revenue) * 100).toFixed(1)}%` : '—'}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">Чистая прибыль / Выручка</p>
+          </div>
         </div>
+
+        {/* Графики: структура расходов и динамика прибыли */}
+        {(categoryBreakdown.length > 0 || monthlyTrend.length > 1) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {categoryBreakdown.length > 0 && (
+              <Card className="border border-border">
+                <CardHeader className="pb-1 pt-3 px-4">
+                  <CardTitle className="text-sm font-medium">Структура расходов по категориям</CardTitle>
+                </CardHeader>
+                <CardContent className="px-2 pb-3">
+                  <div className="w-full min-w-0 overflow-hidden h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={categoryBreakdown} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                        <XAxis type="number" tick={{ fontSize: 10 }} />
+                        <YAxis type="category" dataKey="category" width={90} tick={{ fontSize: 10 }} />
+                        <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                        <Bar dataKey="amount" radius={[0, 4, 4, 0]}>
+                          {categoryBreakdown.map((_, i) => (
+                            <Cell key={i} fill={`hsl(var(--primary) / ${1 - i * 0.12})`} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {monthlyTrend.length > 1 && (
+              <Card className="border border-border">
+                <CardHeader className="pb-1 pt-3 px-4">
+                  <CardTitle className="text-sm font-medium">Динамика чистой прибыли</CardTitle>
+                </CardHeader>
+                <CardContent className="px-2 pb-3">
+                  <div className="w-full min-w-0 overflow-hidden h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={monthlyTrend} margin={{ top: 4, right: 12, left: -16, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                        <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+                        <YAxis tick={{ fontSize: 10 }} />
+                        <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                        <Line type="monotone" dataKey="profit" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} name="Чистая прибыль" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
 
         {/* Таблица строк */}
         <Card className="border border-border">
