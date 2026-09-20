@@ -99,6 +99,7 @@ export default function ManagersPage() {
   const [newRoleCustom, setNewRoleCustom] = useState('');
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [newAuthRole, setNewAuthRole] = useState<'manager' | 'rop' | 'director'>('manager');
   const [saving, setSaving]         = useState(false);
   const [editManager, setEditManager]   = useState<Manager | null>(null);
   const [editName, setEditName]         = useState('');
@@ -106,6 +107,7 @@ export default function ManagersPage() {
   const [editRoleCustom, setEditRoleCustom] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
+  const [editAuthRole, setEditAuthRole] = useState<'manager' | 'rop' | 'director'>('manager');
   const [editSaving, setEditSaving]     = useState(false);
 
   const load = useCallback(async () => {
@@ -122,10 +124,10 @@ export default function ManagersPage() {
 
   // Создаём auth-пользователя через Edge Function (Admin API на сервере),
   // чтобы signUp не переключал сессию текущего администратора.
-  async function createAuthUser(username: string, password: string, managerId: string): Promise<string | null> {
+  async function createAuthUser(username: string, password: string, managerId: string, role: string): Promise<string | null> {
     const { data: { session } } = await supabase.auth.getSession();
     const res = await supabase.functions.invoke('create-employee', {
-      body: { username: username.trim().toLowerCase(), password, managerId },
+      body: { username: username.trim().toLowerCase(), password, managerId, role },
       headers: session?.access_token
         ? { Authorization: `Bearer ${session.access_token}` }
         : {},
@@ -149,7 +151,7 @@ export default function ManagersPage() {
       let userId: string | null = null;
       if (newUsername.trim() && newPassword) {
         // Edge Function создаёт auth-пользователя + профиль атомарно
-        userId = await createAuthUser(newUsername, newPassword, managerId);
+        userId = await createAuthUser(newUsername, newPassword, managerId, newAuthRole);
         if (!userId) {
           // Откатываем запись менеджера если аккаунт не создался
           await deleteManager(managerId);
@@ -188,7 +190,7 @@ export default function ManagersPage() {
       let userId = editManager.user_id;
       if (editUsername.trim() && editPassword) {
         // Edge Function создаёт auth-пользователя + профиль атомарно, без смены сессии
-        const newUserId = await createAuthUser(editUsername, editPassword, editManager.id);
+        const newUserId = await createAuthUser(editUsername, editPassword, editManager.id, editAuthRole);
         if (newUserId) userId = newUserId;
       }
       await updateManager(editManager.id, name, role, userId);
@@ -264,8 +266,19 @@ export default function ManagersPage() {
                   <Label className="text-xs">Пароль</Label>
                   <Input type="password" placeholder="Мин. 6 символов" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" />
                 </div>
+                <div className="space-y-1 md:col-span-2">
+                  <Label className="text-xs">Роль в системе</Label>
+                  <Select value={newAuthRole} onValueChange={v => setNewAuthRole(v as typeof newAuthRole)}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manager">Менеджер — только свои клиенты и сделки</SelectItem>
+                      <SelectItem value="rop">РОП — CRM и продажи всех менеджеров</SelectItem>
+                      <SelectItem value="director">Директор — полный доступ</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">Сотрудник сможет войти и добавлять свои сделки.</p>
+              <p className="text-xs text-muted-foreground">Сотрудник сможет войти согласно выбранной роли.</p>
             </div>
             <Button onClick={handleCreate} disabled={saving || !newName.trim()} className="w-full">
               <Plus size={16} className="mr-1" />Добавить
@@ -383,6 +396,17 @@ export default function ManagersPage() {
                 <div className="space-y-1">
                   <Label className="text-xs">Пароль</Label>
                   <Input type="password" placeholder="Мин. 6 символов" value={editPassword} onChange={e => setEditPassword(e.target.value)} autoComplete="new-password" />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <Label className="text-xs">Роль в системе</Label>
+                  <Select value={editAuthRole} onValueChange={v => setEditAuthRole(v as typeof editAuthRole)}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manager">Менеджер — только свои клиенты и сделки</SelectItem>
+                      <SelectItem value="rop">РОП — CRM и продажи всех менеджеров</SelectItem>
+                      <SelectItem value="director">Директор — полный доступ</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>

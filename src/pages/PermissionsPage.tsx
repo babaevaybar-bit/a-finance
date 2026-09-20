@@ -4,11 +4,99 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
-import { ShieldCheck, Eye, EyeOff } from 'lucide-react';
-import { getManagers, getAllPermissions, upsertPermission } from '@/lib/api';
-import type { Manager, EmployeePermission } from '@/types/types';
+import { ShieldCheck, Eye, EyeOff, UserCog } from 'lucide-react';
+import { getManagers, getAllPermissions, upsertPermission, getAllProfiles, updateProfile } from '@/lib/api';
+import type { Manager, EmployeePermission, Profile } from '@/types/types';
 import { PERMISSION_PAGES } from '@/types/types';
+import { useAuth } from '@/contexts/AuthContext';
+
+const ROLE_LABELS: Record<Profile['role'], string> = {
+  director: 'Директор',
+  rop: 'РОП',
+  manager: 'Менеджер',
+};
+
+// ─── Блок: назначение ролей (Директор / РОП / Менеджер) ───────────────────────
+function RolesSection() {
+  const { user } = useAuth();
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState<Record<string, boolean>>({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setProfiles(await getAllProfiles()); }
+    catch { toast.error('Не удалось загрузить пользователей'); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function changeRole(profileId: string, role: Profile['role']) {
+    setSaving(s => ({ ...s, [profileId]: true }));
+    setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, role } : p));
+    try {
+      await updateProfile(profileId, { role });
+      toast.success('Роль обновлена');
+    } catch {
+      toast.error('Ошибка сохранения роли');
+      await load();
+    } finally {
+      setSaving(s => { const n = { ...s }; delete n[profileId]; return n; });
+    }
+  }
+
+  return (
+    <Card className="border border-border">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <UserCog size={16} />Роли пользователей
+        </CardTitle>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Директор — полный доступ. РОП — продажи и CRM всех менеджеров. Менеджер — только свои клиенты и сделки.
+        </p>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-10 bg-muted rounded animate-pulse" />)}</div>
+        ) : profiles.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">Нет пользователей</p>
+        ) : (
+          <div className="space-y-2">
+            {profiles.map(p => (
+              <div key={p.id} className="flex items-center justify-between gap-3 p-2.5 rounded-md border border-border">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{p.name || p.email || p.id}</p>
+                  {p.email && <p className="text-xs text-muted-foreground truncate">{p.email}</p>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Badge variant="secondary" className="text-xs">{ROLE_LABELS[p.role]}</Badge>
+                  <Select
+                    value={p.role}
+                    onValueChange={v => changeRole(p.id, v as Profile['role'])}
+                    disabled={!!saving[p.id] || p.id === user?.id}
+                  >
+                    <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="director">Директор</SelectItem>
+                      <SelectItem value="rop">РОП</SelectItem>
+                      <SelectItem value="manager">Менеджер</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground mt-3">Нельзя изменить собственную роль — попросите другого директора.</p>
+      </CardContent>
+    </Card>
+  );
+}
 
 // ─── Типы ─────────────────────────────────────────────────────────────────────
 type PermMap = Record<string, Record<string, { can_view: boolean; can_edit: boolean; can_approve: boolean }>>;
@@ -113,6 +201,8 @@ export default function PermissionsPage() {
             По умолчанию все разделы открыты.
           </p>
         </div>
+
+        <RolesSection />
 
         {loading ? (
           <div className="space-y-3">

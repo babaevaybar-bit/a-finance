@@ -73,7 +73,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     navigate('/login', { replace: true });
   }
 
-  const displayName = profile?.username ?? user?.email?.split('@')[0] ?? 'Пользователь';
+  const displayName = profile?.name ?? user?.email?.split('@')[0] ?? 'Пользователь';
 
   return (
     <div className="flex min-h-screen w-full bg-background">

@@ -8,6 +8,12 @@ export async function getProfile(userId: string): Promise<Profile | null> {
   return data ?? null;
 }
 
+export async function getAllProfiles(): Promise<Profile[]> {
+  const { data, error } = await supabase.from('profiles').select('*').order('name', { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
 export async function createProfile(p: Omit<Profile, 'created_at' | 'updated_at'>): Promise<void> {
   const { error } = await supabase.from('profiles').insert(p);
   if (error) throw error;

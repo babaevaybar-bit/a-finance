@@ -42,20 +42,21 @@ Deno.serve(async (req) => {
       .eq('id', user.id)
       .single();
 
-    if (profile?.role !== 'admin') {
-      return new Response(JSON.stringify({ error: 'Forbidden: admin only' }), {
+    if (profile?.role !== 'director') {
+      return new Response(JSON.stringify({ error: 'Forbidden: director only' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const { username, password, managerId } = await req.json();
+    const { username, password, managerId, role } = await req.json();
     if (!username || !password || !managerId) {
       return new Response(JSON.stringify({ error: 'username, password и managerId обязательны' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    const assignedRole = ['director', 'rop', 'manager'].includes(role) ? role : 'manager';
 
     // Admin API — создаём пользователя БЕЗ создания сессии на клиенте
     const supabaseAdmin = createClient(
@@ -84,8 +85,9 @@ Deno.serve(async (req) => {
     // Создаём профиль и привязываем к менеджеру
     const { error: profErr } = await supabaseAdmin.from('profiles').insert({
       id: userId,
-      username: username.trim().toLowerCase(),
-      role: 'employee',
+      name: username.trim().toLowerCase(),
+      email,
+      role: assignedRole,
       manager_id: managerId,
     });
 

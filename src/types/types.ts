@@ -12,7 +12,7 @@ export interface Manager {
 
 export interface Profile {
   id: string;
-  username: string;
+  name: string;
   email: string | null;
   role: 'director' | 'rop' | 'manager';
   manager_id: string | null;
