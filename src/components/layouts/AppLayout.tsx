@@ -28,7 +28,7 @@ const navItems = [
 
 function NavLinks({ onClose }: { onClose?: () => void }) {
   const { pathname } = useLocation();
-  const { isAdmin, canView } = useAuth();
+  const { isAdmin, isDirector, isRop, canView } = useAuth();
 
   const visibleItems = navItems.filter(item => {
     // Администратор видит всё
@@ -64,7 +64,8 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
-  const { user, profile, isAdmin, signOut } = useAuth();
+  const { user, profile, isDirector, isRop, signOut } = useAuth();
+  const roleLabel = isDirector ? 'Директор' : isRop ? 'РОП' : 'Менеджер';
   const navigate = useNavigate();
 
   async function handleSignOut() {
@@ -94,7 +95,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium truncate text-sidebar-foreground">{displayName}</p>
-                  <p className="text-xs text-muted-foreground">{isAdmin ? 'Администратор' : 'Сотрудник'}</p>
+                  <p className="text-xs text-muted-foreground">{roleLabel}</p>
                 </div>
               </button>
             </DropdownMenuTrigger>
@@ -132,7 +133,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium truncate text-sidebar-foreground">{displayName}</p>
-                    <p className="text-xs text-muted-foreground">{isAdmin ? 'Администратор' : 'Сотрудник'}</p>
+                    <p className="text-xs text-muted-foreground">{roleLabel}</p>
                   </div>
                 </div>
                 <Button variant="ghost" size="sm" className="w-full justify-start text-destructive hover:text-destructive h-8 text-xs px-2"

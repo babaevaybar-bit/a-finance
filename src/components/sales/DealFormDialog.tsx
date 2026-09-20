@@ -37,6 +37,7 @@ const EMPTY: Omit<Deal, 'id' | 'created_at' | 'updated_at'> = {
   comment: null,
   salary_amount: null,
   status: 'pending',
+  stage: 'new',
 };
 
 export default function DealFormDialog({ open, onClose, onSaved, managerId, monthYear, deal }: Props) {
@@ -60,6 +61,7 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
         comment: deal.comment || null,
         salary_amount: deal.salary_amount ?? null,
         status: deal.status ?? 'pending',
+        stage: deal.stage ?? 'new',
       });
     } else {
       setForm({ ...EMPTY, manager_id: managerId, month_year: monthYear });

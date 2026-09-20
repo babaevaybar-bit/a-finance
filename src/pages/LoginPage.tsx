@@ -71,11 +71,11 @@ export default function LoginPage() {
 
         <form onSubmit={signupMode ? handleSignup : handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="username">Логин</Label>
+            <Label htmlFor="username">Email или логин</Label>
             <Input
               id="username"
               autoComplete="username"
-              placeholder="Ваш логин"
+              placeholder="you@example.com или логин"
               value={username}
               onChange={e => setUsername(e.target.value)}
               disabled={loading}

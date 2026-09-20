@@ -3,13 +3,18 @@ export interface Manager {
   name: string;
   role: string;
   user_id: string | null;
+  phone: string | null;
+  base_salary: number;
+  bonus_percentage: number;
+  is_active: boolean;
   created_at: string;
 }
 
 export interface Profile {
   id: string;
   username: string;
-  role: 'admin' | 'employee';
+  email: string | null;
+  role: 'director' | 'rop' | 'manager';
   manager_id: string | null;
   created_at: string;
   updated_at: string;
@@ -41,7 +46,8 @@ export interface Deal {
   prepayment_date: string | null;
   comment: string | null;
   salary_amount: number | null; // base for commission calc; null = use total_amount
-  status: 'pending' | 'approved' | 'rejected'; // pending = awaiting admin approval
+  status: 'pending' | 'approved' | 'rejected'; // pending = awaiting director's approval
+  stage: 'new' | 'in_progress' | 'installed' | 'closed' | 'canceled'; // жизненный цикл установки
   created_at: string;
   updated_at: string;
 }
