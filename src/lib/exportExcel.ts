@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
-import type { Deal, Expense, Income, Manager, SalesPlan } from '@/types/types';
+import type { Deal, Expense, Income, Manager, SalesPlan, Transfer } from '@/types/types';
 import { monthYearToLabel } from '@/lib/utils';
+import { CHANNELS } from '@/types/types';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function fmt(v: number | null | undefined): string {
@@ -101,21 +102,30 @@ function buildExpensesSheet(expenses: Expense[]): XLSX.WorkSheet {
   const rows: (string | number)[][] = [
     ['Расходы'],
     [],
-    ['Дата', 'Описание', 'Канал', 'Сумма (₸)'],
+    ['Дата', 'Категория', 'Описание', 'Канал', 'Сумма (₸)'],
   ];
 
   for (const e of expenses) {
-    rows.push([fmtDate(e.expense_date), e.description, e.channel, Number(e.amount)]);
+    rows.push([fmtDate(e.expense_date), e.category || 'прочее', e.description, e.channel, Number(e.amount)]);
   }
 
   if (expenses.length > 0) {
     const total = expenses.reduce((s, e) => s + Number(e.amount), 0);
     rows.push([]);
-    rows.push(['ИТОГО', '', '', total]);
+    rows.push(['ИТОГО', '', '', '', total]);
+
+    // Разбивка по категориям — «детализация затрат по статьям»
+    rows.push([]);
+    rows.push(['По категориям']);
+    const byCategory = new Map<string, number>();
+    expenses.forEach(e => byCategory.set(e.category || 'прочее', (byCategory.get(e.category || 'прочее') ?? 0) + Number(e.amount)));
+    Array.from(byCategory.entries())
+      .sort((a, b) => b[1] - a[1])
+      .forEach(([cat, amt]) => rows.push([cat, '', '', '', amt]));
   }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  setColWidths(ws, [12, 36, 14, 16]);
+  setColWidths(ws, [12, 16, 36, 14, 16]);
   return ws;
 }
 
@@ -152,26 +162,29 @@ function buildIncomeSheet(income: Income[], managers: Manager[]): XLSX.WorkSheet
 }
 
 // ─── Sheet: Balance by channel ────────────────────────────────────────────────
-function buildBalanceSheet(expenses: Expense[], income: Income[]): XLSX.WorkSheet {
-  const channels = ['Каспи', 'Халык', 'Фридом', 'Наличные'];
+function buildBalanceSheet(expenses: Expense[], income: Income[], transfers: Transfer[]): XLSX.WorkSheet {
+  const channels: string[] = [...CHANNELS];
   const rows: (string | number)[][] = [
     ['Баланс по каналам'],
     [],
-    ['Канал', 'Поступления (₸)', 'Расходы (₸)', 'Баланс (₸)'],
+    ['Канал', 'Поступления (₸)', 'Расходы (₸)', 'Переводы (₸)', 'Баланс (₸)'],
   ];
 
-  let sumInc = 0, sumExp = 0;
+  let sumInc = 0, sumExp = 0, sumBal = 0;
   for (const ch of channels) {
     const inc = income.filter(i => i.channel === ch).reduce((s, i) => s + Number(i.total_amount), 0);
     const exp = expenses.filter(e => e.channel === ch).reduce((s, e) => s + Number(e.amount), 0);
-    sumInc += inc; sumExp += exp;
-    rows.push([ch, inc, exp, inc - exp]);
+    const trOut = transfers.filter(t => t.from_channel === ch).reduce((s, t) => s + Number(t.amount), 0);
+    const trIn  = transfers.filter(t => t.to_channel === ch).reduce((s, t) => s + Number(t.amount), 0);
+    const balance = inc - exp - trOut + trIn;
+    sumInc += inc; sumExp += exp; sumBal += balance;
+    rows.push([ch, inc, exp, trIn - trOut, balance]);
   }
   rows.push([]);
-  rows.push(['ИТОГО', sumInc, sumExp, sumInc - sumExp]);
+  rows.push(['ИТОГО', sumInc, sumExp, 0, sumBal]);
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  setColWidths(ws, [14, 20, 18, 18]);
+  setColWidths(ws, [14, 20, 18, 16, 18]);
   return ws;
 }
 
@@ -183,8 +196,9 @@ export function exportMonthlyReport(params: {
   plans: SalesPlan[];
   expenses: Expense[];
   income: Income[];
+  transfers?: Transfer[];
 }) {
-  const { monthYear, deals, managers, plans, expenses, income } = params;
+  const { monthYear, deals, managers, plans, expenses, income, transfers = [] } = params;
   const wb = XLSX.utils.book_new();
 
   // Sheet 1: Summary
@@ -208,7 +222,7 @@ export function exportMonthlyReport(params: {
   XLSX.utils.book_append_sheet(wb, buildIncomeSheet(income, managers), 'Поступления');
 
   // Sheet: Balance
-  XLSX.utils.book_append_sheet(wb, buildBalanceSheet(expenses, income), 'Балансы');
+  XLSX.utils.book_append_sheet(wb, buildBalanceSheet(expenses, income, transfers), 'Балансы');
 
   // Download
   const label = monthYearToLabel(monthYear).replace(' ', '_');

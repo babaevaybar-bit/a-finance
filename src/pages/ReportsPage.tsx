@@ -10,10 +10,10 @@ import {
 } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { Download } from 'lucide-react';
-import { getAllDealsForMonth, getExpenses, getIncome, getManagers, getSalesPlans } from '@/lib/api';
+import { getAllDealsForMonth, getExpenses, getIncome, getManagers, getSalesPlans, getTransfers } from '@/lib/api';
 import { formatCurrency, getCurrentMonthYear, getAvailableMonths, monthYearToLabel } from '@/lib/utils';
 import { exportMonthlyReport } from '@/lib/exportExcel';
-import type { Deal, Expense, Income, Manager, SalesPlan } from '@/types/types';
+import type { Deal, Expense, Income, Manager, SalesPlan, Transfer } from '@/types/types';
 import { PAYMENT_METHODS } from '@/types/types';
 
 export default function ReportsPage() {
@@ -23,19 +23,21 @@ export default function ReportsPage() {
   const [income, setIncome] = useState<Income[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [plans, setPlans] = useState<SalesPlan[]>([]);
+  const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [dls, exps, incs, mgrs, plns] = await Promise.all([
+      const [dls, exps, incs, mgrs, plns, trs] = await Promise.all([
         getAllDealsForMonth(monthYear),
         getExpenses(),
         getIncome(),
         getManagers(),
         getSalesPlans(monthYear),
+        getTransfers(),
       ]);
-      setDeals(dls); setExpenses(exps); setIncome(incs); setManagers(mgrs); setPlans(plns);
+      setDeals(dls); setExpenses(exps); setIncome(incs); setManagers(mgrs); setPlans(plns); setTransfers(trs);
     } catch { /* silent */ } finally { setLoading(false); }
   }, [monthYear]);
 
@@ -67,7 +69,7 @@ export default function ReportsPage() {
 
   function handleExport() {
     try {
-      exportMonthlyReport({ monthYear, deals, managers, plans, expenses, income });
+      exportMonthlyReport({ monthYear, deals, managers, plans, expenses, income, transfers });
       toast.success(`Отчёт за ${monthYearToLabel(monthYear)} скачан`);
     } catch {
       toast.error('Не удалось сформировать Excel-файл');
