@@ -37,7 +37,8 @@ export function monthYearToLabel(monthYear: string): string {
 export function getAvailableMonths(): string[] {
   const months: string[] = [];
   const now = new Date();
-  for (let i = 5; i >= -2; i--) {
+  // 3 года назад и полгода вперёд — с запасом, чтобы не упираться в старые данные
+  for (let i = 36; i >= -6; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   }
