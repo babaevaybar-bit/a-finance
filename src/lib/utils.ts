@@ -44,3 +44,19 @@ export function getAvailableMonths(): string[] {
   }
   return months;
 }
+
+// Диапазон месяцев для графиков на Дашборде: с января 2026 по текущий месяц.
+// Отдельно от getAvailableMonths(), чтобы графики не начинались от пустых лет
+// до того, как компания вообще начала вести учёт.
+export function getDashboardMonths(): string[] {
+  const months: string[] = [];
+  const now = new Date();
+  const startYear = 2026, startMonth = 1; // январь 2026
+  let y = startYear, m = startMonth;
+  while (y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth() + 1)) {
+    months.push(`${y}-${String(m).padStart(2, '0')}`);
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return months;
+}

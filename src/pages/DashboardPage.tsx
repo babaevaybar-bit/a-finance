@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import { getAllDeals, getManagers, getSalesPlans } from '@/lib/api';
 import {
-  formatCurrency, getAvailableMonths, monthYearToLabel, getCurrentMonthYear,
+  formatCurrency, getDashboardMonths, monthYearToLabel, getCurrentMonthYear,
 } from '@/lib/utils';
 import type { Deal, Manager, SalesPlan } from '@/types/types';
 import { TrendingUp, ShoppingCart, Users, Wallet } from 'lucide-react';
@@ -78,7 +78,7 @@ export default function DashboardPage() {
   const [plans, setPlans] = useState<SalesPlan[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const months = getAvailableMonths();
+  const months = getDashboardMonths();
   const currentMonth = getCurrentMonthYear();
 
   const load = useCallback(async () => {
