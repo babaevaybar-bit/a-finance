@@ -19,6 +19,7 @@ import {
   getAllDealsForMonth, getExpenses, getSalarySettings, getManagers,
 } from '@/lib/api';
 import { formatCurrency, getCurrentMonthYear, getAvailableMonths, monthYearToLabel } from '@/lib/utils';
+import MonthYearPicker from '@/components/common/MonthYearPicker';
 import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
 } from 'recharts';
@@ -57,7 +58,6 @@ export default function ProfitPage() {
   const [categoryBreakdown, setCategoryBreakdown] = useState<{ category: string; amount: number }[]>([]);
   const [monthlyTrend, setMonthlyTrend] = useState<{ month: string; profit: number }[]>([]);
 
-  const months = getAvailableMonths();
 
   const loadAutoVars = useCallback(async (my: string) => {
     try {
@@ -217,12 +217,7 @@ export default function ProfitPage() {
               <code className="text-xs bg-muted px-1 rounded">{'{salary}'}</code>
             </p>
           </div>
-          <Select value={monthYear} onValueChange={setMonthYear}>
-            <SelectTrigger className="w-52 shrink-0"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {months.map(m => <SelectItem key={m} value={m}>{monthYearToLabel(m)}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <MonthYearPicker value={monthYear} onChange={setMonthYear} className="shrink-0" />
         </div>
 
         {/* Авто-переменные */}

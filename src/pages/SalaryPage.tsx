@@ -16,6 +16,7 @@ import {
 import {
   formatCurrency, getCurrentMonthYear, getAvailableMonths, monthYearToLabel,
 } from '@/lib/utils';
+import MonthYearPicker from '@/components/common/MonthYearPicker';
 import type { Manager, SalarySetting, Deal } from '@/types/types';
 import { SALES_ROLES } from '@/types/types';
 
@@ -141,7 +142,7 @@ export default function SalaryPage() {
   const [monthYear, setMonthYear] = useState(getCurrentMonthYear());
   const [loading, setLoading]     = useState(true);
 
-  const months = getAvailableMonths();
+
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -189,12 +190,7 @@ export default function SalaryPage() {
               Менеджеры по продажам — от своих сделок. Остальные — от общей выручки компании.
             </p>
           </div>
-          <Select value={monthYear} onValueChange={setMonthYear}>
-            <SelectTrigger className="w-52 shrink-0"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {months.map(m => <SelectItem key={m} value={m}>{monthYearToLabel(m)}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <MonthYearPicker value={monthYear} onChange={setMonthYear} className="shrink-0" />
         </div>
 
         {!loading && (

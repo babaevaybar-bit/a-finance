@@ -3,15 +3,13 @@ import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { Download } from 'lucide-react';
 import { getAllDealsForMonth, getExpenses, getIncome, getManagers, getSalesPlans, getTransfers } from '@/lib/api';
-import { formatCurrency, getCurrentMonthYear, getAvailableMonths, monthYearToLabel } from '@/lib/utils';
+import { formatCurrency, getCurrentMonthYear, monthYearToLabel } from '@/lib/utils';
+import MonthYearPicker from '@/components/common/MonthYearPicker';
 import { exportMonthlyReport } from '@/lib/exportExcel';
 import type { Deal, Expense, Income, Manager, SalesPlan, Transfer } from '@/types/types';
 import { PAYMENT_METHODS } from '@/types/types';
@@ -61,8 +59,7 @@ export default function ReportsPage() {
     return { manager: m, count: mDeals.length, revenue, paid, remainder };
   });
 
-  // Monthly overview (all months in view)
-  const months = getAvailableMonths();
+
 
   const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0);
   const totalIncome = income.reduce((s, i) => s + Number(i.total_amount), 0);
@@ -85,14 +82,7 @@ export default function ReportsPage() {
             <p className="text-sm text-muted-foreground mt-0.5">Аналитика продаж и финансов</p>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={monthYear} onValueChange={setMonthYear}>
-              <SelectTrigger className="w-52">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {months.map(m => <SelectItem key={m} value={m}>{monthYearToLabel(m)}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <MonthYearPicker value={monthYear} onChange={setMonthYear} />
             <Button variant="outline" onClick={handleExport} disabled={loading}>
               <Download size={14} className="mr-1.5" />
               Excel

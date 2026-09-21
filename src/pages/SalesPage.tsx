@@ -5,7 +5,8 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { getManagers, getDeals, getSalesPlans, upsertSalesPlan, getLastDealsMonth } from '@/lib/api';
-import { getCurrentMonthYear, getAvailableMonths, monthYearToLabel } from '@/lib/utils';
+import { getCurrentMonthYear } from '@/lib/utils';
+import MonthYearPicker from '@/components/common/MonthYearPicker';
 import type { Manager, Deal, SalesPlan } from '@/types/types';
 import { ROLES, SALES_PAGE_ROLES } from '@/types/types';
 import ManagerSalesSection from '@/components/sales/ManagerSalesSection';
@@ -99,8 +100,6 @@ export default function SalesPage() {
     return true;
   });
 
-  const months = getAvailableMonths();
-
   return (
     <AppLayout>
       <div className="space-y-5">
@@ -110,14 +109,7 @@ export default function SalesPage() {
             <h1 className="text-xl font-semibold">Продажи</h1>
             <p className="text-sm text-muted-foreground mt-0.5">Учёт сделок по сотрудникам</p>
           </div>
-          <Select value={monthYear} onValueChange={setMonthYear}>
-            <SelectTrigger className="w-52 shrink-0">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {months.map(m => <SelectItem key={m} value={m}>{monthYearToLabel(m)}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <MonthYearPicker value={monthYear} onChange={setMonthYear} className="shrink-0" />
         </div>
 
         {/* Filters — director/rop only */}
