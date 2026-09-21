@@ -125,10 +125,15 @@ export default function DashboardPage() {
     paid: deals.filter(d => d.month_year === my).reduce((s, d) => s + Number(d.paid_amount), 0),
   }));
 
+  // All-time totals (across every month, not just the one currently shown)
+  const totalRevenueAllTime = deals.reduce((s, d) => s + Number(d.total_amount), 0);
+  const totalPaidAllTime = deals.reduce((s, d) => s + Number(d.paid_amount), 0);
+
   const kpis = [
+    { label: 'Продано всего', value: formatCurrency(totalRevenueAllTime), icon: Wallet, sub: `оплачено: ${formatCurrency(totalPaidAllTime)}` },
     { label: 'Выручка (месяц)', value: formatCurrency(totalRevenueCurrent), icon: TrendingUp, sub: `план: ${formatCurrency(totalPlan)}` },
-    { label: 'Оплачено', value: formatCurrency(totalPaidCurrent), icon: Wallet, sub: `остатки: ${formatCurrency(totalRemainder)}` },
-    { label: 'Сделок (месяц)', value: currentDeals.length, icon: ShoppingCart, sub: `всего: ${deals.length}` },
+    { label: 'Оплачено (месяц)', value: formatCurrency(totalPaidCurrent), icon: Wallet, sub: `остатки: ${formatCurrency(totalRemainder)}` },
+    { label: 'Сделок (месяц)', value: currentDeals.length, icon: ShoppingCart, sub: `всего сделок: ${deals.length}` },
     { label: 'Лучший менеджер', value: bestManager.name, icon: Users, sub: formatCurrency(bestManager.revenue) },
   ];
 
@@ -145,11 +150,11 @@ export default function DashboardPage() {
 
         {/* KPI cards */}
         {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[1, 2, 3, 4].map(i => <div key={i} className="h-24 rounded-lg bg-muted animate-pulse" />)}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-24 rounded-lg bg-muted animate-pulse" />)}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {kpis.map(({ label, value, icon: Icon, sub }) => (
               <Card key={label} className="border border-border">
                 <CardContent className="pt-4 pb-3 px-4">
