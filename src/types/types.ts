@@ -106,6 +106,20 @@ export interface SalarySetting {
 export const PAYMENT_METHODS = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'Наличные', 'Kaspi Bank и нал', 'Другое'] as const;
 export const CHANNELS = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'Наличные'] as const;
 
+export const DEAL_STAGES = ['new', 'in_progress', 'installed', 'closed', 'canceled'] as const;
+export const INSTALL_STAGE_LABELS: Record<string, string> = {
+  new: 'Новая',
+  in_progress: 'В работе',
+  installed: 'Установлена',
+  closed: 'Закрыта',
+  canceled: 'Отменена',
+};
+export const DEAL_STATUS_LABELS: Record<string, string> = {
+  pending: 'Ожидает',
+  approved: 'Подтверждена',
+  rejected: 'Отклонена',
+};
+
 export const ROLES = [
   'Менеджер по продажам',
   'Лидоруб',

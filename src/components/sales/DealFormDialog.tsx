@@ -9,9 +9,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { createDeal, updateDeal } from '@/lib/api';
+import { createDeal, updateDeal, createIncome } from '@/lib/api';
 import type { Deal } from '@/types/types';
-import { PAYMENT_METHODS } from '@/types/types';
+import { PAYMENT_METHODS, CHANNELS, DEAL_STAGES, INSTALL_STAGE_LABELS } from '@/types/types';
 
 interface Props {
   open: boolean;
@@ -22,26 +22,37 @@ interface Props {
   deal?: Deal | null;
 }
 
-const EMPTY: Omit<Deal, 'id' | 'created_at' | 'updated_at'> = {
-  manager_id: '',
-  month_year: '',
-  deal_date: new Date().toISOString().slice(0, 10),
-  client_phone: '',
-  address: '',
-  client_name: '',
-  payment_method: 'Kaspi Bank',
-  door_model: '',
-  total_amount: 0,
-  paid_amount: 0,
-  prepayment_date: null,
-  comment: null,
-  salary_amount: null,
-  status: 'pending',
-  stage: 'new',
-};
+// Дата по умолчанию: сегодня, если сегодня входит в выбранный месяц,
+// иначе — 1-е число выбранного месяца (чтобы сделка визуально совпадала с табом).
+function defaultDealDate(monthYear: string): string {
+  const today = new Date();
+  const todayMonthYear = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  if (todayMonthYear === monthYear) return today.toISOString().slice(0, 10);
+  return `${monthYear}-01`;
+}
+
+function emptyDeal(monthYear: string): Omit<Deal, 'id' | 'created_at' | 'updated_at'> {
+  return {
+    manager_id: '',
+    month_year: '',
+    deal_date: defaultDealDate(monthYear),
+    client_phone: '',
+    address: '',
+    client_name: '',
+    payment_method: 'Kaspi Bank',
+    door_model: '',
+    total_amount: 0,
+    paid_amount: 0,
+    prepayment_date: null,
+    comment: null,
+    salary_amount: null,
+    status: 'pending',
+    stage: 'new',
+  };
+}
 
 export default function DealFormDialog({ open, onClose, onSaved, managerId, monthYear, deal }: Props) {
-  const [form, setForm] = useState(EMPTY);
+  const [form, setForm] = useState(emptyDeal(monthYear));
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -64,7 +75,7 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
         stage: deal.stage ?? 'new',
       });
     } else {
-      setForm({ ...EMPTY, manager_id: managerId, month_year: monthYear });
+      setForm({ ...emptyDeal(monthYear), manager_id: managerId, month_year: monthYear });
     }
   }, [deal, managerId, monthYear, open]);
 
@@ -99,6 +110,33 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
       } else {
         await createDeal(payload);
         toast.success('Сделка добавлена');
+
+        // Если по новой сделке уже внесена оплата — сразу отражаем её в «Финансах»,
+        // чтобы не вводить одну и ту же сумму дважды.
+        if (form.paid_amount > 0) {
+          const matchedChannel = (CHANNELS as readonly string[]).includes(form.payment_method)
+            ? form.payment_method
+            : null;
+          if (matchedChannel) {
+            try {
+              await createIncome({
+                manager_id: null,
+                income_date: form.deal_date,
+                from_whom: form.client_name || 'Клиент по сделке',
+                total_amount: form.paid_amount,
+                quantity: null,
+                channel: matchedChannel,
+                comment: `Оплата по сделке (${form.door_model || 'дверь'})`,
+                month_year: form.deal_date.slice(0, 7),
+              });
+              toast.success('Поступление добавлено в «Финансы»');
+            } catch {
+              toast.error('Сделка сохранена, но не удалось добавить поступление в «Финансы» — внесите вручную');
+            }
+          } else {
+            toast.message('Оплата не привязана к конкретному счёту — добавьте поступление в «Финансы» вручную', { duration: 5000 });
+          }
+        }
       }
       onSaved();
       onClose();
@@ -165,6 +203,15 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
           <div className="space-y-1">
             <Label>Дата предоплаты</Label>
             <Input type="date" value={form.prepayment_date || ''} onChange={e => set('prepayment_date', e.target.value || null)} />
+          </div>
+          <div className="space-y-1">
+            <Label>Стадия установки</Label>
+            <Select value={form.stage} onValueChange={v => set('stage', v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {DEAL_STAGES.map(s => <SelectItem key={s} value={s}>{INSTALL_STAGE_LABELS[s]}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1">
             <Label>
