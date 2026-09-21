@@ -3,7 +3,7 @@ import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, LineChart, Line,
+  ResponsiveContainer, LineChart, Line, LabelList,
 } from 'recharts';
 import { getAllDeals, getManagers, getSalesPlans } from '@/lib/api';
 import {
@@ -30,11 +30,16 @@ interface MonthRow {
 function buildChartData(deals: Deal[], managers: Manager[], months: string[]): MonthRow[] {
   return months.map(my => {
     const row: MonthRow = { month: monthYearToLabel(my), monthYear: my };
+    let total = 0;
     managers.forEach(m => {
-      row[m.id] = deals
+      const rev = deals
         .filter(d => d.manager_id === m.id && d.month_year === my)
         .reduce((s, d) => s + Number(d.total_amount), 0);
+      row[m.id] = rev;
+      total += rev;
     });
+    row.total = total;
+    row.__zero = 0; // служебное поле — «нулевой» столбик наверху стопки, чтобы подписать общую сумму
     return row;
   });
 }
@@ -250,11 +255,21 @@ export default function DashboardPage() {
                           key={m.id}
                           dataKey={m.id}
                           name={m.name}
+                          stackId="revenue"
                           fill={MANAGER_COLORS[i % MANAGER_COLORS.length]}
-                          radius={[2, 2, 0, 0]}
+                          radius={i === managers.length - 1 ? [2, 2, 0, 0] : 0}
                           maxBarSize={40}
                         />
                       ))}
+                      {/* Нулевой столбик наверху стопки — только чтобы подписать общую сумму по месяцу */}
+                      <Bar dataKey="__zero" stackId="revenue" fill="transparent" legendType="none" isAnimationActive={false}>
+                        <LabelList
+                          dataKey="total"
+                          position="top"
+                          formatter={(v: number) => (v > 0 ? formatCurrency(v) : '')}
+                          style={{ fontSize: 11, fill: 'hsl(var(--foreground))' }}
+                        />
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
