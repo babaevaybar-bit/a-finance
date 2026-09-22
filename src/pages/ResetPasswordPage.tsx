@@ -36,18 +36,23 @@ function RequestResetForm() {
     const u = username.trim().toLowerCase();
     if (!u) { toast.error('Введите логин'); return; }
     setLoading(true);
-    // Если ввели сразу email — используем его напрямую; если логин — ищем
-    // привязанную настоящую почту в профиле.
-    let email = u;
-    if (!u.includes('@')) {
-      const { data: found } = await supabase
-        .from('profiles')
-        .select('email')
-        .eq('name', u)
-        .maybeSingle();
-      email = found?.email || `${u}@aybar.app`;
+
+    // Сброс доступен только для аккаунтов, реально созданных в разделе
+    // «Сотрудники» (есть строка в profiles с логином и привязанным email) —
+    // никаких сбросов «в никуда» по произвольно введённому адресу.
+    const { data: found } = await supabase
+      .from('profiles')
+      .select('email')
+      .or(`name.eq.${u},email.eq.${u}`)
+      .maybeSingle();
+
+    if (!found?.email) {
+      setLoading(false);
+      toast.error('Такой сотрудник не найден. Обратитесь к директору.');
+      return;
     }
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+
+    const { error } = await supabase.auth.resetPasswordForEmail(found.email, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
     setLoading(false);
