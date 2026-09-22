@@ -7,8 +7,11 @@ import { Input } from '@/components/ui/input';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { toast } from 'sonner';
-import { Layers, RefreshCw, Search } from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, LineChart, Line,
+} from 'recharts';
+import { Layers, RefreshCw, Search, PhoneIncoming, UserPlus, ArrowRightLeft } from 'lucide-react';
 import { supabase } from '@/db/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
@@ -17,23 +20,39 @@ interface AmoLead {
   name: string;
   price: number;
   created_at: number;
-  updated_at: number;
-  closed_at: number | null;
-  status_id: number;
   status_name: string | null;
   pipeline_name: string | null;
-  status_color: string | null;
-  responsible_user_id: number;
   responsible_user_name: string | null;
   is_lost: boolean;
 }
 
+interface DayPoint { date: string; count: number; }
+interface CallDayPoint { date: string; incoming: number; outgoing: number; total: number; }
+interface FunnelStage { status_id: string; status_name: string; pipeline_name: string; color: string; count: number; }
+interface Transition {
+  lead_id: number; lead_name: string; from_status: string | null; to_status: string | null;
+  changed_at: number; manager_name: string | null;
+}
+interface TodayStats { newLeads: number; calls: number; callsIn: number; callsOut: number; statusChanges: number; }
+
 function unixToDate(ts: number): string {
   return new Date(ts * 1000).toISOString().slice(0, 10);
+}
+function shortDay(dateStr: string): string {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+}
+function timeAgo(ts: number): string {
+  return new Date(ts * 1000).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 export default function AmoCrmPage() {
   const [leads, setLeads] = useState<AmoLead[]>([]);
+  const [leadsByDay, setLeadsByDay] = useState<DayPoint[]>([]);
+  const [callsByDay, setCallsByDay] = useState<CallDayPoint[]>([]);
+  const [funnel, setFunnel] = useState<FunnelStage[]>([]);
+  const [transitions, setTransitions] = useState<Transition[]>([]);
+  const [today, setToday] = useState<TodayStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -52,6 +71,11 @@ export default function AmoCrmPage() {
         setLeads([]);
       } else {
         setLeads(res.data?.leads ?? []);
+        setLeadsByDay(res.data?.leadsByDay ?? []);
+        setCallsByDay(res.data?.callsByDay ?? []);
+        setFunnel(res.data?.funnel ?? []);
+        setTransitions(res.data?.recentTransitions ?? []);
+        setToday(res.data?.todayStats ?? null);
       }
     } catch {
       setError('Не удалось связаться с amoCRM');
@@ -63,11 +87,15 @@ export default function AmoCrmPage() {
   useEffect(() => { load(); }, [load]);
 
   const q = search.trim().toLowerCase();
-  const filtered = q ? leads.filter(l => (l.name || '').toLowerCase().includes(q)) : leads;
+  const filteredLeads = q ? leads.filter(l => (l.name || '').toLowerCase().includes(q)) : leads;
+  const totalAmount = filteredLeads.reduce((s, l) => s + Number(l.price || 0), 0);
+  const funnelMax = Math.max(1, ...funnel.map(f => f.count));
 
-  const totalAmount = filtered.reduce((s, l) => s + Number(l.price || 0), 0);
-  const wonCount = filtered.filter(l => l.status_name === 'Успешно реализовано').length;
-  const lostCount = filtered.filter(l => l.is_lost).length;
+  const chartData = leadsByDay.map((d, i) => ({
+    date: shortDay(d.date),
+    Лиды: d.count,
+    Звонки: callsByDay[i]?.total ?? 0,
+  }));
 
   return (
     <AppLayout>
@@ -78,18 +106,12 @@ export default function AmoCrmPage() {
               <Layers size={20} className="text-primary" />
               amoCRM
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Сделки, подтянутые из amoCRM, для отчёта</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Активность CRM — без захода в саму amoCRM</p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по названию" className="h-9 pl-7 w-56" />
-            </div>
-            <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-              <RefreshCw size={14} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`} />
-              Обновить
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+            <RefreshCw size={14} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+            Обновить
+          </Button>
         </div>
 
         {error && (
@@ -99,34 +121,137 @@ export default function AmoCrmPage() {
         )}
 
         {!error && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs text-muted-foreground">Всего сделок</p>
-              <p className="text-sm font-semibold mt-0.5">{filtered.length}</p>
+          <>
+            {/* Сегодня */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="rounded-lg border border-border p-3">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground"><UserPlus size={13} /> Новых лидов сегодня</div>
+                <p className="text-lg font-semibold mt-1">{today?.newLeads ?? '—'}</p>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground"><PhoneIncoming size={13} /> Звонков сегодня</div>
+                <p className="text-lg font-semibold mt-1">{today?.calls ?? '—'}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {today ? `вход ${today.callsIn} / исход ${today.callsOut}` : ''}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground"><ArrowRightLeft size={13} /> Переходов по этапам сегодня</div>
+                <p className="text-lg font-semibold mt-1">{today?.statusChanges ?? '—'}</p>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-xs text-muted-foreground">Сумма сделок (список ниже)</p>
+                <p className="text-lg font-semibold mt-1">{formatCurrency(totalAmount)}</p>
+              </div>
             </div>
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs text-muted-foreground">Сумма</p>
-              <p className="text-sm font-semibold mt-0.5">{formatCurrency(totalAmount)}</p>
+
+            {/* Графики по дням */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Новые лиды по дням (30 дней)</CardTitle>
+                </CardHeader>
+                <CardContent className="pl-0">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <LineChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={4} />
+                      <YAxis tick={{ fontSize: 11 }} allowDecimals={false} width={28} />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="Лиды" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Звонки по дням (30 дней)</CardTitle>
+                </CardHeader>
+                <CardContent className="pl-0">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={callsByDay.map(d => ({ date: shortDay(d.date), Входящие: d.incoming, Исходящие: d.outgoing }))}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={4} />
+                      <YAxis tick={{ fontSize: 11 }} allowDecimals={false} width={28} />
+                      <Tooltip />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Bar dataKey="Входящие" stackId="c" fill="#22c55e" radius={[0, 0, 0, 0]} />
+                      <Bar dataKey="Исходящие" stackId="c" fill="#f59e0b" radius={[2, 2, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
             </div>
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs text-muted-foreground">Успешно реализовано</p>
-              <p className="text-sm font-semibold mt-0.5 text-emerald-600">{wonCount}</p>
+
+            {/* Воронка + последние переходы */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Воронка — сколько сделок на каждом этапе (30 дней)</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2.5">
+                  {funnel.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Нет данных</p>
+                  ) : funnel.map(f => (
+                    <div key={f.status_id}>
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="text-foreground">{f.status_name}</span>
+                        <span className="text-muted-foreground">{f.count}</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${(f.count / funnelMax) * 100}%`, backgroundColor: f.color }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Последние переходы по этапам</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="max-h-[280px] overflow-y-auto divide-y divide-border">
+                    {transitions.length === 0 ? (
+                      <p className="text-sm text-muted-foreground px-4 py-3">Нет переходов за последние 30 дней</p>
+                    ) : transitions.map((t, i) => (
+                      <div key={i} className="px-4 py-2.5 text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium truncate">{t.lead_name}</span>
+                          <span className="text-xs text-muted-foreground shrink-0">{timeAgo(t.changed_at)}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
+                          <span>{t.from_status ?? '—'}</span>
+                          <ArrowRightLeft size={10} />
+                          <span className="text-foreground">{t.to_status ?? '—'}</span>
+                          {t.manager_name && <span className="ml-auto">{t.manager_name}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs text-muted-foreground">Не реализовано</p>
-              <p className="text-sm font-semibold mt-0.5 text-destructive">{lostCount}</p>
-            </div>
-          </div>
+          </>
         )}
 
+        {/* Список сделок */}
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-base font-medium">Сделки</CardTitle>
+            <div className="relative">
+              <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по названию" className="h-9 pl-7 w-56" />
+            </div>
           </CardHeader>
           <CardContent className="px-0">
             {loading ? (
               <div className="px-6 py-8 text-center text-sm text-muted-foreground">Загрузка...</div>
-            ) : filtered.length === 0 && !error ? (
+            ) : filteredLeads.length === 0 && !error ? (
               <div className="px-6 py-8 text-center text-sm text-muted-foreground">Сделок не найдено</div>
             ) : !error && (
               <div className="w-full overflow-x-auto">
@@ -141,7 +266,7 @@ export default function AmoCrmPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filtered.map(l => (
+                    {filteredLeads.map(l => (
                       <TableRow key={l.id}>
                         <TableCell className="whitespace-nowrap text-sm">{formatDate(unixToDate(l.created_at))}</TableCell>
                         <TableCell className="text-sm max-w-[240px] truncate">{l.name || `Сделка #${l.id}`}</TableCell>
