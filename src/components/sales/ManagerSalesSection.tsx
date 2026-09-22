@@ -300,7 +300,12 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm">{formatDate(d.deal_date)}</TableCell>
                         <TableCell className="whitespace-nowrap text-sm">{d.client_name || '—'}</TableCell>
-                        <TableCell className="whitespace-nowrap text-sm">{d.payment_method}</TableCell>
+                        <TableCell className="whitespace-nowrap text-sm">
+                          {d.payment_method}
+                          {d.vat_gross_amount ? (
+                            <span className="block text-xs text-muted-foreground">с НДС: {formatCurrency(d.vat_gross_amount)}</span>
+                          ) : null}
+                        </TableCell>
                         <TableCell className="whitespace-nowrap text-sm max-w-[150px] truncate">{d.door_model || '—'}</TableCell>
                         <TableCell className="whitespace-nowrap">
                           <Badge className={`text-[11px] font-normal ${STATUS_BADGE_VARIANT[d.status] || ''}`} variant="secondary">

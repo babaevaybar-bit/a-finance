@@ -46,6 +46,7 @@ export interface Deal {
   prepayment_date: string | null;
   comment: string | null;
   salary_amount: number | null; // base for commission calc; null = use total_amount
+  vat_gross_amount: number | null; // сумма с НДС при оплате «Перечисление» (total_amount = эта сумма × VAT_NET_RATIO)
   status: 'pending' | 'approved' | 'rejected'; // pending = awaiting director's approval
   stage: 'new' | 'in_progress' | 'installed' | 'closed' | 'canceled'; // жизненный цикл установки
   created_at: string;
@@ -103,7 +104,9 @@ export interface SalarySetting {
   updated_at: string;
 }
 
-export const PAYMENT_METHODS = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'Наличные', 'Kaspi Bank и нал', 'Другое'] as const;
+export const PAYMENT_METHODS = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'Наличные', 'Kaspi Bank и нал', 'Перечисление', 'Другое'] as const;
+// Коэффициент пересчёта суммы с НДС в расчётную сумму сделки (сумма с НДС × 0.8 = сумма к расчёту)
+export const VAT_NET_RATIO = 0.8;
 export const CHANNELS = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'Наличные'] as const;
 
 export const DEAL_STAGES = ['new', 'in_progress', 'installed', 'closed', 'canceled'] as const;

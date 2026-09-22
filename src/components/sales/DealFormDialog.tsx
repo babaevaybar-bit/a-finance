@@ -11,7 +11,7 @@ import {
 import { toast } from 'sonner';
 import { createDeal, updateDeal, createIncome } from '@/lib/api';
 import type { Deal } from '@/types/types';
-import { PAYMENT_METHODS, CHANNELS, DEAL_STAGES, INSTALL_STAGE_LABELS } from '@/types/types';
+import { PAYMENT_METHODS, CHANNELS, DEAL_STAGES, INSTALL_STAGE_LABELS, VAT_NET_RATIO } from '@/types/types';
 
 interface Props {
   open: boolean;
@@ -46,6 +46,7 @@ function emptyDeal(monthYear: string): Omit<Deal, 'id' | 'created_at' | 'updated
     prepayment_date: null,
     comment: null,
     salary_amount: null,
+    vat_gross_amount: null,
     status: 'pending',
     stage: 'new',
   };
@@ -71,6 +72,7 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
         prepayment_date: deal.prepayment_date || null,
         comment: deal.comment || null,
         salary_amount: deal.salary_amount ?? null,
+        vat_gross_amount: deal.vat_gross_amount ?? null,
         status: deal.status ?? 'pending',
         stage: deal.stage ?? 'new',
       });
@@ -84,6 +86,9 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
 
   async function handleSave() {
     if (!form.deal_date) { toast.error('Укажите дату сделки'); return; }
+    if (form.payment_method === 'Перечисление' && !(Number(form.vat_gross_amount) > 0)) {
+      toast.error('Укажите сумму с НДС'); return;
+    }
     if (form.total_amount <= 0) { toast.error('Общая сумма должна быть больше 0'); return; }
     if (form.paid_amount > form.total_amount) { toast.error('Оплачено не может превышать общую сумму'); return; }
     if (form.salary_amount !== null && Number(form.salary_amount) < 0) { toast.error('Сумма для ЗП не может быть отрицательной'); return; }
@@ -94,6 +99,9 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
         ...form,
         manager_id: managerId,
         month_year: monthYear,
+        vat_gross_amount: form.payment_method === 'Перечисление' && form.vat_gross_amount
+          ? Number(form.vat_gross_amount)
+          : null,
         client_phone: form.client_phone || null,
         address: form.address || null,
         client_name: form.client_name || null,
@@ -163,7 +171,16 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
           </div>
           <div className="space-y-1">
             <Label>Способ оплаты *</Label>
-            <Select value={form.payment_method} onValueChange={v => set('payment_method', v)}>
+            <Select
+              value={form.payment_method}
+              onValueChange={v => {
+                setForm(f => ({
+                  ...f,
+                  payment_method: v,
+                  vat_gross_amount: v === 'Перечисление' ? f.vat_gross_amount : null,
+                }));
+              }}
+            >
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {PAYMENT_METHODS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
@@ -190,9 +207,36 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
             <Label>Общая сумма (₸) *</Label>
             <Input
               type="number" min="0" value={form.total_amount || ''}
+              disabled={form.payment_method === 'Перечисление'}
               onChange={e => set('total_amount', Number(e.target.value))}
             />
+            {form.payment_method === 'Перечисление' && (
+              <p className="text-xs text-muted-foreground">Считается автоматически из суммы с НДС (×{VAT_NET_RATIO})</p>
+            )}
           </div>
+          {form.payment_method === 'Перечисление' && (
+            <div className="space-y-1">
+              <Label>Сумма с НДС (₸) *</Label>
+              <Input
+                type="number" min="0"
+                placeholder="Например: 1 000 000"
+                value={form.vat_gross_amount || ''}
+                onChange={e => {
+                  const gross = Number(e.target.value);
+                  setForm(f => ({
+                    ...f,
+                    vat_gross_amount: gross || null,
+                    total_amount: Math.round(gross * VAT_NET_RATIO),
+                  }));
+                }}
+              />
+              {Number(form.vat_gross_amount) > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  К расчёту: {Math.round(Number(form.vat_gross_amount) * VAT_NET_RATIO).toLocaleString('ru-RU')} ₸
+                </p>
+              )}
+            </div>
+          )}
           <div className="space-y-1">
             <Label>Оплачено (₸)</Label>
             <Input
