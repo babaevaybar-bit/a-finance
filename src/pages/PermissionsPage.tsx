@@ -15,7 +15,7 @@ import { PERMISSION_PAGES } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
 
 const ROLE_LABELS: Record<Profile['role'], string> = {
-  director: 'Директор',
+  director: 'Главный админ',
   rop: 'РОП',
   manager: 'Менеджер',
 };
@@ -57,7 +57,7 @@ function RolesSection() {
           <UserCog size={16} />Роли пользователей
         </CardTitle>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Директор — полный доступ. РОП — продажи и CRM всех менеджеров. Менеджер — только свои клиенты и сделки.
+          Главный админ — полный доступ. РОП — продажи и CRM всех менеджеров. Менеджер — только свои клиенты и сделки.
         </p>
       </CardHeader>
       <CardContent>
@@ -82,7 +82,7 @@ function RolesSection() {
                   >
                     <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="director">Директор</SelectItem>
+                      <SelectItem value="director">Главный админ</SelectItem>
                       <SelectItem value="rop">РОП</SelectItem>
                       <SelectItem value="manager">Менеджер</SelectItem>
                     </SelectContent>

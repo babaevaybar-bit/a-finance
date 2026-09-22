@@ -292,7 +292,7 @@ export default function ManagersPage() {
                     <SelectContent>
                       <SelectItem value="manager">Менеджер — только свои клиенты и сделки</SelectItem>
                       <SelectItem value="rop">РОП — CRM и продажи всех менеджеров</SelectItem>
-                      <SelectItem value="director">Директор — полный доступ</SelectItem>
+                      <SelectItem value="director">Главный админ — полный доступ</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -428,7 +428,7 @@ export default function ManagersPage() {
                     <SelectContent>
                       <SelectItem value="manager">Менеджер — только свои клиенты и сделки</SelectItem>
                       <SelectItem value="rop">РОП — CRM и продажи всех менеджеров</SelectItem>
-                      <SelectItem value="director">Директор — полный доступ</SelectItem>
+                      <SelectItem value="director">Главный админ — полный доступ</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

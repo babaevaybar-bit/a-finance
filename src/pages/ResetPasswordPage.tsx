@@ -220,7 +220,7 @@ export default function ResetPasswordPage() {
           <div className="rounded-md border border-border p-3 bg-muted/40 text-sm space-y-1">
             <p className="font-medium text-sm">Также можно обратиться к директору</p>
             <p className="text-xs text-muted-foreground">
-              Директор может сбросить пароль напрямую через раздел
+              Главный админ может сбросить пароль напрямую через раздел
               «Сотрудники» → кнопку редактирования.
             </p>
           </div>
