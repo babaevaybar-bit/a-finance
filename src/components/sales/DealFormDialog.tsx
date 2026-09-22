@@ -11,7 +11,7 @@ import {
 import { toast } from 'sonner';
 import { createDeal, updateDeal, createIncome } from '@/lib/api';
 import type { Deal } from '@/types/types';
-import { PAYMENT_METHODS, CHANNELS, DEAL_STAGES, INSTALL_STAGE_LABELS, VAT_NET_RATIO } from '@/types/types';
+import { PAYMENT_METHODS, CHANNELS, DEAL_STAGES, INSTALL_STAGE_LABELS } from '@/types/types';
 
 interface Props {
   open: boolean;
@@ -207,12 +207,8 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
             <Label>Общая сумма (₸) *</Label>
             <Input
               type="number" min="0" value={form.total_amount || ''}
-              disabled={form.payment_method === 'Перечисление'}
               onChange={e => set('total_amount', Number(e.target.value))}
             />
-            {form.payment_method === 'Перечисление' && (
-              <p className="text-xs text-muted-foreground">Считается автоматически из суммы с НДС (×{VAT_NET_RATIO})</p>
-            )}
           </div>
           {form.payment_method === 'Перечисление' && (
             <div className="space-y-1">
@@ -221,20 +217,8 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
                 type="number" min="0"
                 placeholder="Например: 1 000 000"
                 value={form.vat_gross_amount || ''}
-                onChange={e => {
-                  const gross = Number(e.target.value);
-                  setForm(f => ({
-                    ...f,
-                    vat_gross_amount: gross || null,
-                    total_amount: Math.round(gross * VAT_NET_RATIO),
-                  }));
-                }}
+                onChange={e => set('vat_gross_amount', e.target.value === '' ? null : Number(e.target.value))}
               />
-              {Number(form.vat_gross_amount) > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  К расчёту: {Math.round(Number(form.vat_gross_amount) * VAT_NET_RATIO).toLocaleString('ru-RU')} ₸
-                </p>
-              )}
             </div>
           )}
           <div className="space-y-1">
