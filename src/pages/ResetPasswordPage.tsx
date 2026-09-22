@@ -48,7 +48,7 @@ function RequestResetForm() {
 
     if (!found?.email) {
       setLoading(false);
-      toast.error('Такой сотрудник не найден. Обратитесь к директору.');
+      toast.error('Вы не являетесь сотрудником компании.');
       return;
     }
 
