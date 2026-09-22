@@ -207,7 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Разделы, полностью закрытые для всех кроме Директора (финансы, ФОТ, права доступа).
   const DIRECTOR_ONLY_PAGES = new Set(['finance', 'profit', 'salary', 'managers', 'permissions']);
   // Разделы надзора за продажами: по умолчанию видны Директору и РОП, менеджеру — по явному разрешению.
-  const ROP_PAGES = new Set(['approvals', 'reports']);
+  const ROP_PAGES = new Set(['approvals', 'reports', 'amocrm']);
   const RESTRICTED_BY_DEFAULT = new Set([...DIRECTOR_ONLY_PAGES, ...ROP_PAGES]);
 
   // Директор — полный доступ везде.
