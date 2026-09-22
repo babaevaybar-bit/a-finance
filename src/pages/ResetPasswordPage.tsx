@@ -36,8 +36,13 @@ function RequestResetForm() {
     const u = username.trim().toLowerCase();
     if (!u) { toast.error('Введите логин'); return; }
     setLoading(true);
-    // Our emails are stored as username@aybar.app
-    const email = `${u}@aybar.app`;
+    // Логин -> реальная почта, привязанная к аккаунту в профиле
+    const { data: found } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('name', u)
+      .maybeSingle();
+    const email = found?.email || `${u}@aybar.app`;
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
     });

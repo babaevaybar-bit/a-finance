@@ -49,9 +49,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { username, password, managerId, role } = await req.json();
+    const { username, password, managerId, role, recoveryEmail } = await req.json();
     if (!username || !password || !managerId) {
       return new Response(JSON.stringify({ error: 'username, password и managerId обязательны' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (!recoveryEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recoveryEmail)) {
+      return new Response(JSON.stringify({ error: 'Укажите настоящую почту сотрудника (для восстановления пароля)' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -65,7 +71,10 @@ Deno.serve(async (req) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    const email = `${username.trim().toLowerCase()}@aybar.app`;
+    // Настоящая почта сотрудника — именно на неё Supabase присылает письма
+    // восстановления пароля (раньше здесь была фиктивная username@aybar.app,
+    // на которую физически некому было писать).
+    const email = String(recoveryEmail).trim().toLowerCase();
 
     const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
       email,

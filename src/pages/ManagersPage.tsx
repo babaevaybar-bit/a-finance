@@ -100,6 +100,7 @@ export default function ManagersPage() {
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newAuthRole, setNewAuthRole] = useState<'manager' | 'rop' | 'director'>('manager');
+  const [newRecoveryEmail, setNewRecoveryEmail] = useState('');
   const [saving, setSaving]         = useState(false);
   const [editManager, setEditManager]   = useState<Manager | null>(null);
   const [editName, setEditName]         = useState('');
@@ -108,6 +109,7 @@ export default function ManagersPage() {
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [editAuthRole, setEditAuthRole] = useState<'manager' | 'rop' | 'director'>('manager');
+  const [editRecoveryEmail, setEditRecoveryEmail] = useState('');
   const [editSaving, setEditSaving]     = useState(false);
 
   const load = useCallback(async () => {
@@ -124,10 +126,10 @@ export default function ManagersPage() {
 
   // Создаём auth-пользователя через Edge Function (Admin API на сервере),
   // чтобы signUp не переключал сессию текущего администратора.
-  async function createAuthUser(username: string, password: string, managerId: string, role: string): Promise<string | null> {
+  async function createAuthUser(username: string, password: string, managerId: string, role: string, recoveryEmail: string): Promise<string | null> {
     const { data: { session } } = await supabase.auth.getSession();
     const res = await supabase.functions.invoke('create-employee', {
-      body: { username: username.trim().toLowerCase(), password, managerId, role },
+      body: { username: username.trim().toLowerCase(), password, managerId, role, recoveryEmail: recoveryEmail.trim().toLowerCase() },
       headers: session?.access_token
         ? { Authorization: `Bearer ${session.access_token}` }
         : {},
@@ -150,8 +152,14 @@ export default function ManagersPage() {
       const managerId = await createManager(name, role, null);
       let userId: string | null = null;
       if (newUsername.trim() && newPassword) {
+        if (!newRecoveryEmail.trim() || !/^\S+@\S+\.\S+$/.test(newRecoveryEmail.trim())) {
+          toast.error('Укажите настоящую почту сотрудника — для восстановления пароля');
+          await deleteManager(managerId);
+          setSaving(false);
+          return;
+        }
         // Edge Function создаёт auth-пользователя + профиль атомарно
-        userId = await createAuthUser(newUsername, newPassword, managerId, newAuthRole);
+        userId = await createAuthUser(newUsername, newPassword, managerId, newAuthRole, newRecoveryEmail);
         if (!userId) {
           // Откатываем запись менеджера если аккаунт не создался
           await deleteManager(managerId);
@@ -177,6 +185,7 @@ export default function ManagersPage() {
     setEditRoleCustom(isKnownRole ? '' : (m.role || ''));
     setEditUsername('');
     setEditPassword('');
+    setEditRecoveryEmail('');
   }
 
   async function handleUpdate() {
@@ -189,8 +198,13 @@ export default function ManagersPage() {
     try {
       let userId = editManager.user_id;
       if (editUsername.trim() && editPassword) {
+        if (!editRecoveryEmail.trim() || !/^\S+@\S+\.\S+$/.test(editRecoveryEmail.trim())) {
+          toast.error('Укажите настоящую почту сотрудника — для восстановления пароля');
+          setEditSaving(false);
+          return;
+        }
         // Edge Function создаёт auth-пользователя + профиль атомарно, без смены сессии
-        const newUserId = await createAuthUser(editUsername, editPassword, editManager.id, editAuthRole);
+        const newUserId = await createAuthUser(editUsername, editPassword, editManager.id, editAuthRole, editRecoveryEmail);
         if (newUserId) userId = newUserId;
       }
       await updateManager(editManager.id, name, role, userId);
@@ -265,6 +279,11 @@ export default function ManagersPage() {
                 <div className="space-y-1">
                   <Label className="text-xs">Пароль</Label>
                   <Input type="password" placeholder="Мин. 6 символов" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <Label className="text-xs">Email для восстановления пароля</Label>
+                  <Input type="email" placeholder="ivan@example.com" value={newRecoveryEmail} onChange={e => setNewRecoveryEmail(e.target.value)} autoComplete="email" />
+                  <p className="text-xs text-muted-foreground">Настоящая почта сотрудника — на неё придёт письмо, если он забудет пароль.</p>
                 </div>
                 <div className="space-y-1 md:col-span-2">
                   <Label className="text-xs">Роль в системе</Label>
@@ -396,6 +415,11 @@ export default function ManagersPage() {
                 <div className="space-y-1">
                   <Label className="text-xs">Пароль</Label>
                   <Input type="password" placeholder="Мин. 6 символов" value={editPassword} onChange={e => setEditPassword(e.target.value)} autoComplete="new-password" />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <Label className="text-xs">Email для восстановления пароля</Label>
+                  <Input type="email" placeholder="ivan@example.com" value={editRecoveryEmail} onChange={e => setEditRecoveryEmail(e.target.value)} autoComplete="email" />
+                  <p className="text-xs text-muted-foreground">Настоящая почта сотрудника — на неё придёт письмо, если он забудет пароль.</p>
                 </div>
                 <div className="space-y-1 md:col-span-2">
                   <Label className="text-xs">Роль в системе</Label>

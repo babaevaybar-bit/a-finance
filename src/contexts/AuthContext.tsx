@@ -148,7 +148,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = async (username: string, password: string) => {
     try {
       const trimmed = username.trim().toLowerCase();
-      const email = trimmed.includes('@') ? trimmed : `${trimmed}@aybar.app`;
+      let email = trimmed;
+
+      if (!trimmed.includes('@')) {
+        // Логин, не email — ищем настоящий auth-email этого пользователя по имени профиля.
+        // Так реальная почта сотрудника (для восстановления пароля) остаётся в Supabase Auth,
+        // а входить он может коротким логином.
+        const { data: found } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('name', trimmed)
+          .maybeSingle();
+        email = found?.email || `${trimmed}@aybar.app`; // старые аккаунты без настоящей почты
+      }
 
       // Логируем используемый email и ошибки для диагностики (НЕ логируем пароль)
       // eslint-disable-next-line no-console
