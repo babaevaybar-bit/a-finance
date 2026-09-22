@@ -34,6 +34,10 @@ interface Transition {
   changed_at: number; manager_name: string | null;
 }
 interface TodayStats { newLeads: number; calls: number; callsIn: number; callsOut: number; statusChanges: number; }
+interface UserDaily {
+  user_id: string; user_name: string; newLeads: number;
+  callsIn: number; callsOut: number; callsTotal: number; chats: number;
+}
 
 function unixToDate(ts: number): string {
   return new Date(ts * 1000).toISOString().slice(0, 10);
@@ -52,6 +56,7 @@ export default function AmoCrmPage() {
   const [callsByDay, setCallsByDay] = useState<CallDayPoint[]>([]);
   const [funnel, setFunnel] = useState<FunnelStage[]>([]);
   const [transitions, setTransitions] = useState<Transition[]>([]);
+  const [dailyByUser, setDailyByUser] = useState<UserDaily[]>([]);
   const [today, setToday] = useState<TodayStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +80,7 @@ export default function AmoCrmPage() {
         setCallsByDay(res.data?.callsByDay ?? []);
         setFunnel(res.data?.funnel ?? []);
         setTransitions(res.data?.recentTransitions ?? []);
+        setDailyByUser(res.data?.dailyByUser ?? []);
         setToday(res.data?.todayStats ?? null);
       }
     } catch {
@@ -144,6 +150,43 @@ export default function AmoCrmPage() {
                 <p className="text-lg font-semibold mt-1">{formatCurrency(totalAmount)}</p>
               </div>
             </div>
+
+            {/* Ежедневный отчёт по сотрудникам */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Ежедневный отчёт по сотрудникам — сегодня</CardTitle>
+              </CardHeader>
+              <CardContent className="px-0">
+                {dailyByUser.length === 0 ? (
+                  <p className="text-sm text-muted-foreground px-6 py-4">Пока нет активности за сегодня</p>
+                ) : (
+                  <div className="w-full overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="whitespace-nowrap">Сотрудник</TableHead>
+                          <TableHead className="whitespace-nowrap text-right">Новых лидов</TableHead>
+                          <TableHead className="whitespace-nowrap text-right">Звонков (вход/исход)</TableHead>
+                          <TableHead className="whitespace-nowrap text-right">Чатов обработано</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {dailyByUser.map(u => (
+                          <TableRow key={u.user_id}>
+                            <TableCell className="whitespace-nowrap text-sm font-medium">{u.user_name}</TableCell>
+                            <TableCell className="whitespace-nowrap text-sm text-right">{u.newLeads}</TableCell>
+                            <TableCell className="whitespace-nowrap text-sm text-right">
+                              {u.callsTotal} <span className="text-muted-foreground">({u.callsIn}/{u.callsOut})</span>
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap text-sm text-right">{u.chats}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             {/* Графики по дням */}
             <div className="grid md:grid-cols-2 gap-4">
