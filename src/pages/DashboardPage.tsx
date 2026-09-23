@@ -10,6 +10,7 @@ import {
   formatCurrency, getDashboardMonths, monthYearToLabel, getCurrentMonthYear,
 } from '@/lib/utils';
 import type { Deal, Manager, SalesPlan } from '@/types/types';
+import { SALES_ROLES } from '@/types/types';
 import { TrendingUp, ShoppingCart, Users, Wallet } from 'lucide-react';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -90,7 +91,7 @@ export default function DashboardPage() {
         getSalesPlans(currentMonth),
       ]);
       setDeals(allDeals);
-      setManagers(mgrs);
+      setManagers(mgrs.filter(m => SALES_ROLES.includes(m.role)));
       setPlans(curPlans);
     } catch {
       // silent
