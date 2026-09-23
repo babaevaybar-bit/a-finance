@@ -96,7 +96,7 @@ export async function getAllDealsForMonth(monthYear: string): Promise<Deal[]> {
     .from('deals')
     .select('*')
     .eq('month_year', monthYear)
-    .neq('status', 'rejected')          // отклонённые не показываем в отчётах
+    .eq('status', 'approved')          // считаем только подтверждённые — «на проверке» и отклонённые не влияют на отчёты/зарплату/прибыль
     .order('deal_date', { ascending: true })
     .limit(1000);
   if (error) throw error;
@@ -107,7 +107,7 @@ export async function getAllDeals(): Promise<Deal[]> {
   const { data, error } = await supabase
     .from('deals')
     .select('*')
-    .neq('status', 'rejected')          // отклонённые не показываем
+    .eq('status', 'approved')          // считаем только подтверждённые — на дашборд не должны попадать неподтверждённые суммы
     .order('month_year', { ascending: true })
     .limit(2000);
   if (error) throw error;
