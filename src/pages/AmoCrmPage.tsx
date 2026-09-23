@@ -15,15 +15,14 @@ import { Layers, RefreshCw, Search, PhoneIncoming, UserPlus, ArrowRightLeft } fr
 import { supabase } from '@/db/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
-interface AmoLead {
+interface SalesStageLead {
   id: number;
   name: string;
   price: number;
   created_at: number;
   status_name: string | null;
-  pipeline_name: string | null;
+  status_color: string | null;
   responsible_user_name: string | null;
-  is_lost: boolean;
 }
 
 interface DayPoint { date: string; count: number; }
@@ -51,7 +50,7 @@ function timeAgo(ts: number): string {
 }
 
 export default function AmoCrmPage() {
-  const [leads, setLeads] = useState<AmoLead[]>([]);
+  const [leads, setLeads] = useState<SalesStageLead[]>([]);
   const [leadsByDay, setLeadsByDay] = useState<DayPoint[]>([]);
   const [callsByDay, setCallsByDay] = useState<CallDayPoint[]>([]);
   const [funnel, setFunnel] = useState<FunnelStage[]>([]);
@@ -75,7 +74,7 @@ export default function AmoCrmPage() {
         setError(res.data?.error ?? res.error?.message ?? 'Ошибка загрузки');
         setLeads([]);
       } else {
-        setLeads(res.data?.leads ?? []);
+        setLeads(res.data?.salesStageLeads ?? []);
         setLeadsByDay(res.data?.leadsByDay ?? []);
         setCallsByDay(res.data?.callsByDay ?? []);
         setFunnel(res.data?.funnel ?? []);
@@ -146,7 +145,7 @@ export default function AmoCrmPage() {
                 <p className="text-lg font-semibold mt-1">{today?.statusChanges ?? '—'}</p>
               </div>
               <div className="rounded-lg border border-border p-3">
-                <p className="text-xs text-muted-foreground">Сумма сделок (список ниже)</p>
+                <p className="text-xs text-muted-foreground">Сумма сделок (Отдел продаж, список ниже)</p>
                 <p className="text-lg font-semibold mt-1">{formatCurrency(totalAmount)}</p>
               </div>
             </div>
@@ -282,10 +281,16 @@ export default function AmoCrmPage() {
           </>
         )}
 
-        {/* Список сделок */}
+        {/* Список сделок: Отдел продаж, от «квалификация пройдена» до
+            «повторная встреча проведена/Предоплата» */}
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
-            <CardTitle className="text-base font-medium">Сделки</CardTitle>
+            <div>
+              <CardTitle className="text-base font-medium">
+                Сделки — Отдел продаж <span className="text-muted-foreground font-normal">({filteredLeads.length})</span>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">Квалификация пройдена → Повторная встреча проведена/Предоплата</p>
+            </div>
             <div className="relative">
               <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по названию" className="h-9 pl-7 w-56" />
@@ -303,7 +308,7 @@ export default function AmoCrmPage() {
                     <TableRow>
                       <TableHead className="whitespace-nowrap">Дата создания</TableHead>
                       <TableHead className="whitespace-nowrap">Название</TableHead>
-                      <TableHead className="whitespace-nowrap">Воронка / статус</TableHead>
+                      <TableHead className="whitespace-nowrap">Этап</TableHead>
                       <TableHead className="whitespace-nowrap">Ответственный</TableHead>
                       <TableHead className="whitespace-nowrap text-right">Сумма</TableHead>
                     </TableRow>
@@ -314,12 +319,9 @@ export default function AmoCrmPage() {
                         <TableCell className="whitespace-nowrap text-sm">{formatDate(unixToDate(l.created_at))}</TableCell>
                         <TableCell className="text-sm max-w-[240px] truncate">{l.name || `Сделка #${l.id}`}</TableCell>
                         <TableCell className="whitespace-nowrap text-sm">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-xs text-muted-foreground">{l.pipeline_name || '—'}</span>
-                            <Badge variant="secondary" className="text-[11px] font-normal w-fit">
-                              {l.status_name || '—'}
-                            </Badge>
-                          </div>
+                          <Badge variant="secondary" className="text-[11px] font-normal w-fit">
+                            {l.status_name || '—'}
+                          </Badge>
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm">{l.responsible_user_name || '—'}</TableCell>
                         <TableCell className="whitespace-nowrap text-sm text-right">{formatCurrency(l.price || 0)}</TableCell>

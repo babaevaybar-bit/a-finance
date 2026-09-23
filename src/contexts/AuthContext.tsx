@@ -17,6 +17,7 @@ interface AuthContextType {
   isDirector: boolean;    // Директор — полный доступ
   isRop: boolean;         // РОП — CRM и отчёты по всем менеджерам
   isManager: boolean;     // Менеджер — только свои клиенты/сделки
+  isLidorub: boolean;     // Лидоруб — доступ как у менеджера, ЗП как у РОП (от общей выручки)
   canApprove: boolean;    // может подтверждать/отклонять сделки
   canViewAllManagers: boolean; // видит CRM/сделки всех менеджеров (director или rop)
   loading: boolean;
@@ -44,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isDirector = profile?.role === 'director';
   const isRop      = profile?.role === 'rop';
   const isManager  = profile?.role === 'manager';
+  const isLidorub  = profile?.role === 'lidorub';
   const isAdmin    = isDirector; // обратная совместимость со старым кодом
 
   // Директор и РОП видят сделки/CRM всех менеджеров; обычный менеджер — только свои
@@ -232,7 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, profile, isAdmin, isDirector, isRop, isManager, canApprove, canViewAllManagers,
+      user, profile, isAdmin, isDirector, isRop, isManager, isLidorub, canApprove, canViewAllManagers,
       loading, permissions, canView, canEdit, signIn, signOut, refreshProfile,
     }}>
       {children}

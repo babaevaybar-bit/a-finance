@@ -99,7 +99,7 @@ export default function ManagersPage() {
   const [newRoleCustom, setNewRoleCustom] = useState('');
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newAuthRole, setNewAuthRole] = useState<'manager' | 'rop' | 'director'>('manager');
+  const [newAuthRole, setNewAuthRole] = useState<'manager' | 'rop' | 'director' | 'lidorub'>('manager');
   const [newRecoveryEmail, setNewRecoveryEmail] = useState('');
   const [saving, setSaving]         = useState(false);
   const [editManager, setEditManager]   = useState<Manager | null>(null);
@@ -108,7 +108,7 @@ export default function ManagersPage() {
   const [editRoleCustom, setEditRoleCustom] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
-  const [editAuthRole, setEditAuthRole] = useState<'manager' | 'rop' | 'director'>('manager');
+  const [editAuthRole, setEditAuthRole] = useState<'manager' | 'rop' | 'director' | 'lidorub'>('manager');
   const [editRecoveryEmail, setEditRecoveryEmail] = useState('');
   const [editSaving, setEditSaving]     = useState(false);
 
@@ -291,6 +291,7 @@ export default function ManagersPage() {
                     <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="manager">Менеджер — только свои клиенты и сделки</SelectItem>
+                      <SelectItem value="lidorub">Лидоруб — доступ как у менеджера, ЗП от общей выручки</SelectItem>
                       <SelectItem value="rop">РОП — CRM и продажи всех менеджеров</SelectItem>
                       <SelectItem value="director">Главный админ — полный доступ</SelectItem>
                     </SelectContent>
@@ -427,6 +428,7 @@ export default function ManagersPage() {
                     <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="manager">Менеджер — только свои клиенты и сделки</SelectItem>
+                      <SelectItem value="lidorub">Лидоруб — доступ как у менеджера, ЗП от общей выручки</SelectItem>
                       <SelectItem value="rop">РОП — CRM и продажи всех менеджеров</SelectItem>
                       <SelectItem value="director">Главный админ — полный доступ</SelectItem>
                     </SelectContent>

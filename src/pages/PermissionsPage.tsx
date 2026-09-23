@@ -18,6 +18,7 @@ const ROLE_LABELS: Record<Profile['role'], string> = {
   director: 'Главный админ',
   rop: 'РОП',
   manager: 'Менеджер',
+  lidorub: 'Лидоруб',
 };
 
 // ─── Блок: назначение ролей (Директор / РОП / Менеджер) ───────────────────────
@@ -84,6 +85,7 @@ function RolesSection() {
                     <SelectContent>
                       <SelectItem value="director">Главный админ</SelectItem>
                       <SelectItem value="rop">РОП</SelectItem>
+                      <SelectItem value="lidorub">Лидоруб</SelectItem>
                       <SelectItem value="manager">Менеджер</SelectItem>
                     </SelectContent>
                   </Select>

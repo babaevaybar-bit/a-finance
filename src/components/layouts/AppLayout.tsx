@@ -65,8 +65,8 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
-  const { user, profile, isDirector, isRop, signOut } = useAuth();
-  const roleLabel = isDirector ? 'Главный админ' : isRop ? 'РОП' : 'Менеджер';
+  const { user, profile, isDirector, isRop, isLidorub, signOut } = useAuth();
+  const roleLabel = isDirector ? 'Главный админ' : isRop ? 'РОП' : isLidorub ? 'Лидоруб' : 'Менеджер';
   const navigate = useNavigate();
 
   async function handleSignOut() {
