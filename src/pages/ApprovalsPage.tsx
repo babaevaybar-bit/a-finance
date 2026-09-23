@@ -9,14 +9,15 @@ import {
   AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { CheckCircle, XCircle, Clock, ShieldOff } from 'lucide-react';
-import { getPendingDeals, approveDeal, rejectDeal, getManagers } from '@/lib/api';
+import { CheckCircle, XCircle, Clock, ShieldOff, RotateCcw } from 'lucide-react';
+import { getPendingDeals, getRejectedDeals, approveDeal, rejectDeal, restoreDeal, getManagers } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, Manager } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function ApprovalsPage() {
   const { canApprove } = useAuth();
+  const [tab, setTab] = useState<'pending' | 'rejected'>('pending');
   const [deals, setDeals]       = useState<Deal[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -25,12 +26,15 @@ export default function ApprovalsPage() {
     if (!canApprove) return;
     setLoading(true);
     try {
-      const [pending, mgrs] = await Promise.all([getPendingDeals(), getManagers()]);
-      setDeals(pending);
+      const [list, mgrs] = await Promise.all([
+        tab === 'pending' ? getPendingDeals() : getRejectedDeals(),
+        getManagers(),
+      ]);
+      setDeals(list);
       setManagers(mgrs);
     } catch { toast.error('Ошибка загрузки'); }
     finally { setLoading(false); }
-  }, [canApprove]);
+  }, [canApprove, tab]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -45,6 +49,11 @@ export default function ApprovalsPage() {
 
   async function handleReject(id: string) {
     try { await rejectDeal(id); toast.success('Сделка отклонена'); await load(); }
+    catch { toast.error('Ошибка'); }
+  }
+
+  async function handleRestore(id: string) {
+    try { await restoreDeal(id); toast.success('Сделка возвращена на проверку'); await load(); }
     catch { toast.error('Ошибка'); }
   }
 
@@ -63,11 +72,31 @@ export default function ApprovalsPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-xl font-semibold">Подтверждение сделок</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Сделки, ожидающие вашего подтверждения
-          </p>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-xl font-semibold">Подтверждение сделок</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {tab === 'pending' ? 'Сделки, ожидающие вашего подтверждения' : 'Отклонённые сделки — можно вернуть на проверку'}
+            </p>
+          </div>
+          <div className="flex gap-1.5 rounded-lg border border-border p-1">
+            <Button
+              variant={tab === 'pending' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setTab('pending')}
+            >
+              Ожидающие
+            </Button>
+            <Button
+              variant={tab === 'rejected' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setTab('rejected')}
+            >
+              Отклонённые
+            </Button>
+          </div>
         </div>
 
         {loading ? (
@@ -78,7 +107,9 @@ export default function ApprovalsPage() {
           <Card>
             <CardContent className="py-16 text-center">
               <CheckCircle size={36} className="mx-auto mb-3 text-muted-foreground/40" />
-              <p className="text-muted-foreground">Нет сделок, ожидающих подтверждения</p>
+              <p className="text-muted-foreground">
+                {tab === 'pending' ? 'Нет сделок, ожидающих подтверждения' : 'Нет отклонённых сделок'}
+              </p>
             </CardContent>
           </Card>
         ) : (
@@ -89,39 +120,57 @@ export default function ApprovalsPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <CardTitle className="text-sm font-medium flex items-center gap-2">
-                        <Clock size={14} className="shrink-0 text-amber-500" />
+                        {tab === 'pending' ? (
+                          <Clock size={14} className="shrink-0 text-amber-500" />
+                        ) : (
+                          <XCircle size={14} className="shrink-0 text-destructive" />
+                        )}
                         <span className="truncate">{managerName(d.manager_id)}</span>
-                        <Badge variant="outline" className="text-xs border-amber-300 text-amber-600 shrink-0">
-                          Ожидает
-                        </Badge>
+                        {tab === 'pending' ? (
+                          <Badge variant="outline" className="text-xs border-amber-300 text-amber-600 shrink-0">
+                            Ожидает
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs border-destructive/30 text-destructive shrink-0">
+                            Отклонена
+                          </Badge>
+                        )}
                       </CardTitle>
                     </div>
                     <div className="flex gap-2 shrink-0">
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive border border-destructive/30">
-                            <XCircle size={13} className="mr-1" />Отклонить
+                      {tab === 'pending' ? (
+                        <>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive border border-destructive/30">
+                                <XCircle size={13} className="mr-1" />Отклонить
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Отклонить сделку?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Сделка {d.client_name ? `«${d.client_name}»` : ''} на {formatCurrency(d.total_amount)} будет отклонена.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Отмена</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  onClick={() => handleReject(d.id)}
+                                >Отклонить</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                          <Button size="sm" className="h-7 text-xs" onClick={() => handleApprove(d.id)}>
+                            <CheckCircle size={13} className="mr-1" />Подтвердить
                           </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg">
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Отклонить сделку?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Сделка {d.client_name ? `«${d.client_name}»` : ''} на {formatCurrency(d.total_amount)} будет отклонена.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Отмена</AlertDialogCancel>
-                            <AlertDialogAction
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                              onClick={() => handleReject(d.id)}
-                            >Отклонить</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                      <Button size="sm" className="h-7 text-xs" onClick={() => handleApprove(d.id)}>
-                        <CheckCircle size={13} className="mr-1" />Подтвердить
-                      </Button>
+                        </>
+                      ) : (
+                        <Button size="sm" className="h-7 text-xs" onClick={() => handleRestore(d.id)}>
+                          <RotateCcw size={13} className="mr-1" />Вернуть на проверку
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardHeader>

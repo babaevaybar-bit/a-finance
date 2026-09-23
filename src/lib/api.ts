@@ -155,12 +155,30 @@ export async function rejectDeal(id: string): Promise<void> {
   if (error) throw error;
 }
 
+// Вернуть отклонённую сделку обратно «на проверку» — например, если
+// отклонили по ошибке или менеджер донёс/исправил данные по клиенту
+export async function restoreDeal(id: string): Promise<void> {
+  const { error } = await supabase.from('deals').update({ status: 'pending', updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) throw error;
+}
+
 export async function getPendingDeals(): Promise<(Deal & { manager_name?: string })[]> {
   const { data, error } = await supabase
     .from('deals')
     .select('*')
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function getRejectedDeals(): Promise<(Deal & { manager_name?: string })[]> {
+  const { data, error } = await supabase
+    .from('deals')
+    .select('*')
+    .eq('status', 'rejected')
+    .order('updated_at', { ascending: false })
     .limit(200);
   if (error) throw error;
   return Array.isArray(data) ? data : [];
