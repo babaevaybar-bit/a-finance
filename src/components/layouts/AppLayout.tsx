@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   Menu, LayoutDashboard, TrendingUp, Wallet, BarChart2,
-  Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search,
+  Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -20,6 +20,7 @@ const navItems = [
   { path: '/finance',      label: 'Финансы',           icon: Wallet,          adminOnly: true,  pageKey: 'finance'      },
   { path: '/reports',      label: 'Отчёты',            icon: BarChart2,       adminOnly: true,  pageKey: 'reports'      },
   { path: '/amocrm',       label: 'amoCRM',            icon: Layers,          adminOnly: true,  pageKey: 'amocrm'       },
+  { path: '/production',   label: 'Производство',      icon: Wrench,          adminOnly: true,  pageKey: 'production'   },
   { path: '/salary',       label: 'Зарплаты',          icon: Banknote,        adminOnly: true,  pageKey: 'salary'       },
   { path: '/profit',       label: 'Чистая прибыль',    icon: TrendingDown,    adminOnly: true,  pageKey: 'profit'       },
   { path: '/daily-report', label: 'Ежедневный отчёт',  icon: ClipboardList,   adminOnly: false, pageKey: 'daily-report' },
