@@ -9,11 +9,102 @@ import {
   AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { CheckCircle, XCircle, Clock, ShieldOff, RotateCcw } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, ShieldOff, RotateCcw, ExternalLink, ChevronDown } from 'lucide-react';
 import { getPendingDeals, getRejectedDeals, approveDeal, rejectDeal, restoreDeal, getManagers } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, Manager } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/db/supabase';
+
+interface TrelloMatch {
+  id: string; name: string; desc: string; due: string | null; url: string;
+  stage: string; labels: { name: string; color: string }[]; matchedBy: 'phone' | 'contract';
+}
+interface TrelloComment { text: string; date: string; by: string | null; }
+
+function TrelloLookup({ deal }: { deal: Deal }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [matches, setMatches] = useState<TrelloMatch[] | null>(null);
+  const [comments, setComments] = useState<TrelloComment[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleOpen() {
+    setOpen(true);
+    if (matches !== null) return; // уже загружено
+    setLoading(true);
+    setError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const params = new URLSearchParams();
+      if (deal.client_phone) params.set('phone', deal.client_phone);
+      if (deal.contract_number) params.set('contract', deal.contract_number);
+      const res = await supabase.functions.invoke(`trello-deal-lookup?${params.toString()}`, {
+        method: 'GET',
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      });
+      if (res.error || res.data?.error) {
+        setError(res.data?.error ?? res.error?.message ?? 'Ошибка');
+      } else {
+        setMatches(res.data?.matches ?? []);
+        setComments(res.data?.comments ?? []);
+      }
+    } catch { setError('Не удалось связаться с Trello'); }
+    finally { setLoading(false); }
+  }
+
+  if (!deal.client_phone && !deal.contract_number) return null;
+
+  return (
+    <div className="md:col-span-4 mt-1">
+      <button
+        className="text-xs text-primary flex items-center gap-1 hover:underline"
+        onClick={() => (open ? setOpen(false) : handleOpen())}
+      >
+        <ChevronDown size={12} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        Данные из Trello
+      </button>
+      {open && (
+        <div className="mt-2 rounded-lg border border-border bg-muted/30 p-3 text-sm space-y-2">
+          {loading && <p className="text-xs text-muted-foreground">Загрузка...</p>}
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          {matches && matches.length === 0 && !loading && (
+            <p className="text-xs text-muted-foreground">Карточка не найдена (по телефону/договору)</p>
+          )}
+          {matches?.map(m => (
+            <div key={m.id} className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <Badge variant="secondary" className="text-xs">{m.stage}</Badge>
+                <a href={m.url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary flex items-center gap-1 hover:underline">
+                  Открыть в Trello<ExternalLink size={10} />
+                </a>
+              </div>
+              {m.labels.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {m.labels.map((lb, i) => (
+                    <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-background border border-border">{lb.name}</span>
+                  ))}
+                </div>
+              )}
+              {m.desc && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{m.desc}</p>}
+              {m.due && <p className="text-xs text-muted-foreground">Срок: {formatDate(m.due)}</p>}
+              {comments.length > 0 && (
+                <div className="pt-1.5 border-t border-border/60 space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Заметки/комментарии:</p>
+                  {comments.map((c, i) => (
+                    <p key={i} className="text-xs text-muted-foreground">
+                      {c.by ? `${c.by}: ` : ''}{c.text} <span className="opacity-60">({formatDate(c.date)})</span>
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ApprovalsPage() {
   const { canApprove } = useAuth();
@@ -211,6 +302,7 @@ export default function ApprovalsPage() {
                         <p className="text-muted-foreground">{d.comment}</p>
                       </div>
                     )}
+                    <TrelloLookup deal={d} />
                   </div>
                 </CardContent>
               </Card>

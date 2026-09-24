@@ -163,6 +163,7 @@ export default function ClientCard({ client, open, onClose, managers, onClientUp
         comment: `Создано из карточки клиента «Ежедневного отчёта» (${client.client_name}).`,
         salary_amount: null,
         vat_gross_amount: null,
+        contract_number: null,
         status: 'pending',
         stage: 'new',
       });

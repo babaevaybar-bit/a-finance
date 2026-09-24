@@ -47,6 +47,7 @@ function emptyDeal(monthYear: string): Omit<Deal, 'id' | 'created_at' | 'updated
     comment: null,
     salary_amount: null,
     vat_gross_amount: null,
+    contract_number: null,
     status: 'pending',
     stage: 'new',
   };
@@ -73,6 +74,7 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
         comment: deal.comment || null,
         salary_amount: deal.salary_amount ?? null,
         vat_gross_amount: deal.vat_gross_amount ?? null,
+        contract_number: deal.contract_number ?? null,
         status: deal.status ?? 'pending',
         stage: deal.stage ?? 'new',
       });

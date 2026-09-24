@@ -47,6 +47,7 @@ export interface Deal {
   comment: string | null;
   salary_amount: number | null; // base for commission calc; null = use total_amount
   vat_gross_amount: number | null; // сумма с НДС при оплате «Перечисление» (общая сумма вводится отдельно, вручную — процент бывает разный)
+  contract_number: string | null; // номер договора — ключ для связки с карточкой в Trello
   status: 'pending' | 'approved' | 'rejected'; // pending = awaiting director's approval
   stage: 'new' | 'in_progress' | 'installed' | 'closed' | 'canceled'; // жизненный цикл установки
   created_at: string;
