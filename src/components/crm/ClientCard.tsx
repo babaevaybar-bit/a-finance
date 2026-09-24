@@ -24,16 +24,16 @@ import {
 import {
   getClientInteractions, addClientInteraction, deleteClientInteraction,
   getClientTasks, upsertClientTask, deleteClientTask,
-  getClientChangeLog,
+  getClientChangeLog, createDealAndGetId, linkClientReportToDeal, getDealById,
 } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import type {
   ClientReport, ClientInteraction, ClientTask, ClientChangeLog,
-  InteractionType, Manager,
+  InteractionType, Manager, Deal,
 } from '@/types/types';
 import {
   CLIENT_QUALITY_LABELS, DEAL_STAGE_LABELS, LEAD_SOURCE_LABELS,
-  INTERACTION_TYPE_LABELS, CONTACT_TYPE_LABELS,
+  INTERACTION_TYPE_LABELS, CONTACT_TYPE_LABELS, PAYMENT_METHODS,
 } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -101,6 +101,14 @@ export default function ClientCard({ client, open, onClose, managers, onClientUp
   // Tags
   const [tagInput, setTagInput] = useState('');
 
+  // ── Связь со сделкой в «Продажи» ─────────────────────────────────────────────
+  const [linkedDeal, setLinkedDeal] = useState<Deal | null>(null);
+  const [showCreateDeal, setShowCreateDeal] = useState(false);
+  const [dealManagerId, setDealManagerId] = useState('');
+  const [dealPaymentMethod, setDealPaymentMethod] = useState('Kaspi Bank');
+  const [dealAmount, setDealAmount] = useState(0);
+  const [creatingDeal, setCreatingDeal] = useState(false);
+
   const loadCrm = useCallback(async () => {
     if (!client) return;
     setLoadingCrm(true);
@@ -116,6 +124,57 @@ export default function ClientCard({ client, open, onClose, managers, onClientUp
   }, [client]);
 
   useEffect(() => { if (open) loadCrm(); }, [open, loadCrm]);
+
+  // Подгружаем связанную сделку, если клиент уже привязан к «Продажи»
+  useEffect(() => {
+    if (open && client?.deal_id) {
+      getDealById(client.deal_id).then(setLinkedDeal).catch(() => setLinkedDeal(null));
+    } else {
+      setLinkedDeal(null);
+    }
+  }, [open, client?.deal_id]);
+
+  useEffect(() => {
+    if (client) {
+      setDealAmount(client.deal_amount || 0);
+      setShowCreateDeal(false);
+    }
+  }, [client?.id]);
+
+  async function handleCreateDeal() {
+    if (!client) return;
+    if (!dealManagerId) { toast.error('Выберите менеджера'); return; }
+    if (dealAmount <= 0) { toast.error('Укажите сумму больше 0'); return; }
+    setCreatingDeal(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const dealId = await createDealAndGetId({
+        manager_id: dealManagerId,
+        month_year: today.slice(0, 7),
+        deal_date: today,
+        client_phone: client.client_phone || null,
+        address: client.address || null,
+        client_name: client.client_name || null,
+        payment_method: dealPaymentMethod,
+        door_model: null,
+        total_amount: dealAmount,
+        paid_amount: 0,
+        prepayment_date: null,
+        comment: `Создано из карточки клиента «Ежедневного отчёта» (${client.client_name}).`,
+        salary_amount: null,
+        vat_gross_amount: null,
+        status: 'pending',
+        stage: 'new',
+      });
+      await linkClientReportToDeal(client.id, dealId);
+      const deal = await getDealById(dealId);
+      setLinkedDeal(deal);
+      setShowCreateDeal(false);
+      onClientUpdated();
+      toast.success('Сделка создана и отправлена на подтверждение');
+    } catch { toast.error('Ошибка при создании сделки'); }
+    finally { setCreatingDeal(false); }
+  }
 
   // ── Add interaction ──────────────────────────────────────────────────────────
   async function handleAddInteraction() {
@@ -254,6 +313,56 @@ export default function ClientCard({ client, open, onClose, managers, onClientUp
                   {client.comment}
                 </div>
               )}
+
+              {/* Связь с реальной сделкой в «Продажи» — одна карточка клиента,
+                  а не два независимых ввода данных */}
+              {linkedDeal ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+                  <div className="text-sm">
+                    <span className="font-medium text-green-800">Привязана к «Продажи»</span>
+                    <span className="text-green-700 ml-2">
+                      {formatCurrency(linkedDeal.total_amount)} ·{' '}
+                      {linkedDeal.status === 'pending' ? 'на проверке' : linkedDeal.status === 'approved' ? 'подтверждена' : 'отклонена'}
+                    </span>
+                  </div>
+                </div>
+              ) : client.is_deal_closed && !showCreateDeal ? (
+                <Button size="sm" variant="outline" className="h-8 text-xs w-full" onClick={() => setShowCreateDeal(true)}>
+                  Создать сделку в «Продажи»
+                </Button>
+              ) : client.is_deal_closed && showCreateDeal ? (
+                <div className="rounded-lg border border-border p-3 space-y-2.5">
+                  <p className="text-xs text-muted-foreground">Сделка появится в «Подтверждениях» — сумма и оплата будут проверены директором.</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Менеджер</Label>
+                      <Select value={dealManagerId} onValueChange={setDealManagerId}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Выберите" /></SelectTrigger>
+                        <SelectContent>
+                          {managers.map(m => <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Способ оплаты</Label>
+                      <Select value={dealPaymentMethod} onValueChange={setDealPaymentMethod}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {PAYMENT_METHODS.map(p => <SelectItem key={p} value={p} className="text-xs">{p}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                      <Label className="text-xs">Сумма</Label>
+                      <Input type="number" className="h-8 text-xs" value={dealAmount} onChange={e => setDealAmount(Number(e.target.value))} />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowCreateDeal(false)}>Отмена</Button>
+                    <Button size="sm" className="h-7 text-xs" disabled={creatingDeal} onClick={handleCreateDeal}>Создать</Button>
+                  </div>
+                </div>
+              ) : null}
             </section>
             {/* Теги */}
             {(client.tags?.length > 0 || true) && (

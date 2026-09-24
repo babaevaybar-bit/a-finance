@@ -65,6 +65,7 @@ export interface Expense {
   category: string;
   description: string;
   month_year: string | null;
+  deal_id: string | null; // если расход относится к конкретной сделке (материалы/установка)
   created_at: string;
   updated_at: string;
 }
@@ -252,6 +253,7 @@ export interface ClientReport {
   comment: string | null;
   tags: string[];
   lead_source: string;
+  deal_id: string | null; // связь с реальной сделкой в «Продажи», если клиент дошёл до покупки
   created_at: string;
   updated_at: string;
 }

@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, LineChart, Line, LabelList,
@@ -74,6 +76,7 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const [deals, setDeals] = useState<Deal[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [plans, setPlans] = useState<SalesPlan[]>([]);
@@ -338,8 +341,14 @@ export default function DashboardPage() {
         {/* Per-manager current month table */}
         {!loading && managers.length > 0 && (
           <Card className="border border-border">
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-3 flex-row items-center justify-between">
               <CardTitle className="text-base">Итог по менеджерам — {monthYearToLabel(currentMonth)}</CardTitle>
+              <Button
+                variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground"
+                onClick={() => navigate(`/reports?month=${currentMonth}`)}
+              >
+                Открыть отчёт →
+              </Button>
             </CardHeader>
             <CardContent>
               <div className="w-full overflow-x-auto">
@@ -362,7 +371,11 @@ export default function DashboardPage() {
                       const planAmt = Number(plan?.plan_amount || 0);
                       const pct = planAmt > 0 ? Math.min(999, (rev / planAmt) * 100) : null;
                       return (
-                        <tr key={m.id} className="border-b border-border last:border-0">
+                        <tr
+                          key={m.id}
+                          className="border-b border-border last:border-0 cursor-pointer hover:bg-muted/40 transition-colors"
+                          onClick={() => navigate(`/sales?manager=${m.id}&month=${currentMonth}`)}
+                        >
                           <td className="whitespace-nowrap py-2.5 pr-4">
                             <span
                               className="inline-block w-2 h-2 rounded-full mr-2"

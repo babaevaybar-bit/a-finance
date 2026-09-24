@@ -24,11 +24,11 @@ import { Plus, Pencil, Trash2, X } from 'lucide-react';
 import {
   getExpenses, createExpense, updateExpense, deleteExpense,
   getIncome, createIncome, updateIncome, deleteIncome,
-  getManagers,
+  getManagers, getRecentDealsForLinking,
   getTransfers, createTransfer, updateTransfer, deleteTransfer,
 } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import type { Expense, Income, Manager, Transfer } from '@/types/types';
+import type { Expense, Income, Manager, Transfer, Deal } from '@/types/types';
 import { CHANNELS, EXPENSE_CATEGORIES } from '@/types/types';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -130,6 +130,7 @@ const EMPTY_EXP: Omit<Expense, 'id' | 'created_at' | 'updated_at'> = {
   category: 'прочее',
   description: '',
   month_year: null,
+  deal_id: null,
 };
 
 function ExpenseFormDialog({ open, onClose, onSaved, expense }: {
@@ -137,13 +138,18 @@ function ExpenseFormDialog({ open, onClose, onSaved, expense }: {
 }) {
   const [form, setForm] = useState(EMPTY_EXP);
   const [saving, setSaving] = useState(false);
-  const set = (k: keyof typeof form, v: string | number) => setForm(f => ({ ...f, [k]: v }));
+  const [recentDeals, setRecentDeals] = useState<Pick<Deal, 'id' | 'client_name' | 'total_amount' | 'deal_date'>[]>([]);
+  const set = (k: keyof typeof form, v: string | number | null) => setForm(f => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    getRecentDealsForLinking().then(setRecentDeals).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (expense) setForm({
       expense_date: expense.expense_date, amount: expense.amount, channel: expense.channel,
       category: expense.category ?? 'прочее', description: expense.description,
-      month_year: expense.expense_date.slice(0, 7),
+      month_year: expense.expense_date.slice(0, 7), deal_id: expense.deal_id ?? null,
     });
     else setForm(EMPTY_EXP);
   }, [expense, open]);
@@ -192,6 +198,20 @@ function ExpenseFormDialog({ open, onClose, onSaved, expense }: {
           <div className="space-y-1">
             <Label>Описание *</Label>
             <Input value={form.description} onChange={e => set('description', e.target.value)} placeholder="Назначение расхода" />
+          </div>
+          <div className="space-y-1">
+            <Label>Сделка (если расход по конкретному заказу)</Label>
+            <Select value={form.deal_id ?? 'none'} onValueChange={v => set('deal_id', v === 'none' ? null : v)}>
+              <SelectTrigger><SelectValue placeholder="Не привязано" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Не привязано</SelectItem>
+                {recentDeals.map(d => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.client_name || 'Без имени'} — {formatCurrency(d.total_amount)} ({formatDate(d.deal_date)})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <DialogFooter>

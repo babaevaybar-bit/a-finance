@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   Menu, LayoutDashboard, TrendingUp, Wallet, BarChart2,
-  Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers,
+  Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -60,6 +60,25 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
         </Link>
       ))}
     </nav>
+  );
+}
+
+function GlobalSearchBar() {
+  const navigate = useNavigate();
+  const [q, setQ] = useState('');
+  return (
+    <form
+      className="relative flex-1 max-w-sm"
+      onSubmit={e => { e.preventDefault(); if (q.trim()) navigate(`/search?q=${encodeURIComponent(q.trim())}`); }}
+    >
+      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+      <input
+        value={q}
+        onChange={e => setQ(e.target.value)}
+        placeholder="Найти клиента по имени или телефону..."
+        className="w-full h-8 rounded-md border border-border bg-muted/30 pl-8 pr-3 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background"
+      />
+    </form>
   );
 }
 
@@ -149,6 +168,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <span className="w-6 h-6 rounded-md bg-slate-900 text-white flex items-center justify-center text-xs font-bold shrink-0">A</span>
           <span className="font-semibold text-sm flex-1 min-w-0 truncate ml-2">A-Finance</span>
         </header>
+
+        {/* Полоса поиска — видна на всех страницах и устройствах */}
+        <div className="h-12 flex items-center px-4 md:px-6 border-b border-border bg-background shrink-0">
+          <GlobalSearchBar />
+        </div>
 
         <main className="flex-1 min-w-0 overflow-x-hidden p-4 md:p-6">
           {children}

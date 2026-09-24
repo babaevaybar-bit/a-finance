@@ -132,6 +132,65 @@ export async function createDeal(deal: Omit<Deal, 'id' | 'created_at' | 'updated
   if (error) throw error;
 }
 
+// Как createDeal, но возвращает id новой записи — нужно, когда сделку создают
+// не со страницы «Продажи», а из карточки клиента (чтобы сразу привязать её)
+export async function createDealAndGetId(deal: Omit<Deal, 'id' | 'created_at' | 'updated_at'>): Promise<string> {
+  const { data, error } = await supabase.from('deals').insert(deal).select('id').single();
+  if (error) throw error;
+  return (data as { id: string }).id;
+}
+
+// Привязывает уже отслеживаемого клиента (карточка в «Ежедневном отчёте»)
+// к реальной сделке в «Продажи» — единая карточка клиента вместо двух вводов
+export async function linkClientReportToDeal(clientReportId: string, dealId: string): Promise<void> {
+  const { error } = await supabase
+    .from('client_reports')
+    .update({ deal_id: dealId, updated_at: new Date().toISOString() })
+    .eq('id', clientReportId);
+  if (error) throw error;
+}
+
+export async function getDealById(id: string): Promise<Deal | null> {
+  const { data, error } = await supabase.from('deals').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+// Короткий список последних сделок — для выбора при привязке расхода к сделке
+export async function getRecentDealsForLinking(): Promise<Pick<Deal, 'id' | 'client_name' | 'total_amount' | 'deal_date'>[]> {
+  const { data, error } = await supabase
+    .from('deals')
+    .select('id, client_name, total_amount, deal_date')
+    .order('deal_date', { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+// ─── Глобальный поиск клиента по имени/телефону — по «Продажам» и «Ежедневному
+// отчёту» одним запросом, чтобы не искать вручную по каждому разделу отдельно ──
+export async function searchDealsByQuery(q: string): Promise<(Deal & { manager_name?: string })[]> {
+  const { data, error } = await supabase
+    .from('deals')
+    .select('*')
+    .or(`client_name.ilike.%${q}%,client_phone.ilike.%${q}%`)
+    .order('deal_date', { ascending: false })
+    .limit(30);
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function searchClientReportsByQuery(q: string): Promise<ClientReport[]> {
+  const { data, error } = await supabase
+    .from('client_reports')
+    .select('*')
+    .or(`client_name.ilike.%${q}%,client_phone.ilike.%${q}%`)
+    .order('report_date', { ascending: false })
+    .limit(30);
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
 export async function updateDeal(id: string, deal: Partial<Omit<Deal, 'id' | 'created_at'>>): Promise<void> {
   const { error } = await supabase
     .from('deals')

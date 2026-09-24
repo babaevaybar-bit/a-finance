@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,13 @@ import type { Deal, Expense, Income, Manager, SalesPlan, Transfer } from '@/type
 import { PAYMENT_METHODS } from '@/types/types';
 
 export default function ReportsPage() {
-  const [monthYear, setMonthYear] = useState(getCurrentMonthYear());
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Открытие по ссылке с дашборда (?month=YYYY-MM) — сразу нужный месяц
+  const [monthYear, setMonthYear] = useState(searchParams.get('month') || getCurrentMonthYear());
+
+  useEffect(() => {
+    if (searchParams.get('month')) setSearchParams({}, { replace: true });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [deals, setDeals] = useState<Deal[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [income, setIncome] = useState<Income[]>([]);

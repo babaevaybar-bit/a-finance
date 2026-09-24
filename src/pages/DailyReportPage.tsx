@@ -115,7 +115,7 @@ function emptyClientForm(): Omit<ClientReport, 'id' | 'created_at' | 'updated_at
     source: '', contact_type: 'call', deal_stage: 'new',
     next_action: '', next_action_date: null,
     is_deal_closed: false, deal_amount: 0, comment: '',
-    tags: [], lead_source: 'other',
+    tags: [], lead_source: 'other', deal_id: null,
   };
 }
 
@@ -558,6 +558,7 @@ function ClientsTab() {
       next_action: r.next_action ?? '', next_action_date: r.next_action_date,
       is_deal_closed: r.is_deal_closed, deal_amount: r.deal_amount,
       comment: r.comment ?? '', tags: r.tags ?? [], lead_source: r.lead_source ?? 'other',
+      deal_id: r.deal_id ?? null,
     });
     setDialogOpen(true);
   }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -14,7 +15,9 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export default function SalesPage() {
   const { profile, isAdmin, isDirector, canViewAllManagers } = useAuth();
-  const [monthYear, setMonthYear] = useState(getCurrentMonthYear());
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Открытие по ссылке с дашборда (?manager=ID&month=YYYY-MM) — сразу показываем нужного менеджера и месяц
+  const [monthYear, setMonthYear] = useState(searchParams.get('month') || getCurrentMonthYear());
   const isInitialLoad = useRef(true); // флаг первой загрузки для автопереключения
   const [managers, setManagers]   = useState<Manager[]>([]);
   const [deals, setDeals]         = useState<Record<string, Deal[]>>({});
@@ -23,7 +26,16 @@ export default function SalesPage() {
 
   // Filters
   const [roleFilter, setRoleFilter]         = useState<string>('all');
-  const [employeeFilter, setEmployeeFilter] = useState<string>('all');
+  const [employeeFilter, setEmployeeFilter] = useState<string>(searchParams.get('manager') || 'all');
+
+  // Ссылка с дашборда одноразовая — после применения фильтра убираем из URL,
+  // чтобы обычная навигация/обновление страницы не «залипало» на ней
+  useEffect(() => {
+    if (searchParams.get('manager') || searchParams.get('month')) {
+      isInitialLoad.current = false;
+      setSearchParams({}, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const planSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 

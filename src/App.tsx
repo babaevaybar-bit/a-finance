@@ -17,6 +17,7 @@ const AmoCrmPage       = lazy(() => import('@/pages/AmoCrmPage'));
 const SalaryPage       = lazy(() => import('@/pages/SalaryPage'));
 const ProfitPage       = lazy(() => import('@/pages/ProfitPage'));
 const DailyReportPage  = lazy(() => import('@/pages/DailyReportPage'));
+const SearchPage       = lazy(() => import('@/pages/SearchPage'));
 const ManagersPage     = lazy(() => import('@/pages/ManagersPage'));
 const PermissionsPage  = lazy(() => import('@/pages/PermissionsPage'));
 
@@ -102,6 +103,7 @@ const lazyRoutes = [
   { path: '/salary',       element: <SalaryPage />,       adminOnly: true,  pageKey: 'salary'       },
   { path: '/profit',       element: <ProfitPage />,       adminOnly: true,  pageKey: 'profit'       },
   { path: '/daily-report', element: <DailyReportPage />,  adminOnly: false, pageKey: 'daily-report' },
+  { path: '/search',       element: <SearchPage />,       adminOnly: false, pageKey: 'search'        },
   { path: '/managers',     element: <ManagersPage />,     adminOnly: true,  pageKey: 'managers'     },
   { path: '/permissions',  element: <PermissionsPage />,  adminOnly: true,  pageKey: 'permissions'  },
 ];
