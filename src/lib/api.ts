@@ -257,8 +257,8 @@ export async function approveDeal(id: string): Promise<{ incomeRecorded: boolean
   if (error) throw error;
 
   // Сумма оплаты по подтверждённой сделке — сразу в «Финансы», по её каналу
-  // (Kaspi/Halyk/Freedom/Наличные/Перечисление). Если способ оплаты смешанный
-  // («Kaspi Bank и нал») или «Другое» — канал не определён, вносим вручную.
+  // (Kaspi/Halyk/Freedom/RBK/Наличные/Перечисление). Если способ оплаты
+  // «Другое» — канал не определён, вносим вручную.
   if (Number(deal.paid_amount) > 0 && (CHANNELS as readonly string[]).includes(deal.payment_method)) {
     const { data: existing } = await supabase.from('income').select('id').eq('deal_id', id).maybeSingle();
     if (!existing) {

@@ -106,8 +106,8 @@ export interface SalarySetting {
   updated_at: string;
 }
 
-export const PAYMENT_METHODS = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'Наличные', 'Kaspi Bank и нал', 'Перечисление', 'Другое'] as const;
-export const CHANNELS = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'Наличные', 'Перечисление'] as const;
+export const PAYMENT_METHODS = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'RBK Bank', 'Наличные', 'Перечисление', 'Другое'] as const;
+export const CHANNELS = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'RBK Bank', 'Наличные', 'Перечисление'] as const;
 
 export const DEAL_STAGES = ['new', 'in_progress', 'installed', 'closed', 'canceled'] as const;
 export const INSTALL_STAGE_LABELS: Record<string, string> = {
