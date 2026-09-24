@@ -167,6 +167,51 @@ export async function getRecentDealsForLinking(): Promise<Pick<Deal, 'id' | 'cli
   return Array.isArray(data) ? data : [];
 }
 
+// ─── Лента последних событий для дашборда — подтверждённые сделки и новые
+// клиенты в «Ежедневном отчёте», единым списком, чтобы не заходить в каждый
+// раздел по очереди, чтобы понять «что нового» ────────────────────────────
+export interface ActivityItem {
+  id: string;
+  type: 'deal_approved' | 'deal_pending' | 'client_new';
+  at: string;
+  title: string;
+  subtitle: string;
+  managerId: string | null;
+}
+export async function getRecentActivity(): Promise<ActivityItem[]> {
+  const [{ data: recentDeals }, { data: recentClients }] = await Promise.all([
+    supabase.from('deals').select('*').order('updated_at', { ascending: false }).limit(15),
+    supabase.from('client_reports').select('*').order('created_at', { ascending: false }).limit(15),
+  ]);
+
+  const dealItems: ActivityItem[] = ((recentDeals ?? []) as Deal[])
+    .filter(d => d.status !== 'rejected')
+    .map(d => ({
+      id: `deal-${d.id}`,
+      type: d.status === 'approved' ? 'deal_approved' : 'deal_pending',
+      at: d.updated_at,
+      title: d.client_name || 'Без имени',
+      subtitle: `${formatCurrencyPlain(d.total_amount)} ₸ · ${d.status === 'approved' ? 'подтверждена' : 'на проверке'}`,
+      managerId: d.manager_id,
+    }));
+
+  const clientItems: ActivityItem[] = ((recentClients ?? []) as ClientReport[]).map(c => ({
+    id: `client-${c.id}`,
+    type: 'client_new',
+    at: c.created_at,
+    title: c.client_name,
+    subtitle: `Новый клиент · ${c.client_quality === 'hot' ? 'горячий' : c.client_quality === 'warm' ? 'тёплый' : 'холодный'}`,
+    managerId: c.manager_id,
+  }));
+
+  return [...dealItems, ...clientItems]
+    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+    .slice(0, 12);
+}
+function formatCurrencyPlain(n: number): string {
+  return Math.round(n).toLocaleString('ru-RU');
+}
+
 // ─── Глобальный поиск клиента по имени/телефону — по «Продажам» и «Ежедневному
 // отчёту» одним запросом, чтобы не искать вручную по каждому разделу отдельно ──
 export async function searchDealsByQuery(q: string): Promise<(Deal & { manager_name?: string })[]> {

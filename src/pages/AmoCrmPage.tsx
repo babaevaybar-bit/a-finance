@@ -23,6 +23,7 @@ interface SalesStageLead {
   status_name: string | null;
   status_color: string | null;
   responsible_user_name: string | null;
+  closest_task_at: number | null;
 }
 
 interface DayPoint { date: string; count: number; }
@@ -310,11 +311,14 @@ export default function AmoCrmPage() {
                       <TableHead className="whitespace-nowrap">Название</TableHead>
                       <TableHead className="whitespace-nowrap">Этап</TableHead>
                       <TableHead className="whitespace-nowrap">Ответственный</TableHead>
+                      <TableHead className="whitespace-nowrap">Задача в amoCRM</TableHead>
                       <TableHead className="whitespace-nowrap text-right">Сумма</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredLeads.map(l => (
+                    {filteredLeads.map(l => {
+                      const taskOverdue = l.closest_task_at ? l.closest_task_at * 1000 < Date.now() : false;
+                      return (
                       <TableRow key={l.id}>
                         <TableCell className="whitespace-nowrap text-sm">{formatDate(unixToDate(l.created_at))}</TableCell>
                         <TableCell className="text-sm max-w-[240px] truncate">{l.name || `Сделка #${l.id}`}</TableCell>
@@ -324,9 +328,18 @@ export default function AmoCrmPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm">{l.responsible_user_name || '—'}</TableCell>
+                        <TableCell className="whitespace-nowrap text-sm">
+                          {l.closest_task_at ? (
+                            <span className={taskOverdue ? 'text-destructive font-medium' : 'text-muted-foreground'}>
+                              {new Date(l.closest_task_at * 1000).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
+                              {taskOverdue ? ' (просрочена)' : ''}
+                            </span>
+                          ) : <span className="text-muted-foreground">нет задачи</span>}
+                        </TableCell>
                         <TableCell className="whitespace-nowrap text-sm text-right">{formatCurrency(l.price || 0)}</TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>

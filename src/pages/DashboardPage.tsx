@@ -7,13 +7,14 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, LineChart, Line, LabelList,
 } from 'recharts';
-import { getAllDeals, getManagers, getSalesPlans } from '@/lib/api';
+import { getAllDeals, getManagers, getSalesPlans, getRecentActivity } from '@/lib/api';
 import {
   formatCurrency, getDashboardMonths, monthYearToLabel, getCurrentMonthYear,
 } from '@/lib/utils';
 import type { Deal, Manager, SalesPlan } from '@/types/types';
+import type { ActivityItem } from '@/lib/api';
 import { SALES_ROLES } from '@/types/types';
-import { TrendingUp, ShoppingCart, Users, Wallet } from 'lucide-react';
+import { TrendingUp, ShoppingCart, Users, Wallet, CheckCircle2, Clock, UserPlus } from 'lucide-react';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const MANAGER_COLORS = [
@@ -81,6 +82,7 @@ export default function DashboardPage() {
   const [managers, setManagers] = useState<Manager[]>([]);
   const [plans, setPlans] = useState<SalesPlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
 
   const months = getDashboardMonths();
   const currentMonth = getCurrentMonthYear();
@@ -88,14 +90,16 @@ export default function DashboardPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [allDeals, mgrs, curPlans] = await Promise.all([
+      const [allDeals, mgrs, curPlans, recentActivity] = await Promise.all([
         getAllDeals(),
         getManagers(),
         getSalesPlans(currentMonth),
+        getRecentActivity(),
       ]);
       setDeals(allDeals);
       setManagers(mgrs.filter(m => SALES_ROLES.includes(m.role)));
       setPlans(curPlans);
+      setActivity(recentActivity);
     } catch {
       // silent
     } finally {
@@ -399,6 +403,37 @@ export default function DashboardPage() {
                   </tbody>
                 </table>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Лента последних событий — сразу видно, что произошло, без захода
+            в каждый раздел по очереди */}
+        {!loading && activity.length > 0 && (
+          <Card className="border border-border">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Последние события</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0 divide-y divide-border">
+              {activity.map(a => {
+                const managerName = managers.find(m => m.id === a.managerId)?.name;
+                const Icon = a.type === 'deal_approved' ? CheckCircle2 : a.type === 'deal_pending' ? Clock : UserPlus;
+                const iconColor = a.type === 'deal_approved' ? 'text-green-600' : a.type === 'deal_pending' ? 'text-amber-500' : 'text-blue-500';
+                return (
+                  <div key={a.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <Icon size={16} className={`shrink-0 ${iconColor}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{a.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {a.subtitle}{managerName ? ` · ${managerName}` : ''}
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {new Date(a.at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
+                    </span>
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
         )}
