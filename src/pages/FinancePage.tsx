@@ -67,9 +67,9 @@ function BankLabel({ channel }: { channel: string }) {
 function BalanceSummary({ expenses, income, transfers }: {
   expenses: Expense[]; income: Income[]; transfers: Transfer[];
 }) {
-  const channels: string[] = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'Наличные'];
+  const channels: string[] = [...CHANNELS];
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
       {channels.map(ch => {
         const inc = income.filter(i => i.channel === ch).reduce((s, i) => s + Number(i.total_amount), 0);
         const exp = expenses.filter(e => e.channel === ch).reduce((s, e) => s + Number(e.amount), 0);
