@@ -14,7 +14,7 @@ import {
 import type { Deal, Manager, SalesPlan } from '@/types/types';
 import type { ActivityItem } from '@/lib/api';
 import { SALES_ROLES } from '@/types/types';
-import { TrendingUp, ShoppingCart, Users, Wallet, CheckCircle2, Clock, UserPlus } from 'lucide-react';
+import { TrendingUp, ShoppingCart, Users, Wallet, CheckCircle2, UserPlus } from 'lucide-react';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const MANAGER_COLORS = [
@@ -417,8 +417,8 @@ export default function DashboardPage() {
             <CardContent className="p-0 divide-y divide-border">
               {activity.map(a => {
                 const managerName = managers.find(m => m.id === a.managerId)?.name;
-                const Icon = a.type === 'deal_approved' ? CheckCircle2 : a.type === 'deal_pending' ? Clock : UserPlus;
-                const iconColor = a.type === 'deal_approved' ? 'text-green-600' : a.type === 'deal_pending' ? 'text-amber-500' : 'text-blue-500';
+                const Icon = a.type === 'deal_approved' ? CheckCircle2 : UserPlus;
+                const iconColor = a.type === 'deal_approved' ? 'text-green-600' : 'text-blue-500';
                 return (
                   <div key={a.id} className="flex items-center gap-3 px-4 py-2.5">
                     <Icon size={16} className={`shrink-0 ${iconColor}`} />

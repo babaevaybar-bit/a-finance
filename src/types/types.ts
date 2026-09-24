@@ -80,6 +80,7 @@ export interface Income {
   channel: string;
   comment: string | null;
   month_year: string | null;
+  deal_id: string | null; // если поступление создано автоматически при подтверждении сделки
   created_at: string;
   updated_at: string;
 }
@@ -106,7 +107,7 @@ export interface SalarySetting {
 }
 
 export const PAYMENT_METHODS = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'Наличные', 'Kaspi Bank и нал', 'Перечисление', 'Другое'] as const;
-export const CHANNELS = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'Наличные'] as const;
+export const CHANNELS = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'Наличные', 'Перечисление'] as const;
 
 export const DEAL_STAGES = ['new', 'in_progress', 'installed', 'closed', 'canceled'] as const;
 export const INSTALL_STAGE_LABELS: Record<string, string> = {

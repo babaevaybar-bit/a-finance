@@ -43,8 +43,15 @@ export default function ApprovalsPage() {
   }
 
   async function handleApprove(id: string) {
-    try { await approveDeal(id); toast.success('Сделка подтверждена'); await load(); }
-    catch { toast.error('Ошибка'); }
+    try {
+      const { incomeRecorded, channel } = await approveDeal(id);
+      toast.success(
+        incomeRecorded
+          ? `Сделка подтверждена, сумма добавлена в «Финансы» (${channel})`
+          : 'Сделка подтверждена — способ оплаты не привязан к конкретному каналу, добавьте поступление в «Финансы» вручную'
+      );
+      await load();
+    } catch { toast.error('Ошибка'); }
   }
 
   async function handleReject(id: string) {

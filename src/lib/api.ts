@@ -1,4 +1,5 @@
 import { supabase } from '@/db/supabase';
+import { CHANNELS } from '@/types/types';
 import type { Manager, Profile, SalesPlan, Deal, Expense, Income, Transfer, SalarySetting, EmployeePermission, ProfitRow, DailyReport, ClientReport, ClientInteraction, ClientTask, ClientChangeLog, InteractionType, DealStage, ClientQuality } from '@/types/types';
 
 // ─── Profiles ─────────────────────────────────────────────────────────────────
@@ -172,7 +173,7 @@ export async function getRecentDealsForLinking(): Promise<Pick<Deal, 'id' | 'cli
 // раздел по очереди, чтобы понять «что нового» ────────────────────────────
 export interface ActivityItem {
   id: string;
-  type: 'deal_approved' | 'deal_pending' | 'client_new';
+  type: 'deal_approved' | 'client_new';
   at: string;
   title: string;
   subtitle: string;
@@ -180,18 +181,17 @@ export interface ActivityItem {
 }
 export async function getRecentActivity(): Promise<ActivityItem[]> {
   const [{ data: recentDeals }, { data: recentClients }] = await Promise.all([
-    supabase.from('deals').select('*').order('updated_at', { ascending: false }).limit(15),
+    supabase.from('deals').select('*').eq('status', 'approved').order('updated_at', { ascending: false }).limit(15),
     supabase.from('client_reports').select('*').order('created_at', { ascending: false }).limit(15),
   ]);
 
   const dealItems: ActivityItem[] = ((recentDeals ?? []) as Deal[])
-    .filter(d => d.status !== 'rejected')
     .map(d => ({
       id: `deal-${d.id}`,
-      type: d.status === 'approved' ? 'deal_approved' : 'deal_pending',
+      type: 'deal_approved' as const,
       at: d.updated_at,
       title: d.client_name || 'Без имени',
-      subtitle: `${formatCurrencyPlain(d.total_amount)} ₸ · ${d.status === 'approved' ? 'подтверждена' : 'на проверке'}`,
+      subtitle: `${formatCurrencyPlain(d.total_amount)} ₸ · подтверждена`,
       managerId: d.manager_id,
     }));
 
@@ -249,9 +249,35 @@ export async function deleteDeal(id: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function approveDeal(id: string): Promise<void> {
+export async function approveDeal(id: string): Promise<{ incomeRecorded: boolean; channel: string | null }> {
+  const { data: deal, error: fetchErr } = await supabase.from('deals').select('*').eq('id', id).single();
+  if (fetchErr || !deal) throw fetchErr ?? new Error('Сделка не найдена');
+
   const { error } = await supabase.from('deals').update({ status: 'approved', updated_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;
+
+  // Сумма оплаты по подтверждённой сделке — сразу в «Финансы», по её каналу
+  // (Kaspi/Halyk/Freedom/Наличные/Перечисление). Если способ оплаты смешанный
+  // («Kaspi Bank и нал») или «Другое» — канал не определён, вносим вручную.
+  if (Number(deal.paid_amount) > 0 && (CHANNELS as readonly string[]).includes(deal.payment_method)) {
+    const { data: existing } = await supabase.from('income').select('id').eq('deal_id', id).maybeSingle();
+    if (!existing) {
+      await supabase.from('income').insert({
+        manager_id: null,
+        income_date: deal.deal_date,
+        from_whom: deal.client_name || 'Клиент по сделке',
+        total_amount: deal.paid_amount,
+        quantity: null,
+        channel: deal.payment_method,
+        comment: `Оплата по сделке (${deal.door_model || 'дверь'})`,
+        month_year: deal.deal_date.slice(0, 7),
+        deal_id: id,
+      });
+      return { incomeRecorded: true, channel: deal.payment_method };
+    }
+    return { incomeRecorded: true, channel: deal.payment_method }; // уже была создана ранее
+  }
+  return { incomeRecorded: false, channel: null };
 }
 
 export async function rejectDeal(id: string): Promise<void> {

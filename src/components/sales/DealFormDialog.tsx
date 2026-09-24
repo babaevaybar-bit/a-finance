@@ -9,9 +9,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { createDeal, updateDeal, createIncome } from '@/lib/api';
+import { createDeal, updateDeal } from '@/lib/api';
 import type { Deal } from '@/types/types';
-import { PAYMENT_METHODS, CHANNELS, DEAL_STAGES, INSTALL_STAGE_LABELS } from '@/types/types';
+import { PAYMENT_METHODS, DEAL_STAGES, INSTALL_STAGE_LABELS } from '@/types/types';
 
 interface Props {
   open: boolean;
@@ -117,34 +117,7 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
         toast.success('Сделка обновлена');
       } else {
         await createDeal(payload);
-        toast.success('Сделка добавлена');
-
-        // Если по новой сделке уже внесена оплата — сразу отражаем её в «Финансах»,
-        // чтобы не вводить одну и ту же сумму дважды.
-        if (form.paid_amount > 0) {
-          const matchedChannel = (CHANNELS as readonly string[]).includes(form.payment_method)
-            ? form.payment_method
-            : null;
-          if (matchedChannel) {
-            try {
-              await createIncome({
-                manager_id: null,
-                income_date: form.deal_date,
-                from_whom: form.client_name || 'Клиент по сделке',
-                total_amount: form.paid_amount,
-                quantity: null,
-                channel: matchedChannel,
-                comment: `Оплата по сделке (${form.door_model || 'дверь'})`,
-                month_year: form.deal_date.slice(0, 7),
-              });
-              toast.success('Поступление добавлено в «Финансы»');
-            } catch {
-              toast.error('Сделка сохранена, но не удалось добавить поступление в «Финансы» — внесите вручную');
-            }
-          } else {
-            toast.message('Оплата не привязана к конкретному счёту — добавьте поступление в «Финансы» вручную', { duration: 5000 });
-          }
-        }
+        toast.success('Сделка добавлена — сумма поступит в «Финансы» после подтверждения директором');
       }
       onSaved();
       onClose();
