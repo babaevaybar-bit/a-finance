@@ -102,6 +102,7 @@ export default function SearchPage() {
                     {d.address && <span className="flex items-center gap-1"><MapPin size={11} />{d.address}</span>}
                     <span>{formatDate(d.deal_date)}</span>
                     <span>{managerName(d.manager_id)}</span>
+                    {d.contract_number && <span>Договор №{d.contract_number}</span>}
                   </div>
                   <div className="text-sm font-medium mt-1">{formatCurrency(d.total_amount)}</div>
                   {d.client_phone && (

@@ -72,7 +72,8 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
     if (q) {
       list = list.filter(d =>
         (d.client_name || '').toLowerCase().includes(q) ||
-        (d.client_phone || '').toLowerCase().includes(q)
+        (d.client_phone || '').toLowerCase().includes(q) ||
+        (d.contract_number || '').toLowerCase().includes(q)
       );
     }
     const sorted = [...list].sort((a, b) => {
@@ -278,6 +279,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                         <span className="inline-flex items-center gap-1">Дата <ArrowUpDown size={11} className="text-muted-foreground" /></span>
                       </TableHead>
                       <TableHead className="whitespace-nowrap">ФИО</TableHead>
+                      <TableHead className="whitespace-nowrap">№ договора</TableHead>
                       <TableHead className="whitespace-nowrap">Оплата</TableHead>
                       <TableHead className="whitespace-nowrap">Модель</TableHead>
                       <TableHead className="whitespace-nowrap">Статус</TableHead>
@@ -302,6 +304,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm">{formatDate(d.deal_date)}</TableCell>
                         <TableCell className="whitespace-nowrap text-sm">{d.client_name || '—'}</TableCell>
+                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{d.contract_number || '—'}</TableCell>
                         <TableCell className="whitespace-nowrap text-sm">
                           {d.payment_method}
                           {d.vat_gross_amount ? (

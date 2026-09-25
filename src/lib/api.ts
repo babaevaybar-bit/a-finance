@@ -218,7 +218,7 @@ export async function searchDealsByQuery(q: string): Promise<(Deal & { manager_n
   const { data, error } = await supabase
     .from('deals')
     .select('*')
-    .or(`client_name.ilike.%${q}%,client_phone.ilike.%${q}%`)
+    .or(`client_name.ilike.%${q}%,client_phone.ilike.%${q}%,contract_number.ilike.%${q}%`)
     .order('deal_date', { ascending: false })
     .limit(30);
   if (error) throw error;

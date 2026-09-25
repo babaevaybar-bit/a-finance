@@ -170,6 +170,10 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
             <Label>Телефон клиента</Label>
             <Input placeholder="+7 700 000 0000" value={form.client_phone || ''} onChange={e => set('client_phone', e.target.value)} />
           </div>
+          <div className="space-y-1">
+            <Label>Номер договора</Label>
+            <Input placeholder="26.53" value={form.contract_number || ''} onChange={e => set('contract_number', e.target.value)} />
+          </div>
           <div className="space-y-1 md:col-span-2">
             <Label>Адрес доставки</Label>
             <Input placeholder="ул. Примерная, д. 1" value={form.address || ''} onChange={e => set('address', e.target.value)} />
