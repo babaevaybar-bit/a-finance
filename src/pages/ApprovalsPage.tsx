@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import TrelloLookup from '@/components/trello/TrelloLookup';
 
 export default function ApprovalsPage() {
+  const navigate = useNavigate();
   const { canApprove } = useAuth();
   const [tab, setTab] = useState<'pending' | 'rejected'>('pending');
   const [deals, setDeals]       = useState<Deal[]>([]);
@@ -190,7 +192,14 @@ export default function ApprovalsPage() {
                     </div>
                     <div>
                       <span className="text-muted-foreground text-xs">Клиент</span>
-                      <p className="truncate">{d.client_name || '—'}</p>
+                      <button
+                        type="button"
+                        className="truncate text-primary hover:underline text-left block"
+                        onClick={() => navigate(`/sales?manager=${d.manager_id}&month=${d.month_year}`)}
+                        title="Открыть в «Продажи» — вся информация о клиенте и сделке"
+                      >
+                        {d.client_name || '—'}
+                      </button>
                     </div>
                     <div>
                       <span className="text-muted-foreground text-xs">Сумма</span>
