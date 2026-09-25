@@ -21,7 +21,9 @@ import { PAYMENT_METHODS } from '@/types/types';
  * запись в «Финансы» по указанному каналу (если это реальный банк/нал/
  * перечисление — не «Другое»).
  */
-export default function DealPayments({ deal, onChanged }: { deal: Deal; onChanged: () => void }) {
+export default function DealPayments({ deal, onChanged, suggestedAmount, suggestedChannel }: {
+  deal: Deal; onChanged: () => void; suggestedAmount?: number; suggestedChannel?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [payments, setPayments] = useState<DealPayment[] | null>(null);
@@ -47,10 +49,10 @@ export default function DealPayments({ deal, onChanged }: { deal: Deal; onChange
   }
 
   function openAddDialog() {
-    setAmount(remainder > 0 ? remainder : 0);
-    setChannel('Kaspi Bank');
+    setAmount(suggestedAmount ?? (remainder > 0 ? remainder : 0));
+    setChannel(suggestedChannel ?? 'Kaspi Bank');
     setDate(new Date().toISOString().slice(0, 10));
-    setComment('');
+    setComment(suggestedAmount ? 'Подставлено из комментария Trello — проверьте перед сохранением' : '');
     setDialogOpen(true);
   }
 
@@ -88,6 +90,7 @@ export default function DealPayments({ deal, onChanged }: { deal: Deal; onChange
         {remainder > 0 && (
           <button type="button" className="text-xs text-primary flex items-center gap-1 hover:underline" onClick={openAddDialog}>
             <Plus size={12} />Добавить оплату
+            {suggestedAmount ? <span className="text-amber-600">(есть подсказка из Trello)</span> : null}
           </button>
         )}
       </div>

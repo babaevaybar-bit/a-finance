@@ -226,7 +226,9 @@ export default function ProductionPage() {
                       onDragStart={() => { draggedCardId.current = card.id; }}
                       onDragEnd={() => { draggedCardId.current = null; setDragOverColumn(null); }}
                       onClick={() => setSelectedCard(card)}
-                      className="group rounded-lg border border-border bg-background p-3 shadow-sm hover:shadow-md hover:border-primary/40 transition-all cursor-grab active:cursor-grabbing"
+                      className={`group rounded-lg border bg-background p-3 shadow-sm hover:shadow-md hover:border-primary/40 transition-all cursor-grab active:cursor-grabbing ${
+                        card.due && new Date(card.due).getTime() < Date.now() ? 'border-l-4 border-l-destructive border-border' : 'border-border'
+                      }`}
                     >
                       {card.labels.length > 0 && (
                         <div className="flex flex-wrap gap-1 mb-1.5">
@@ -250,8 +252,11 @@ export default function ProductionPage() {
                       )}
                       <div className="flex items-center justify-between mt-2">
                         {card.due ? (
-                          <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                          <span className={`text-[10px] flex items-center gap-1 ${
+                            new Date(card.due).getTime() < Date.now() ? 'text-destructive font-medium' : 'text-muted-foreground'
+                          }`}>
                             <Calendar size={10} />{formatDate(card.due)}
+                            {new Date(card.due).getTime() < Date.now() ? ' · просрочен' : ''}
                           </span>
                         ) : <span />}
                         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

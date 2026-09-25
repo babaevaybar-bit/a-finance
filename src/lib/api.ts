@@ -745,3 +745,39 @@ export async function getDealByPhone(phone: string): Promise<Deal | null> {
   const match = (data ?? []).find(d => (d.client_phone || '').replace(/\D/g, '').slice(-10) === digits);
   return match ?? null;
 }
+
+// ── Свой чек-лист по карточке производства (не зависит от Trello) ─────────
+export interface ProductionChecklistItem {
+  id: string;
+  trello_card_id: string;
+  label: string;
+  checked: boolean;
+  sort_order: number;
+}
+
+export async function getProductionChecklist(trelloCardId: string): Promise<ProductionChecklistItem[]> {
+  const { data, error } = await supabase
+    .from('production_checklist_items')
+    .select('*')
+    .eq('trello_card_id', trelloCardId)
+    .order('sort_order', { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function addProductionChecklistItem(trelloCardId: string, label: string, sortOrder: number): Promise<void> {
+  const { error } = await supabase.from('production_checklist_items').insert({
+    trello_card_id: trelloCardId, label, sort_order: sortOrder,
+  });
+  if (error) throw error;
+}
+
+export async function toggleProductionChecklistItem(id: string, checked: boolean): Promise<void> {
+  const { error } = await supabase.from('production_checklist_items').update({ checked }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteProductionChecklistItem(id: string): Promise<void> {
+  const { error } = await supabase.from('production_checklist_items').delete().eq('id', id);
+  if (error) throw error;
+}

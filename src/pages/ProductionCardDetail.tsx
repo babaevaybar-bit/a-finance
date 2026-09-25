@@ -6,12 +6,34 @@ import { Button } from '@/components/ui/button';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Calendar, ExternalLink, TrendingUp, MessageSquare } from 'lucide-react';
+import { Calendar, ExternalLink, TrendingUp, MessageSquare, ListChecks } from 'lucide-react';
 import { getDealByPhone } from '@/lib/api';
 import { supabase } from '@/db/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal } from '@/types/types';
 import DealPayments from '@/components/sales/DealPayments';
+import ProductionChecklist from '@/components/production/ProductionChecklist';
+
+// Комментарии обычно содержат «Оплата: 1 200 000(нал)» — вытаскиваем сумму
+// и подсказку канала, чтобы предзаполнить форму «Добавить оплату», а не
+// перепечатывать вручную.
+function extractPaymentSuggestion(comments: TrelloComment[] | null): { amount: number; channel: string } | null {
+  if (!comments) return null;
+  for (const c of comments) {
+    const m = c.text.match(/оплата[:\s]*(?:\d+%\s*)?([\d\s]{4,})\s*тг?\.?\s*\(?(нал|безнал|kaspi|каспи|перечисл)?/i);
+    if (m) {
+      const amount = Number(m[1].replace(/\s/g, ''));
+      if (!amount) continue;
+      const hint = (m[2] ?? '').toLowerCase();
+      const channel = hint.includes('нал') ? 'Наличные'
+        : hint.includes('kaspi') || hint.includes('каспи') ? 'Kaspi Bank'
+        : hint.includes('перечисл') ? 'Перечисление'
+        : 'Kaspi Bank';
+      return { amount, channel };
+    }
+  }
+  return null;
+}
 
 interface TrelloLabel { name: string; color: string; }
 interface CardLike {
@@ -129,7 +151,12 @@ export default function ProductionCardDetail({
                   <span>Оплачено: {formatCurrency(deal.paid_amount)}</span>
                   <span>Остаток: {formatCurrency(Math.max(0, deal.total_amount - deal.paid_amount))}</span>
                 </div>
-                <DealPayments deal={deal} onChanged={() => extractedPhone && getDealByPhone(extractedPhone).then(setDeal)} />
+                <DealPayments
+                  deal={deal}
+                  onChanged={() => extractedPhone && getDealByPhone(extractedPhone).then(setDeal)}
+                  suggestedAmount={extractPaymentSuggestion(comments)?.amount}
+                  suggestedChannel={extractPaymentSuggestion(comments)?.channel}
+                />
                 <Button
                   variant="ghost" size="sm" className="h-7 text-xs w-full mt-1"
                   onClick={() => navigate(`/sales?manager=${deal.manager_id}&month=${deal.month_year}`)}
@@ -138,6 +165,14 @@ export default function ProductionCardDetail({
                 </Button>
               </div>
             )}
+          </section>
+
+          {/* Свой чек-лист — не зависит от Trello */}
+          <section className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <ListChecks size={13} />Чек-лист (только у нас)
+            </p>
+            <ProductionChecklist trelloCardId={card.id} />
           </section>
 
           {/* Описание из Trello */}
