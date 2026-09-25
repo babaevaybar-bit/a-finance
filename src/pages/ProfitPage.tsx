@@ -24,7 +24,7 @@ import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
 } from 'recharts';
 import type { ProfitRow } from '@/types/types';
-import { SALES_ROLES } from '@/types/types';
+import { SALES_ROLES, COGS_CATEGORIES } from '@/types/types';
 
 // ─── Вычислитель формул ────────────────────────────────────────────────────────
 // Поддерживает: числа, +, -, *, /, скобки, переменные {revenue}, {expenses}, {salary}
@@ -54,7 +54,7 @@ export default function ProfitPage() {
   const [saving, setSaving]       = useState(false);
 
   // Авто-переменные из других разделов
-  const [autoVars, setAutoVars]   = useState({ revenue: 0, expenses: 0, salary: 0 });
+  const [autoVars, setAutoVars]   = useState({ revenue: 0, cogs: 0, expenses: 0, salary: 0 });
   const [categoryBreakdown, setCategoryBreakdown] = useState<{ category: string; amount: number }[]>([]);
   const [monthlyTrend, setMonthlyTrend] = useState<{ month: string; profit: number }[]>([]);
 
@@ -70,7 +70,14 @@ export default function ProfitPage() {
       const approved = deals.filter(d => d.status === 'approved');
       const revenue  = approved.reduce((s, d) => s + Number(d.salary_amount ?? d.total_amount), 0);
       const expsThisMonth = exps.filter(e => (e.month_year ?? e.expense_date.slice(0, 7)) === my);
-      const expenses = expsThisMonth.reduce((s, e) => s + Number(e.amount), 0);
+      // Себестоимость (закуп дверей/фурнитуры) считаем отдельно от прочих
+      // расходов — вычитается из выручки первой, до операционных расходов.
+      const cogs = expsThisMonth
+        .filter(e => (COGS_CATEGORIES as readonly string[]).includes(e.category))
+        .reduce((s, e) => s + Number(e.amount), 0);
+      const expenses = expsThisMonth
+        .filter(e => !(COGS_CATEGORIES as readonly string[]).includes(e.category))
+        .reduce((s, e) => s + Number(e.amount), 0);
       // Зарплата: оклад + комиссия
       const salary = mgrs.reduce((s, m) => {
         const sett = setts.find(ss => ss.manager_id === m.id);
@@ -82,7 +89,7 @@ export default function ProfitPage() {
           : revenue;
         return s + base + rev * (pct / 100);
       }, 0);
-      setAutoVars({ revenue, expenses, salary });
+      setAutoVars({ revenue, cogs, expenses, salary });
 
       // Структура расходов по категориям за выбранный месяц
       const byCategory = new Map<string, number>();
@@ -96,13 +103,18 @@ export default function ProfitPage() {
           .sort((a, b) => b.amount - a.amount)
       );
 
-      // Динамика чистой прибыли (выручка − расходы − ФОТ) за последние доступные месяцы
+      // Динамика чистой прибыли (выручка − закуп − операционные расходы − ФОТ) за последние доступные месяцы
       const months = getAvailableMonths().slice(-6);
       const trend = await Promise.all(months.map(async (mm) => {
         const [mDeals, mExps] = await Promise.all([getAllDealsForMonth(mm), Promise.resolve(exps)]);
         const mApproved = mDeals.filter(d => d.status === 'approved');
         const mRevenue = mApproved.reduce((s, d) => s + Number(d.salary_amount ?? d.total_amount), 0);
-        const mExpenses = mExps.filter(e => (e.month_year ?? e.expense_date.slice(0, 7)) === mm)
+        const mExpsThisMonth = mExps.filter(e => (e.month_year ?? e.expense_date.slice(0, 7)) === mm);
+        const mCogs = mExpsThisMonth
+          .filter(e => (COGS_CATEGORIES as readonly string[]).includes(e.category))
+          .reduce((s, e) => s + Number(e.amount), 0);
+        const mExpenses = mExpsThisMonth
+          .filter(e => !(COGS_CATEGORIES as readonly string[]).includes(e.category))
           .reduce((s, e) => s + Number(e.amount), 0);
         const mSalary = mgrs.reduce((s, m) => {
           const sett = setts.find(ss => ss.manager_id === m.id);
@@ -114,7 +126,7 @@ export default function ProfitPage() {
             : mRevenue;
           return s + base + rev * (pct / 100);
         }, 0);
-        return { month: monthYearToLabel(mm), profit: mRevenue - mExpenses - mSalary };
+        return { month: monthYearToLabel(mm), profit: mRevenue - mCogs - mExpenses - mSalary };
       }));
       setMonthlyTrend(trend);
     } catch { /* silent */ }
@@ -126,10 +138,12 @@ export default function ProfitPage() {
       const [dbRows] = await Promise.all([getProfitRows(monthYear), loadAutoVars(monthYear)]);
       if (dbRows.length === 0) {
         setRows([
-          { id: `new-1`, sort_order: 0, label: 'Выручка',    formula: '{revenue}',              value: 0, is_auto: true,  row_type: 'revenue',  row_type_v2: 'revenue',  percent: 0, month_year: monthYear },
-          { id: `new-2`, sort_order: 1, label: 'Расходы',    formula: '{expenses}',             value: 0, is_auto: true,  row_type: 'expenses', row_type_v2: 'expenses', percent: 0, month_year: monthYear },
-          { id: `new-3`, sort_order: 2, label: 'ФОТ',        formula: '{salary}',               value: 0, is_auto: true,  row_type: 'salary',   row_type_v2: 'salary',   percent: 0, month_year: monthYear },
-          { id: `new-4`, sort_order: 3, label: 'Чистая прибыль', formula: '{revenue}-{expenses}-{salary}', value: 0, is_auto: false, row_type: 'manual', row_type_v2: 'formula', percent: 0, month_year: monthYear },
+          { id: `new-1`, sort_order: 0, label: 'Выручка',            formula: '{revenue}',                          value: 0, is_auto: true,  row_type: 'revenue',  row_type_v2: 'revenue',  percent: 0, month_year: monthYear },
+          { id: `new-2`, sort_order: 1, label: 'Закуп дверей',       formula: '{cogs}',                             value: 0, is_auto: false, row_type: 'manual',   row_type_v2: 'formula', percent: 0, month_year: monthYear },
+          { id: `new-3`, sort_order: 2, label: 'Валовая прибыль',    formula: '{revenue}-{cogs}',                   value: 0, is_auto: false, row_type: 'manual',   row_type_v2: 'formula', percent: 0, month_year: monthYear },
+          { id: `new-4`, sort_order: 3, label: 'Операционные расходы', formula: '{expenses}',                       value: 0, is_auto: true,  row_type: 'expenses', row_type_v2: 'expenses', percent: 0, month_year: monthYear },
+          { id: `new-5`, sort_order: 4, label: 'ФОТ',                formula: '{salary}',                           value: 0, is_auto: true,  row_type: 'salary',   row_type_v2: 'salary',   percent: 0, month_year: monthYear },
+          { id: `new-6`, sort_order: 5, label: 'Чистая прибыль',      formula: '{revenue}-{cogs}-{expenses}-{salary}', value: 0, is_auto: false, row_type: 'manual', row_type_v2: 'formula', percent: 0, month_year: monthYear },
         ]);
       } else {
         setRows(dbRows.map(r => ({
@@ -213,8 +227,10 @@ export default function ProfitPage() {
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               Расчёт P&amp;L. Формулы: <code className="text-xs bg-muted px-1 rounded">{'{revenue}'}</code>{' '}
+              <code className="text-xs bg-muted px-1 rounded">{'{cogs}'}</code>{' '}
               <code className="text-xs bg-muted px-1 rounded">{'{expenses}'}</code>{' '}
               <code className="text-xs bg-muted px-1 rounded">{'{salary}'}</code>
+              <span className="block mt-0.5">{'{cogs}'} — закуп дверей/фурнитуры (COGS), {'{expenses}'} — остальные расходы, без окладов (те уже в {'{salary}'})</span>
             </p>
           </div>
           <MonthYearPicker value={monthYear} onChange={setMonthYear} className="shrink-0" />
