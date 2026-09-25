@@ -234,6 +234,7 @@ const EMPTY_INC: Omit<Income, 'id' | 'created_at' | 'updated_at'> = {
   comment: null,
   month_year: null,
   deal_id: null,
+  payment_id: null,
 };
 
 function IncomeFormDialog({ open, onClose, onSaved, income, managers }: {
@@ -244,7 +245,7 @@ function IncomeFormDialog({ open, onClose, onSaved, income, managers }: {
   const set = (k: string, v: string | number | null) => setForm(f => ({ ...f, [k]: v }));
 
   useEffect(() => {
-    if (income) setForm({ manager_id: income.manager_id, income_date: income.income_date, from_whom: income.from_whom, total_amount: income.total_amount, quantity: income.quantity, channel: income.channel, comment: income.comment, month_year: income.income_date.slice(0, 7), deal_id: income.deal_id ?? null });
+    if (income) setForm({ manager_id: income.manager_id, income_date: income.income_date, from_whom: income.from_whom, total_amount: income.total_amount, quantity: income.quantity, channel: income.channel, comment: income.comment, month_year: income.income_date.slice(0, 7), deal_id: income.deal_id ?? null, payment_id: income.payment_id ?? null });
     else setForm(EMPTY_INC);
   }, [income, open]);
 

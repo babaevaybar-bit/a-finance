@@ -1,6 +1,6 @@
 import { supabase } from '@/db/supabase';
 import { CHANNELS } from '@/types/types';
-import type { Manager, Profile, SalesPlan, Deal, Expense, Income, Transfer, SalarySetting, EmployeePermission, ProfitRow, DailyReport, ClientReport, ClientInteraction, ClientTask, ClientChangeLog, InteractionType, DealStage, ClientQuality } from '@/types/types';
+import type { Manager, Profile, SalesPlan, Deal, Expense, Income, Transfer, SalarySetting, EmployeePermission, ProfitRow, DailyReport, ClientReport, ClientInteraction, ClientTask, ClientChangeLog, InteractionType, DealStage, ClientQuality, DealPayment } from '@/types/types';
 
 // ─── Profiles ─────────────────────────────────────────────────────────────────
 
@@ -257,11 +257,21 @@ export async function approveDeal(id: string): Promise<{ incomeRecorded: boolean
   if (error) throw error;
 
   // Сумма оплаты по подтверждённой сделке — сразу в «Финансы», по её каналу
-  // (Kaspi/Halyk/Freedom/RBK/Наличные/Перечисление). Если способ оплаты
+  // (Kaspi/Halyk/Freedom/RBK/Наличные/Перечисление), и как первая запись
+  // в историю платежей по сделке (deal_payments). Если способ оплаты
   // «Другое» — канал не определён, вносим вручную.
-  if (Number(deal.paid_amount) > 0 && (CHANNELS as readonly string[]).includes(deal.payment_method)) {
-    const { data: existing } = await supabase.from('income').select('id').eq('deal_id', id).maybeSingle();
-    if (!existing) {
+  // Защита от задвоения при повторном подтверждении (после восстановления
+  // из отклонённых) — проверяем, нет ли уже платежа по этой сделке.
+  const { data: existingPayment } = await supabase.from('deal_payments').select('id').eq('deal_id', id).limit(1).maybeSingle();
+  if (!existingPayment && Number(deal.paid_amount) > 0 && (CHANNELS as readonly string[]).includes(deal.payment_method)) {
+    const { data: payment, error: payErr } = await supabase.from('deal_payments').insert({
+      deal_id: id,
+      amount: deal.paid_amount,
+      payment_date: deal.deal_date,
+      channel: deal.payment_method,
+      comment: 'Первоначальная оплата (при подтверждении сделки)',
+    }).select('id').single();
+    if (!payErr && payment) {
       await supabase.from('income').insert({
         manager_id: null,
         income_date: deal.deal_date,
@@ -272,12 +282,70 @@ export async function approveDeal(id: string): Promise<{ incomeRecorded: boolean
         comment: `Оплата по сделке (${deal.door_model || 'дверь'})`,
         month_year: deal.deal_date.slice(0, 7),
         deal_id: id,
+        payment_id: payment.id,
       });
-      return { incomeRecorded: true, channel: deal.payment_method };
     }
-    return { incomeRecorded: true, channel: deal.payment_method }; // уже была создана ранее
+    return { incomeRecorded: true, channel: deal.payment_method };
   }
+  if (existingPayment) return { incomeRecorded: true, channel: deal.payment_method }; // уже была создана ранее
   return { incomeRecorded: false, channel: null };
+}
+
+// ── История доплат по сделке ────────────────────────────────────────────────
+// Клиенты редко платят всю сумму сразу; каждая следующая оплата фиксируется
+// здесь, автоматически уменьшает остаток по сделке и создаёт запись в
+// «Финансы» по нужному каналу.
+export async function getDealPayments(dealId: string): Promise<DealPayment[]> {
+  const { data, error } = await supabase
+    .from('deal_payments')
+    .select('*')
+    .eq('deal_id', dealId)
+    .order('payment_date', { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function addDealPayment(
+  dealId: string,
+  amount: number,
+  channel: string,
+  paymentDate: string,
+  comment?: string
+): Promise<{ incomeRecorded: boolean }> {
+  const { data: deal, error: dealErr } = await supabase.from('deals').select('*').eq('id', dealId).single();
+  if (dealErr || !deal) throw dealErr ?? new Error('Сделка не найдена');
+
+  const { data: payment, error: payErr } = await supabase.from('deal_payments').insert({
+    deal_id: dealId,
+    amount,
+    payment_date: paymentDate,
+    channel,
+    comment: comment || null,
+  }).select('id').single();
+  if (payErr || !payment) throw payErr ?? new Error('Не удалось сохранить платёж');
+
+  const { error: updErr } = await supabase
+    .from('deals')
+    .update({ paid_amount: Number(deal.paid_amount) + Number(amount), updated_at: new Date().toISOString() })
+    .eq('id', dealId);
+  if (updErr) throw updErr;
+
+  if ((CHANNELS as readonly string[]).includes(channel)) {
+    await supabase.from('income').insert({
+      manager_id: null,
+      income_date: paymentDate,
+      from_whom: deal.client_name || 'Клиент по сделке',
+      total_amount: amount,
+      quantity: null,
+      channel,
+      comment: comment || `Доплата по сделке (${deal.door_model || 'дверь'})`,
+      month_year: paymentDate.slice(0, 7),
+      deal_id: dealId,
+      payment_id: payment.id,
+    });
+    return { incomeRecorded: true };
+  }
+  return { incomeRecorded: false };
 }
 
 export async function rejectDeal(id: string): Promise<void> {

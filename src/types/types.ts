@@ -82,8 +82,19 @@ export interface Income {
   comment: string | null;
   month_year: string | null;
   deal_id: string | null; // если поступление создано автоматически при подтверждении сделки
+  payment_id: string | null; // конкретный платёж из истории оплат по сделке (deal_payments)
   created_at: string;
   updated_at: string;
+}
+
+export interface DealPayment {
+  id: string;
+  deal_id: string;
+  amount: number;
+  payment_date: string;
+  channel: string;
+  comment: string | null;
+  created_at: string;
 }
 
 export interface Transfer {

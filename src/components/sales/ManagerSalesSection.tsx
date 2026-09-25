@@ -19,6 +19,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, SalesPlan } from '@/types/types';
 import { INSTALL_STAGE_LABELS, DEAL_STATUS_LABELS } from '@/types/types';
 import DealFormDialog from './DealFormDialog';
+import DealPayments from './DealPayments';
 import TrelloLookup from '@/components/trello/TrelloLookup';
 
 interface Props {
@@ -321,7 +322,10 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm text-right">{formatCurrency(d.total_amount)}</TableCell>
                         <TableCell className="whitespace-nowrap text-sm text-right">{formatCurrency(d.paid_amount)}</TableCell>
-                        <TableCell className="whitespace-nowrap text-sm text-right">{formatCurrency(Math.max(0, d.total_amount - d.paid_amount))}</TableCell>
+                        <TableCell className="whitespace-nowrap text-sm text-right align-top">
+                          {formatCurrency(Math.max(0, d.total_amount - d.paid_amount))}
+                          <DealPayments deal={d} onChanged={onRefresh} />
+                        </TableCell>
                         <TableCell className="whitespace-nowrap text-sm text-right text-muted-foreground">
                           {d.salary_amount !== null && d.salary_amount !== undefined
                             ? formatCurrency(d.salary_amount)
