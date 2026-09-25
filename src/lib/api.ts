@@ -707,3 +707,29 @@ export async function upsertClientReportWithLog(
   return clientId;
 }
 
+// ── Раздел «Производство»: локальные положения карточек Trello ────────────
+// Когда пользователь перетаскивает карточку в разделе A-Finance, реальная
+// Trello не меняется — сохраняем это только здесь и подставляем поверх при
+// отображении.
+export interface ProductionOverride {
+  trello_card_id: string;
+  overridden_stage: string;
+}
+
+export async function getProductionOverrides(): Promise<ProductionOverride[]> {
+  const { data, error } = await supabase.from('production_card_overrides').select('trello_card_id, overridden_stage');
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function setProductionOverride(trelloCardId: string, overriddenStage: string): Promise<void> {
+  const { error } = await supabase
+    .from('production_card_overrides')
+    .upsert({ trello_card_id: trelloCardId, overridden_stage: overriddenStage, updated_at: new Date().toISOString() }, { onConflict: 'trello_card_id' });
+  if (error) throw error;
+}
+
+export async function clearProductionOverride(trelloCardId: string): Promise<void> {
+  const { error } = await supabase.from('production_card_overrides').delete().eq('trello_card_id', trelloCardId);
+  if (error) throw error;
+}
