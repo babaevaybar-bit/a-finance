@@ -7,6 +7,7 @@ export interface Manager {
   base_salary: number;
   bonus_percentage: number;
   is_active: boolean;
+  amocrm_user_id: string | null;
   created_at: string;
 }
 

@@ -20,7 +20,7 @@ import { getManagers, createManager, updateManager, deleteManager, getSalarySett
 import { supabase } from '@/db/supabase';
 import type { Manager, SalarySetting } from '@/types/types';
 import { ROLES } from '@/types/types';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatDate } from '@/lib/utils';
 
 function roleBadgeVariant(role: string): 'default' | 'secondary' | 'outline' {
   if (role === 'Менеджер по продажам') return 'default';
@@ -88,6 +88,19 @@ function SalaryInlineRow({ manager, setting, onSaved }: SalaryRowProps) {
       }}><X size={12} /></Button>
     </div>
   );
+}
+
+// Сложный случайный пароль — буквы разного регистра, цифры, спецсимвол
+function generateStrongPassword(): string {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghijkmnpqrstuvwxyz';
+  const digits = '23456789';
+  const special = '!@#$%';
+  const all = upper + lower + digits + special;
+  const pick = (s: string) => s[Math.floor(Math.random() * s.length)];
+  let pwd = pick(upper) + pick(lower) + pick(digits) + pick(special);
+  for (let i = 0; i < 8; i++) pwd += pick(all);
+  return pwd.split('').sort(() => Math.random() - 0.5).join('');
 }
 
 export default function ManagersPage() {
@@ -170,7 +183,11 @@ export default function ManagersPage() {
         await updateManager(managerId, name, role, userId);
       }
       setNewName(''); setNewRole(ROLES[0]); setNewRoleCustom(''); setNewUsername(''); setNewPassword('');
-      toast.success(`Сотрудник «${name}» добавлен${userId ? ' с аккаунтом' : ''}`);
+      toast.success(
+        userId
+          ? `Сотрудник «${name}» добавлен — на его почту отправлено письмо для подтверждения аккаунта`
+          : `Сотрудник «${name}» добавлен`
+      );
       await load();
     } catch { toast.error('Не удалось добавить'); }
     finally { setSaving(false); }
@@ -278,7 +295,12 @@ export default function ManagersPage() {
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Пароль</Label>
-                  <Input type="password" placeholder="Мин. 6 символов" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" />
+                  <div className="flex gap-1.5">
+                    <Input placeholder="Мин. 6 символов" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" />
+                    <Button type="button" variant="outline" size="sm" className="h-9 shrink-0" onClick={() => setNewPassword(generateStrongPassword())}>
+                      Сгенерировать
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-1 md:col-span-2">
                   <Label className="text-xs">Email для восстановления пароля</Label>
@@ -335,6 +357,14 @@ export default function ManagersPage() {
                                   <KeyRound size={10} />Есть аккаунт
                                 </span>
                               )}
+                              {!m.is_active && (
+                                <Badge variant="outline" className="text-xs shrink-0 border-destructive/40 text-destructive">Неактивен</Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground mt-0.5">
+                              {m.phone && <span>{m.phone}</span>}
+                              <span>в системе с {formatDate(m.created_at)}</span>
+                              {m.amocrm_user_id && <span>привязан к amoCRM</span>}
                             </div>
                             <SalaryInlineRow manager={m} setting={settings.find(s => s.manager_id === m.id)} onSaved={load} />
                           </div>
@@ -415,7 +445,12 @@ export default function ManagersPage() {
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Пароль</Label>
-                  <Input type="password" placeholder="Мин. 6 символов" value={editPassword} onChange={e => setEditPassword(e.target.value)} autoComplete="new-password" />
+                  <div className="flex gap-1.5">
+                    <Input placeholder="Мин. 6 символов" value={editPassword} onChange={e => setEditPassword(e.target.value)} autoComplete="new-password" />
+                    <Button type="button" variant="outline" size="sm" className="h-9 shrink-0" onClick={() => setEditPassword(generateStrongPassword())}>
+                      Сгенерировать
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-1 md:col-span-2">
                   <Label className="text-xs">Email для восстановления пароля</Label>
