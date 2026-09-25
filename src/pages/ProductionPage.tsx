@@ -12,7 +12,32 @@ interface TrelloCard {
   id: string; name: string; desc: string; due: string | null;
   dateLastActivity: string; url: string; labels: TrelloLabel[];
 }
-interface TrelloList { id: string; name: string; cards: TrelloCard[]; }
+interface TrelloList { id: string; name: string; cards: TrelloCard[]; isPlanned?: boolean; }
+
+// Этапы, которых пока нет в реальной Trello — показываем как пустые
+// заготовки на будущее, ничего не меняя в самой доске. Вставляются рядом
+// с существующими этапами, где по логике должны быть.
+const PLANNED_STAGES: { name: string; afterList?: string; beforeList?: string }[] = [
+  { name: 'Заказ на фабрике', beforeList: 'В Пройзводстве' },
+  { name: 'В пути (на склад)', afterList: 'В Пройзводстве' },
+  { name: 'Склад Астана', beforeList: 'Склад Альянс' },
+  { name: 'Контроль при приёмке', afterList: 'Склад Шымкент' },
+];
+
+function withPlannedStages(realLists: TrelloList[]): TrelloList[] {
+  const result = [...realLists];
+  for (const stage of PLANNED_STAGES) {
+    const placeholder: TrelloList = { id: `planned-${stage.name}`, name: stage.name, cards: [], isPlanned: true };
+    let idx = stage.beforeList ? result.findIndex(l => l.name === stage.beforeList) : -1;
+    if (idx === -1 && stage.afterList) {
+      const afterIdx = result.findIndex(l => l.name === stage.afterList);
+      idx = afterIdx === -1 ? result.length : afterIdx + 1;
+    }
+    if (idx === -1) idx = result.length;
+    result.splice(idx, 0, placeholder);
+  }
+  return result;
+}
 
 const LABEL_COLOR_MAP: Record<string, string> = {
   green: 'bg-green-100 text-green-800', yellow: 'bg-yellow-100 text-yellow-800',
@@ -53,7 +78,7 @@ export default function ProductionPage() {
         setError(res.data?.error ?? res.error?.message ?? 'Ошибка загрузки');
         setLists([]);
       } else {
-        setLists(res.data?.lists ?? []);
+        setLists(withPlannedStages(res.data?.lists ?? []));
       }
     } catch {
       setError('Не удалось связаться с Trello');
@@ -68,7 +93,7 @@ export default function ProductionPage() {
   const filteredLists = q
     ? lists.map(l => ({ ...l, cards: l.cards.filter(c => c.name.toLowerCase().includes(q)) }))
     : lists;
-  const nonEmptyLists = filteredLists.filter(l => l.cards.length > 0 || !q);
+  const nonEmptyLists = filteredLists.filter(l => l.cards.length > 0 || !q || l.isPlanned);
   const totalCards = lists.reduce((s, l) => s + l.cards.length, 0);
 
   return (
@@ -104,14 +129,23 @@ export default function ProductionPage() {
         ) : !error && (
           <div className="flex gap-4 overflow-x-auto pb-4">
             {nonEmptyLists.map(list => (
-              <div key={list.id} className="shrink-0 w-80">
+              <div key={list.id} className={`shrink-0 w-80 ${list.isPlanned ? 'opacity-70' : ''}`}>
                 <div className="flex items-center justify-between mb-2 px-1">
-                  <h3 className="text-sm font-semibold">{list.name}</h3>
+                  <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                    {list.name}
+                    {list.isPlanned && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-dashed border-border">
+                        заготовка
+                      </span>
+                    )}
+                  </h3>
                   <span className="text-xs text-muted-foreground">{list.cards.length}</span>
                 </div>
-                <div className="space-y-2">
+                <div className={`space-y-2 rounded-lg ${list.isPlanned ? 'border-2 border-dashed border-border min-h-16 p-2' : ''}`}>
                   {list.cards.length === 0 ? (
-                    <p className="text-xs text-muted-foreground px-1">Пусто</p>
+                    <p className="text-xs text-muted-foreground px-1">
+                      {list.isPlanned ? 'Пока не используется — этап на будущее' : 'Пусто'}
+                    </p>
                   ) : list.cards.map(card => (
                     <a
                       key={card.id}
