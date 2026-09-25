@@ -16,6 +16,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
+import TrelloLookup from '@/components/trello/TrelloLookup';
 import {
   Phone, MapPin, Flame, Thermometer, Snowflake, Plus, Trash2,
   CheckSquare, Square, Calendar, Clock, MessageSquare, PhoneCall,
@@ -364,6 +365,11 @@ export default function ClientCard({ client, open, onClose, managers, onClientUp
                   </div>
                 </div>
               ) : null}
+              {client.client_phone && (
+                <div className="pt-1">
+                  <TrelloLookup phone={client.client_phone} />
+                </div>
+              )}
             </section>
             {/* Теги */}
             {(client.tags?.length > 0 || true) && (

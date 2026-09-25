@@ -8,6 +8,7 @@ import { searchDealsByQuery, searchClientReportsByQuery, getManagers } from '@/l
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, ClientReport, Manager } from '@/types/types';
 import { CLIENT_QUALITY_LABELS, DEAL_STAGE_LABELS } from '@/types/types';
+import TrelloLookup from '@/components/trello/TrelloLookup';
 
 const STATUS_LABELS: Record<string, string> = { pending: 'на проверке', approved: 'подтверждена', rejected: 'отклонена' };
 const STATUS_COLORS: Record<string, string> = {
@@ -103,6 +104,11 @@ export default function SearchPage() {
                     <span>{managerName(d.manager_id)}</span>
                   </div>
                   <div className="text-sm font-medium mt-1">{formatCurrency(d.total_amount)}</div>
+                  {d.client_phone && (
+                    <div className="mt-1.5" onClick={e => e.stopPropagation()}>
+                      <TrelloLookup phone={d.client_phone} contractNumber={d.contract_number} />
+                    </div>
+                  )}
                 </div>
               ))}
             </CardContent>
@@ -135,6 +141,11 @@ export default function SearchPage() {
                   </div>
                   {c.deal_id && (
                     <div className="text-xs text-green-700 mt-1">✓ Привязана к сделке в «Продажи»</div>
+                  )}
+                  {c.client_phone && (
+                    <div className="mt-1.5" onClick={e => e.stopPropagation()}>
+                      <TrelloLookup phone={c.client_phone} />
+                    </div>
                   )}
                 </div>
               ))}

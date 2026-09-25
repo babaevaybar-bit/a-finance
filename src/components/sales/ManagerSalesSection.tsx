@@ -19,6 +19,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, SalesPlan } from '@/types/types';
 import { INSTALL_STAGE_LABELS, DEAL_STATUS_LABELS } from '@/types/types';
 import DealFormDialog from './DealFormDialog';
+import TrelloLookup from '@/components/trello/TrelloLookup';
 
 interface Props {
   manager: { id: string; name: string; role?: string };
@@ -314,6 +315,9 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                           {INSTALL_STAGE_LABELS[d.stage] || d.stage}
+                          <div className="mt-1">
+                            <TrelloLookup phone={d.client_phone} contractNumber={d.contract_number} />
+                          </div>
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm text-right">{formatCurrency(d.total_amount)}</TableCell>
                         <TableCell className="whitespace-nowrap text-sm text-right">{formatCurrency(d.paid_amount)}</TableCell>
