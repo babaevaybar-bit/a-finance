@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { RefreshCw, Search, Calendar, ExternalLink, RotateCcw, GripVertical } from 'lucide-react';
 import { supabase } from '@/db/supabase';
 import { getProductionOverrides, setProductionOverride, clearProductionOverride } from '@/lib/api';
+import ProductionCardDetail from './ProductionCardDetail';
 
 interface TrelloLabel { name: string; color: string; }
 interface TrelloCard {
@@ -53,6 +54,7 @@ export default function ProductionPage() {
   const [search, setSearch] = useState('');
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const draggedCardId = useRef<string | null>(null);
+  const [selectedCard, setSelectedCard] = useState<PlacedCard | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -118,11 +120,7 @@ export default function ProductionPage() {
     .filter(col => col.cards.length > 0 || !q || col.isPlanned);
   const totalCards = columns.reduce((s, c) => s + c.cards.length, 0);
 
-  async function handleDrop(columnName: string) {
-    setDragOverColumn(null);
-    const cardId = draggedCardId.current;
-    draggedCardId.current = null;
-    if (!cardId) return;
+  async function moveCard(cardId: string, columnName: string) {
     const card = columns.flatMap(c => c.cards).find(c => c.id === cardId);
     if (!card || card.effectiveStage === columnName) return;
     try {
@@ -140,6 +138,14 @@ export default function ProductionPage() {
     } catch {
       /* тихо игнорируем — при следующей загрузке подтянется актуальное */
     }
+  }
+
+  async function handleDrop(columnName: string) {
+    setDragOverColumn(null);
+    const cardId = draggedCardId.current;
+    draggedCardId.current = null;
+    if (!cardId) return;
+    await moveCard(cardId, columnName);
   }
 
   async function handleReset(card: PlacedCard) {
@@ -219,6 +225,7 @@ export default function ProductionPage() {
                       draggable
                       onDragStart={() => { draggedCardId.current = card.id; }}
                       onDragEnd={() => { draggedCardId.current = null; setDragOverColumn(null); }}
+                      onClick={() => setSelectedCard(card)}
                       className="group rounded-lg border border-border bg-background p-3 shadow-sm hover:shadow-md hover:border-primary/40 transition-all cursor-grab active:cursor-grabbing"
                     >
                       {card.labels.length > 0 && (
@@ -234,7 +241,7 @@ export default function ProductionPage() {
                       {card.isOverridden && (
                         <button
                           type="button"
-                          onClick={() => handleReset(card)}
+                          onClick={e => { e.stopPropagation(); handleReset(card); }}
                           className="mt-1.5 text-[10px] text-primary flex items-center gap-1 hover:underline"
                           title={`На самом деле в Trello: «${card.realStage}»`}
                         >
@@ -262,6 +269,18 @@ export default function ProductionPage() {
           </div>
         )}
       </div>
+
+      <ProductionCardDetail
+        card={selectedCard}
+        effectiveStage={selectedCard?.effectiveStage ?? ''}
+        allStages={columnOrder}
+        onStageChange={(cardId, stage) => {
+          moveCard(cardId, stage);
+          setSelectedCard(prev => (prev && prev.id === cardId ? { ...prev, effectiveStage: stage, isOverridden: stage !== prev.realStage } : prev));
+        }}
+        open={!!selectedCard}
+        onClose={() => setSelectedCard(null)}
+      />
     </AppLayout>
   );
 }

@@ -733,3 +733,15 @@ export async function clearProductionOverride(trelloCardId: string): Promise<voi
   const { error } = await supabase.from('production_card_overrides').delete().eq('trello_card_id', trelloCardId);
   if (error) throw error;
 }
+
+// Находит сделку в «Продажи» по номеру телефона (сравнение по последним
+// 10 цифрам — не зависит от формата +7/8/пробелов). Используется, чтобы
+// показать в карточке производства реальную сумму/оплаты по клиенту.
+export async function getDealByPhone(phone: string): Promise<Deal | null> {
+  const digits = phone.replace(/\D/g, '').slice(-10);
+  if (digits.length < 7) return null;
+  const { data, error } = await supabase.from('deals').select('*').not('client_phone', 'is', null);
+  if (error) throw error;
+  const match = (data ?? []).find(d => (d.client_phone || '').replace(/\D/g, '').slice(-10) === digits);
+  return match ?? null;
+}
