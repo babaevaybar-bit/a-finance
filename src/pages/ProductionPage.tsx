@@ -20,7 +20,6 @@ interface TrelloList { id: string; name: string; cards: TrelloCard[]; isPlanned?
 const PLANNED_STAGES: { name: string; afterList?: string; beforeList?: string }[] = [
   { name: 'Заказ на фабрике', beforeList: 'В Пройзводстве' },
   { name: 'В пути (на склад)', afterList: 'В Пройзводстве' },
-  { name: 'Склад Астана', beforeList: 'Склад Альянс' },
   { name: 'Контроль при приёмке', afterList: 'Склад Шымкент' },
 ];
 
