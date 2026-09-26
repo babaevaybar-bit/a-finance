@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select';
 import {
   Calendar, ExternalLink, TrendingUp, MessageSquare, ListChecks, MapPin, Phone,
-  ChevronDown, Banknote, Ruler, Plus,
+  ChevronDown, Banknote, Ruler, Plus, Package,
 } from 'lucide-react';
 import { getDealByPhone, getManagers, createDealAndGetId } from '@/lib/api';
 import { supabase } from '@/db/supabase';
@@ -216,24 +216,38 @@ export default function ProductionCardDetail({
   return (
     <Sheet open={open} onOpenChange={v => !v && onClose()}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader className="text-left space-y-3">
-          <SheetTitle className="text-base leading-snug">{parsed.client}</SheetTitle>
+        <SheetHeader className="text-left space-y-0">
+          <div className="flex items-start justify-between gap-3">
+            <SheetTitle className="text-lg leading-snug">{parsed.client}</SheetTitle>
+            {parsed.amount != null && (
+              <span className="text-lg font-semibold whitespace-nowrap shrink-0">{formatCurrency(parsed.amount)}</span>
+            )}
+          </div>
+
           {(parsed.address || parsed.product || parsed.phone) && (
-            <div className="space-y-1">
+            <dl className="mt-3 grid grid-cols-[16px_1fr] gap-x-2 gap-y-1.5 text-sm">
               {parsed.address && (
-                <p className="text-xs text-muted-foreground flex items-start gap-1">
-                  <MapPin size={11} className="mt-0.5 shrink-0" />{parsed.address}
-                </p>
+                <>
+                  <MapPin size={14} className="mt-0.5 text-muted-foreground" />
+                  <dd className="text-muted-foreground">{parsed.address}</dd>
+                </>
               )}
-              {parsed.product && <p className="text-xs text-muted-foreground">{parsed.product}</p>}
+              {parsed.product && (
+                <>
+                  <Package size={14} className="mt-0.5 text-muted-foreground" />
+                  <dd className="text-muted-foreground">{parsed.product}</dd>
+                </>
+              )}
               {parsed.phone && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Phone size={11} />{parsed.phone}
-                </p>
+                <>
+                  <Phone size={14} className="mt-0.5 text-muted-foreground" />
+                  <dd className="text-muted-foreground">{parsed.phone}</dd>
+                </>
               )}
-            </div>
+            </dl>
           )}
-          <div className="flex items-center gap-2">
+
+          <div className="mt-4 pt-3 border-t border-border flex items-center justify-between gap-2 flex-wrap">
             <Select value={effectiveStage} onValueChange={v => onStageChange(card.id, v)}>
               <SelectTrigger className="h-8 text-xs w-auto"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -244,17 +258,22 @@ export default function ProductionCardDetail({
               Открыть в Trello<ExternalLink size={11} />
             </a>
           </div>
-          {card.labels.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {card.labels.map((lb, i) => (
-                <span key={i} className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${labelClass(lb.color)}`}>{lb.name}</span>
-              ))}
+
+          {(card.labels.length > 0 || card.due) && (
+            <div className="mt-2.5 flex items-center justify-between gap-2 flex-wrap">
+              {card.labels.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {card.labels.map((lb, i) => (
+                    <span key={i} className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${labelClass(lb.color)}`}>{lb.name}</span>
+                  ))}
+                </div>
+              ) : <span />}
+              {card.due && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
+                  <Calendar size={12} />{formatDate(card.due)}
+                </p>
+              )}
             </div>
-          )}
-          {card.due && (
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <Calendar size={12} />Срок: {formatDate(card.due)}
-            </p>
           )}
         </SheetHeader>
 

@@ -93,7 +93,14 @@ export function parseCardName(name: string): ParsedCard {
   if (parts.length < 2) return { client: name, address: null, phone: null, product: null, amount: null, manager: null };
 
   let rest = parts;
-  if (/^[\d][\d.\-]*$/.test(rest[0])) rest = rest.slice(1);
+  if (/^[\d][\d.\-]*$/.test(rest[0])) {
+    // Код и имя разделены через « - » (обычный случай): «26-00-48 - Райхан»
+    rest = rest.slice(1);
+  } else {
+    // Код и имя написаны через пробел, без тире: «26-00-34 Жасулан»
+    const codeSpaceMatch = rest[0].match(/^([\d][\d.\-]*)\s+(.+)$/);
+    if (codeSpaceMatch) rest = [codeSpaceMatch[2], ...rest.slice(1)];
+  }
   if (rest.length === 0) return { client: name, address: null, phone: null, product: null, amount: null, manager: null };
 
   const phoneRe = /(\+?7|8)[\s-]?\d{3}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}/;
