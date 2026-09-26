@@ -100,6 +100,10 @@ export default {
                 card: 'var(--shadow-card)',
                 hover: 'var(--shadow-hover)'
             },
+            fontFamily: {
+                sans: ['Nunito', 'system-ui', 'sans-serif'],
+                display: ['Quicksand', 'system-ui', 'sans-serif']
+            },
             keyframes: {
                 'accordion-down': {
                     from: {
