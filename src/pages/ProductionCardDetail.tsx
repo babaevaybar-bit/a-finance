@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,8 +10,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Calendar, ExternalLink, TrendingUp, MessageSquare, ListChecks, MapPin, Phone,
-  ChevronDown, Banknote, Ruler, Plus, Package,
+  Calendar, ExternalLink, TrendingUp, MapPin, Phone,
+  Banknote, Ruler, Plus, Package, X,
 } from 'lucide-react';
 import { getDealByPhone, getManagers, createDealAndGetId } from '@/lib/api';
 import { supabase } from '@/db/supabase';
@@ -69,26 +70,6 @@ const STATUS_COLORS: Record<string, string> = {
   approved: 'bg-green-50 text-green-700 border-green-200',
   rejected: 'bg-red-50 text-red-700 border-red-200',
 };
-
-// Свёрнутая по умолчанию секция — заголовок кликается, стрелка крутится
-function CollapsibleSection({ title, icon, defaultOpen, children }: {
-  title: string; icon: React.ReactNode; defaultOpen?: boolean; children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(!!defaultOpen);
-  return (
-    <section>
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-muted-foreground py-1"
-      >
-        <span className="flex items-center gap-1.5">{icon}{title}</span>
-        <ChevronDown size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-      {open && <div className="mt-2 space-y-2">{children}</div>}
-    </section>
-  );
-}
 
 function CreateDealInline({ card, parsed, onCreated }: {
   card: CardLike; parsed: ReturnType<typeof parseCardName>; onCreated: (deal: Deal) => void;
@@ -210,44 +191,58 @@ export default function ProductionCardDetail({
 
   if (!card) return null;
   const parsed = parseCardName(card.name);
-  const lastPaymentComment = comments?.find(c => isPaymentComment(c.text)) ?? null;
-  const lastTechComment = comments?.find(c => !isPaymentComment(c.text)) ?? null;
+  const paymentComments = comments?.filter(c => isPaymentComment(c.text)) ?? [];
+  const techComments = comments?.filter(c => !isPaymentComment(c.text)) ?? [];
+  const overdue = !!card.due && new Date(card.due).getTime() < Date.now();
 
   return (
-    <Sheet open={open} onOpenChange={v => !v && onClose()}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader className="text-left space-y-0">
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-2xl p-0 flex flex-col max-h-[85vh] overflow-hidden gap-0">
+        {/* Header — как в карточке клиента: имя+сумма, значки статуса, крестик */}
+        <div className="px-5 pt-5 pb-3 border-b border-border shrink-0">
           <div className="flex items-start justify-between gap-3">
-            <SheetTitle className="text-lg leading-snug">{parsed.client}</SheetTitle>
-            {parsed.amount != null && (
-              <span className="text-lg font-semibold whitespace-nowrap shrink-0">{formatCurrency(parsed.amount)}</span>
-            )}
+            <div className="min-w-0">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <h2 className="text-lg font-semibold truncate">{parsed.client}</h2>
+                {parsed.amount != null && (
+                  <span className="text-lg font-semibold text-muted-foreground shrink-0">{formatCurrency(parsed.amount)}</span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <span className="px-2 py-0.5 rounded-full text-xs border font-medium bg-muted/60 border-border">
+                  {effectiveStage}
+                </span>
+                {overdue && (
+                  <span className="px-2 py-0.5 rounded-full text-xs bg-red-50 text-red-700 border border-red-200 font-medium">
+                    Просрочен
+                  </span>
+                )}
+                {card.labels.map((lb, i) => (
+                  <span key={i} className={`text-xs px-2 py-0.5 rounded-full font-medium ${labelClass(lb.color)}`}>{lb.name}</span>
+                ))}
+              </div>
+            </div>
+            <Button variant="ghost" size="icon" className="shrink-0 h-8 w-8" onClick={onClose}>
+              <X size={16} />
+            </Button>
           </div>
 
-          {(parsed.address || parsed.product || parsed.phone) && (
-            <dl className="mt-3 grid grid-cols-[16px_1fr] gap-x-2 gap-y-1.5 text-sm">
-              {parsed.address && (
-                <>
-                  <MapPin size={14} className="mt-0.5 text-muted-foreground" />
-                  <dd className="text-muted-foreground">{parsed.address}</dd>
-                </>
-              )}
-              {parsed.product && (
-                <>
-                  <Package size={14} className="mt-0.5 text-muted-foreground" />
-                  <dd className="text-muted-foreground">{parsed.product}</dd>
-                </>
-              )}
-              {parsed.phone && (
-                <>
-                  <Phone size={14} className="mt-0.5 text-muted-foreground" />
-                  <dd className="text-muted-foreground">{parsed.phone}</dd>
-                </>
-              )}
-            </dl>
-          )}
+          <dl className="mt-3 grid grid-cols-[16px_1fr] gap-x-2 gap-y-1 text-sm">
+            {parsed.address && (
+              <><MapPin size={14} className="mt-0.5 text-muted-foreground" /><dd className="text-muted-foreground">{parsed.address}</dd></>
+            )}
+            {parsed.product && (
+              <><Package size={14} className="mt-0.5 text-muted-foreground" /><dd className="text-muted-foreground">{parsed.product}</dd></>
+            )}
+            {parsed.phone && (
+              <><Phone size={14} className="mt-0.5 text-muted-foreground" /><dd className="text-muted-foreground">{parsed.phone}</dd></>
+            )}
+            {card.due && (
+              <><Calendar size={14} className="mt-0.5 text-muted-foreground" /><dd className="text-muted-foreground">Срок: {formatDate(card.due)}</dd></>
+            )}
+          </dl>
 
-          <div className="mt-4 pt-3 border-t border-border flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-3 mt-3">
             <Select value={effectiveStage} onValueChange={v => onStageChange(card.id, v)}>
               <SelectTrigger className="h-8 text-xs w-auto"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -258,103 +253,96 @@ export default function ProductionCardDetail({
               Открыть в Trello<ExternalLink size={11} />
             </a>
           </div>
+        </div>
 
-          {(card.labels.length > 0 || card.due) && (
-            <div className="mt-2.5 flex items-center justify-between gap-2 flex-wrap">
-              {card.labels.length > 0 ? (
-                <div className="flex flex-wrap gap-1">
-                  {card.labels.map((lb, i) => (
-                    <span key={i} className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${labelClass(lb.color)}`}>{lb.name}</span>
-                  ))}
-                </div>
-              ) : <span />}
-              {card.due && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
-                  <Calendar size={12} />{formatDate(card.due)}
-                </p>
-              )}
-            </div>
-          )}
-        </SheetHeader>
+        <Tabs defaultValue="main" className="flex-1 flex flex-col min-h-0">
+          <TabsList className="mx-5 mt-3 shrink-0 justify-start bg-muted/50 w-auto">
+            <TabsTrigger value="main" className="text-xs">Основное</TabsTrigger>
+            <TabsTrigger value="checklist" className="text-xs">Чек-лист</TabsTrigger>
+            <TabsTrigger value="comments" className="text-xs">
+              Комментарии{comments && comments.length > 0 ? ` (${comments.length})` : ''}
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Краткая сводка — не нужно листать вниз, чтобы узнать последнее состояние */}
-        {(lastPaymentComment || lastTechComment) && (
-          <div className="mt-4 rounded-lg bg-muted/40 p-3 space-y-1.5">
-            {lastPaymentComment && (
-              <p className="text-xs flex items-start gap-1.5">
-                <Banknote size={12} className="mt-0.5 shrink-0 text-green-700" />
-                <span className="line-clamp-1">{lastPaymentComment.text}</span>
-              </p>
-            )}
-            {lastTechComment && (
-              <p className="text-xs flex items-start gap-1.5 text-muted-foreground">
-                <Ruler size={12} className="mt-0.5 shrink-0" />
-                <span className="line-clamp-1">{lastTechComment.text}</span>
-              </p>
-            )}
-          </div>
-        )}
-
-        <div className="mt-4 space-y-4 text-sm">
-          {/* Связанная сделка в «Продажи» */}
-          <section className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-              <TrendingUp size={13} />Сделка в «Продажи»
-            </p>
-            {deal === 'loading' ? (
-              <p className="text-xs text-muted-foreground">Ищу по телефону...</p>
-            ) : deal === null ? (
-              showCreateDeal ? (
-                <CreateDealInline card={card} parsed={parsed} onCreated={d => { setDeal(d); setShowCreateDeal(false); }} />
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    Сделка ещё не подтверждена в «Продажи» (или пока не заведена).
+          <TabsContent value="main" className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+            {/* Краткая сводка */}
+            {(paymentComments[0] || techComments[0]) && (
+              <div className="rounded-lg bg-muted/40 p-3 space-y-1.5">
+                {paymentComments[0] && (
+                  <p className="text-xs flex items-start gap-1.5">
+                    <Banknote size={12} className="mt-0.5 shrink-0 text-green-700" />
+                    <span className="line-clamp-1">{paymentComments[0].text}</span>
                   </p>
-                  {parsed.phone && (
-                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowCreateDeal(true)}>
-                      <Plus size={12} className="mr-1" />Создать сделку
-                    </Button>
-                  )}
-                </div>
-              )
-            ) : (
-              <div className="rounded-lg border border-border p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{formatCurrency(deal.total_amount)}</span>
-                  <Badge variant="outline" className={`text-xs ${STATUS_COLORS[deal.status]}`}>{STATUS_LABELS[deal.status]}</Badge>
-                </div>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Оплачено: {formatCurrency(deal.paid_amount)}</span>
-                  <span>Остаток: {formatCurrency(Math.max(0, deal.total_amount - deal.paid_amount))}</span>
-                </div>
-                <DealPayments
-                  deal={deal}
-                  onChanged={() => extractedPhone && getDealByPhone(extractedPhone).then(setDeal)}
-                  suggestedAmount={extractPaymentSuggestion(comments)?.amount}
-                  suggestedChannel={extractPaymentSuggestion(comments)?.channel}
-                />
-                <Button
-                  variant="ghost" size="sm" className="h-7 text-xs w-full mt-1"
-                  onClick={() => navigate(`/sales?manager=${deal.manager_id}&month=${deal.month_year}`)}
-                >
-                  Открыть сделку в «Продажи» →
-                </Button>
+                )}
+                {techComments[0] && (
+                  <p className="text-xs flex items-start gap-1.5 text-muted-foreground">
+                    <Ruler size={12} className="mt-0.5 shrink-0" />
+                    <span className="line-clamp-1">{techComments[0].text}</span>
+                  </p>
+                )}
               </div>
             )}
-          </section>
 
-          <CollapsibleSection title="Чек-лист (только у нас)" icon={<ListChecks size={13} />}>
+            <section className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <TrendingUp size={13} />Сделка в «Продажи»
+              </p>
+              {deal === 'loading' ? (
+                <p className="text-xs text-muted-foreground">Ищу по телефону...</p>
+              ) : deal === null ? (
+                showCreateDeal ? (
+                  <CreateDealInline card={card} parsed={parsed} onCreated={d => { setDeal(d); setShowCreateDeal(false); }} />
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Сделка ещё не подтверждена в «Продажи» (или пока не заведена).
+                    </p>
+                    {parsed.phone && (
+                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowCreateDeal(true)}>
+                        <Plus size={12} className="mr-1" />Создать сделку
+                      </Button>
+                    )}
+                  </div>
+                )
+              ) : (
+                <div className="rounded-lg border border-border p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{formatCurrency(deal.total_amount)}</span>
+                    <Badge variant="outline" className={`text-xs ${STATUS_COLORS[deal.status]}`}>{STATUS_LABELS[deal.status]}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Оплачено: {formatCurrency(deal.paid_amount)}</span>
+                    <span>Остаток: {formatCurrency(Math.max(0, deal.total_amount - deal.paid_amount))}</span>
+                  </div>
+                  <DealPayments
+                    deal={deal}
+                    onChanged={() => extractedPhone && getDealByPhone(extractedPhone).then(setDeal)}
+                    suggestedAmount={extractPaymentSuggestion(comments)?.amount}
+                    suggestedChannel={extractPaymentSuggestion(comments)?.channel}
+                  />
+                  <Button
+                    variant="ghost" size="sm" className="h-7 text-xs w-full mt-1"
+                    onClick={() => navigate(`/sales?manager=${deal.manager_id}&month=${deal.month_year}`)}
+                  >
+                    Открыть сделку в «Продажи» →
+                  </Button>
+                </div>
+              )}
+            </section>
+
+            {card.desc && (
+              <section className="space-y-1.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Описание</p>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{card.desc}</p>
+              </section>
+            )}
+          </TabsContent>
+
+          <TabsContent value="checklist" className="flex-1 overflow-y-auto px-5 py-4">
             <ProductionChecklist trelloCardId={card.id} />
-          </CollapsibleSection>
+          </TabsContent>
 
-          {card.desc && (
-            <CollapsibleSection title="Описание" icon={<MessageSquare size={13} />}>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{card.desc}</p>
-            </CollapsibleSection>
-          )}
-
-          <CollapsibleSection title="Комментарии из Trello" icon={<MessageSquare size={13} />} defaultOpen>
+          <TabsContent value="comments" className="flex-1 overflow-y-auto px-5 py-4">
             {comments === null ? (
               <p className="text-xs text-muted-foreground">Загрузка...</p>
             ) : comments.length === 0 ? (
@@ -380,9 +368,9 @@ export default function ProductionCardDetail({
                 })}
               </div>
             )}
-          </CollapsibleSection>
-        </div>
-      </SheetContent>
-    </Sheet>
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   );
 }
