@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/select';
 import {
   Calendar, ExternalLink, TrendingUp, MapPin, Phone,
-  Banknote, Ruler, Plus, Package, X,
+  Banknote, Ruler, Plus, Package,
 } from 'lucide-react';
 import { getDealByPhone, getManagers, createDealAndGetId } from '@/lib/api';
 import { supabase } from '@/db/supabase';
@@ -222,9 +222,6 @@ export default function ProductionCardDetail({
                 ))}
               </div>
             </div>
-            <Button variant="ghost" size="icon" className="shrink-0 h-8 w-8" onClick={onClose}>
-              <X size={16} />
-            </Button>
           </div>
 
           <dl className="mt-3 grid grid-cols-[16px_1fr] gap-x-2 gap-y-1 text-sm">
