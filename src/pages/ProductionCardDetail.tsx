@@ -3,44 +3,54 @@ import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Calendar, ExternalLink, TrendingUp, MessageSquare, ListChecks, MapPin, Phone } from 'lucide-react';
-import { getDealByPhone } from '@/lib/api';
+import {
+  Calendar, ExternalLink, TrendingUp, MessageSquare, ListChecks, MapPin, Phone,
+  ChevronDown, Banknote, Ruler, Plus,
+} from 'lucide-react';
+import { getDealByPhone, getManagers, createDealAndGetId } from '@/lib/api';
 import { supabase } from '@/db/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import type { Deal } from '@/types/types';
+import type { Deal, Manager } from '@/types/types';
+import { PAYMENT_METHODS } from '@/types/types';
 import DealPayments from '@/components/sales/DealPayments';
 import ProductionChecklist from '@/components/production/ProductionChecklist';
 import { parseCardName } from './ProductionPage';
-
-// Комментарии обычно содержат «Оплата: 1 200 000(нал)» — вытаскиваем сумму
-// и подсказку канала, чтобы предзаполнить форму «Добавить оплату», а не
-// перепечатывать вручную.
-function extractPaymentSuggestion(comments: TrelloComment[] | null): { amount: number; channel: string } | null {
-  if (!comments) return null;
-  for (const c of comments) {
-    const m = c.text.match(/оплата[:\s]*(?:\d+%\s*)?([\d\s]{4,})\s*тг?\.?\s*\(?(нал|безнал|kaspi|каспи|перечисл)?/i);
-    if (m) {
-      const amount = Number(m[1].replace(/\s/g, ''));
-      if (!amount) continue;
-      const hint = (m[2] ?? '').toLowerCase();
-      const channel = hint.includes('нал') ? 'Наличные'
-        : hint.includes('kaspi') || hint.includes('каспи') ? 'Kaspi Bank'
-        : hint.includes('перечисл') ? 'Перечисление'
-        : 'Kaspi Bank';
-      return { amount, channel };
-    }
-  }
-  return null;
-}
 
 interface TrelloLabel { name: string; color: string; }
 interface CardLike {
   id: string; name: string; desc: string; due: string | null; url: string; labels: TrelloLabel[];
 }
 interface TrelloComment { text: string; date: string; by: string | null; }
+
+// Комментарии про оплату обычно содержат «Оплата: 1 200 000(нал)» или
+// «Предоплата 100.000тг ... Остаток: ...» — узнаём их отдельно от
+// технических (замеры, переписка), чтобы не искать нужное в общей ленте.
+const PAYMENT_RE = /(предоплата|оплата|остаток)[:\s]*(?:\d+%\s*)?([\d\s.]{4,})\s*тг/i;
+function isPaymentComment(text: string): boolean {
+  return PAYMENT_RE.test(text);
+}
+function extractPaymentSuggestion(comments: TrelloComment[] | null): { amount: number; channel: string } | null {
+  if (!comments) return null;
+  for (const c of comments) {
+    const m = c.text.match(/(?:предоплата|оплата)[:\s]*(?:\d+%\s*)?([\d\s.]{4,})\s*тг?\.?\s*\(?(нал|безнал|kaspi|каспи|перечисл|удал[её]нка)?/i);
+    if (m) {
+      const amount = Number(m[1].replace(/[\s.]/g, ''));
+      if (!amount) continue;
+      const hint = (m[2] ?? '').toLowerCase();
+      const channel = hint.includes('нал') ? 'Наличные'
+        : hint.includes('kaspi') || hint.includes('каспи') ? 'Kaspi Bank'
+        : hint.includes('перечисл') || hint.includes('удал') ? 'Перечисление'
+        : 'Kaspi Bank';
+      return { amount, channel };
+    }
+  }
+  return null;
+}
 
 const LABEL_COLOR_MAP: Record<string, string> = {
   green: 'bg-green-100 text-green-800', yellow: 'bg-yellow-100 text-yellow-800',
@@ -60,6 +70,104 @@ const STATUS_COLORS: Record<string, string> = {
   rejected: 'bg-red-50 text-red-700 border-red-200',
 };
 
+// Свёрнутая по умолчанию секция — заголовок кликается, стрелка крутится
+function CollapsibleSection({ title, icon, defaultOpen, children }: {
+  title: string; icon: React.ReactNode; defaultOpen?: boolean; children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(!!defaultOpen);
+  return (
+    <section>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-muted-foreground py-1"
+      >
+        <span className="flex items-center gap-1.5">{icon}{title}</span>
+        <ChevronDown size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div className="mt-2 space-y-2">{children}</div>}
+    </section>
+  );
+}
+
+function CreateDealInline({ card, parsed, onCreated }: {
+  card: CardLike; parsed: ReturnType<typeof parseCardName>; onCreated: (deal: Deal) => void;
+}) {
+  const [managers, setManagers] = useState<Manager[]>([]);
+  const [managerId, setManagerId] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Kaspi Bank');
+  const [amount, setAmount] = useState(parsed.amount ?? 0);
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => { getManagers().then(setManagers).catch(() => {}); }, []);
+
+  async function handleCreate() {
+    if (!managerId || amount <= 0) return;
+    setCreating(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const dealId = await createDealAndGetId({
+        manager_id: managerId,
+        month_year: today.slice(0, 7),
+        deal_date: today,
+        client_phone: parsed.phone,
+        address: parsed.address,
+        client_name: parsed.client,
+        door_model: parsed.product,
+        contract_number: null,
+        payment_method: paymentMethod,
+        total_amount: amount,
+        paid_amount: 0,
+        prepayment_date: null,
+        comment: `Создано из карточки производства «${card.name}»`,
+        salary_amount: null,
+        vat_gross_amount: null,
+        status: 'pending',
+        stage: 'new',
+      });
+      const created = await getDealByPhone(parsed.phone ?? '');
+      if (created) onCreated(created);
+      void dealId;
+    } catch { /* silent */ }
+    finally { setCreating(false); }
+  }
+
+  return (
+    <div className="rounded-lg border border-dashed border-border p-3 space-y-2.5">
+      <p className="text-xs text-muted-foreground">
+        Клиент, телефон и адрес уже подставлены из карточки — проверьте сумму и выберите менеджера.
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <Label className="text-xs">Менеджер</Label>
+          <Select value={managerId} onValueChange={setManagerId}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Выберите" /></SelectTrigger>
+            <SelectContent>
+              {managers.map(m => <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Способ оплаты</Label>
+          <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {PAYMENT_METHODS.map(p => <SelectItem key={p} value={p} className="text-xs">{p}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1 col-span-2">
+          <Label className="text-xs">Сумма</Label>
+          <Input type="number" className="h-8 text-xs" value={amount} onChange={e => setAmount(Number(e.target.value))} />
+        </div>
+      </div>
+      <Button size="sm" className="h-7 text-xs w-full" disabled={creating || !managerId || amount <= 0} onClick={handleCreate}>
+        Создать сделку
+      </Button>
+    </div>
+  );
+}
+
 export default function ProductionCardDetail({
   card, effectiveStage, allStages, onStageChange, open, onClose,
 }: {
@@ -74,14 +182,14 @@ export default function ProductionCardDetail({
   const [deal, setDeal] = useState<Deal | null | 'loading'>('loading');
   const [comments, setComments] = useState<TrelloComment[] | null>(null);
   const [extractedPhone, setExtractedPhone] = useState<string | null>(null);
+  const [showCreateDeal, setShowCreateDeal] = useState(false);
 
   useEffect(() => {
     if (!card || !open) return;
     setDeal('loading');
     setComments(null);
+    setShowCreateDeal(false);
 
-    // Телефон встроен прямо в название карточки (у вас так принято) —
-    // вытаскиваем и ищем совпадение среди сделок в «Продажи»
     const phoneMatch = card.name.match(/(\+?7|8)[\s-]?\d{3}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}/);
     if (phoneMatch) {
       setExtractedPhone(phoneMatch[0]);
@@ -101,30 +209,30 @@ export default function ProductionCardDetail({
   }, [card?.id, open]);
 
   if (!card) return null;
+  const parsed = parseCardName(card.name);
+  const lastPaymentComment = comments?.find(c => isPaymentComment(c.text)) ?? null;
+  const lastTechComment = comments?.find(c => !isPaymentComment(c.text)) ?? null;
 
   return (
     <Sheet open={open} onOpenChange={v => !v && onClose()}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader className="text-left space-y-3">
-          <SheetTitle className="text-base leading-snug">{parseCardName(card.name).client}</SheetTitle>
-          {(() => {
-            const parsed = parseCardName(card.name);
-            return (parsed.address || parsed.product || parsed.phone) ? (
-              <div className="space-y-1">
-                {parsed.address && (
-                  <p className="text-xs text-muted-foreground flex items-start gap-1">
-                    <MapPin size={11} className="mt-0.5 shrink-0" />{parsed.address}
-                  </p>
-                )}
-                {parsed.product && <p className="text-xs text-muted-foreground">{parsed.product}</p>}
-                {parsed.phone && (
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Phone size={11} />{parsed.phone}
-                  </p>
-                )}
-              </div>
-            ) : null;
-          })()}
+          <SheetTitle className="text-base leading-snug">{parsed.client}</SheetTitle>
+          {(parsed.address || parsed.product || parsed.phone) && (
+            <div className="space-y-1">
+              {parsed.address && (
+                <p className="text-xs text-muted-foreground flex items-start gap-1">
+                  <MapPin size={11} className="mt-0.5 shrink-0" />{parsed.address}
+                </p>
+              )}
+              {parsed.product && <p className="text-xs text-muted-foreground">{parsed.product}</p>}
+              {parsed.phone && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Phone size={11} />{parsed.phone}
+                </p>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <Select value={effectiveStage} onValueChange={v => onStageChange(card.id, v)}>
               <SelectTrigger className="h-8 text-xs w-auto"><SelectValue /></SelectTrigger>
@@ -150,7 +258,25 @@ export default function ProductionCardDetail({
           )}
         </SheetHeader>
 
-        <div className="mt-5 space-y-5 text-sm">
+        {/* Краткая сводка — не нужно листать вниз, чтобы узнать последнее состояние */}
+        {(lastPaymentComment || lastTechComment) && (
+          <div className="mt-4 rounded-lg bg-muted/40 p-3 space-y-1.5">
+            {lastPaymentComment && (
+              <p className="text-xs flex items-start gap-1.5">
+                <Banknote size={12} className="mt-0.5 shrink-0 text-green-700" />
+                <span className="line-clamp-1">{lastPaymentComment.text}</span>
+              </p>
+            )}
+            {lastTechComment && (
+              <p className="text-xs flex items-start gap-1.5 text-muted-foreground">
+                <Ruler size={12} className="mt-0.5 shrink-0" />
+                <span className="line-clamp-1">{lastTechComment.text}</span>
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="mt-4 space-y-4 text-sm">
           {/* Связанная сделка в «Продажи» */}
           <section className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -159,7 +285,20 @@ export default function ProductionCardDetail({
             {deal === 'loading' ? (
               <p className="text-xs text-muted-foreground">Ищу по телефону...</p>
             ) : deal === null ? (
-              <p className="text-xs text-muted-foreground">Не найдена — либо телефон в названии не распознан, либо сделки пока нет в «Продажи».</p>
+              showCreateDeal ? (
+                <CreateDealInline card={card} parsed={parsed} onCreated={d => { setDeal(d); setShowCreateDeal(false); }} />
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Сделка ещё не подтверждена в «Продажи» (или пока не заведена).
+                  </p>
+                  {parsed.phone && (
+                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowCreateDeal(true)}>
+                      <Plus size={12} className="mr-1" />Создать сделку
+                    </Button>
+                  )}
+                </div>
+              )
             ) : (
               <div className="rounded-lg border border-border p-3 space-y-2">
                 <div className="flex items-center justify-between">
@@ -186,42 +325,43 @@ export default function ProductionCardDetail({
             )}
           </section>
 
-          {/* Свой чек-лист — не зависит от Trello */}
-          <section className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-              <ListChecks size={13} />Чек-лист (только у нас)
-            </p>
+          <CollapsibleSection title="Чек-лист (только у нас)" icon={<ListChecks size={13} />}>
             <ProductionChecklist trelloCardId={card.id} />
-          </section>
+          </CollapsibleSection>
 
-          {/* Описание из Trello */}
           {card.desc && (
-            <section className="space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Описание</p>
+            <CollapsibleSection title="Описание" icon={<MessageSquare size={13} />}>
               <p className="text-sm text-muted-foreground whitespace-pre-wrap">{card.desc}</p>
-            </section>
+            </CollapsibleSection>
           )}
 
-          {/* Комментарии из Trello */}
-          <section className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-              <MessageSquare size={13} />Комментарии из Trello
-            </p>
+          <CollapsibleSection title="Комментарии из Trello" icon={<MessageSquare size={13} />} defaultOpen>
             {comments === null ? (
               <p className="text-xs text-muted-foreground">Загрузка...</p>
             ) : comments.length === 0 ? (
               <p className="text-xs text-muted-foreground">Пока нет комментариев</p>
             ) : (
               <div className="space-y-1.5">
-                {comments.map((c, i) => (
-                  <div key={i} className="rounded-lg bg-muted/40 px-3 py-2 text-xs">
-                    <p>{c.text}</p>
-                    <p className="text-muted-foreground mt-0.5">{c.by ? `${c.by} · ` : ''}{formatDate(c.date)}</p>
-                  </div>
-                ))}
+                {comments.map((c, i) => {
+                  const isPayment = isPaymentComment(c.text);
+                  return (
+                    <div
+                      key={i}
+                      className={`rounded-lg px-3 py-2 text-xs ${
+                        isPayment ? 'bg-green-50 border-l-2 border-green-500' : 'bg-muted/40'
+                      }`}
+                    >
+                      <p className="flex items-start gap-1.5">
+                        {isPayment && <Banknote size={11} className="mt-0.5 shrink-0 text-green-700" />}
+                        <span>{c.text}</span>
+                      </p>
+                      <p className="text-muted-foreground mt-0.5">{c.by ? `${c.by} · ` : ''}{formatDate(c.date)}</p>
+                    </div>
+                  );
+                })}
               </div>
             )}
-          </section>
+          </CollapsibleSection>
         </div>
       </SheetContent>
     </Sheet>
