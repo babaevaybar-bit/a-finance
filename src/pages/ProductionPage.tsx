@@ -3,9 +3,13 @@ import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { RefreshCw, Search, Calendar, ExternalLink, RotateCcw, GripVertical } from 'lucide-react';
+import {
+  RefreshCw, Search, Calendar, ExternalLink, RotateCcw, GripVertical, MapPin, Phone,
+  Inbox, Factory, Truck, Warehouse, Wrench, CheckCircle2, Circle,
+} from 'lucide-react';
 import { supabase } from '@/db/supabase';
 import { getProductionOverrides, setProductionOverride, clearProductionOverride } from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
 import ProductionCardDetail from './ProductionCardDetail';
 
 interface TrelloLabel { name: string; color: string; }
@@ -37,6 +41,80 @@ function labelClass(color: string) {
 function formatDate(iso: string | null) {
   if (!iso) return null;
   return new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+// Каждый реальный этап у вас относится к одной из пяти фаз пути заказа —
+// красим и подписываем иконкой колонку по фазе, чтобы направление движения
+// (приём → производство → в пути → склад → установка → готово) было видно
+// с одного взгляда, не читая названия.
+type Phase = 'intake' | 'production' | 'transit' | 'warehouse' | 'install' | 'done' | 'other';
+const PHASE_BY_STAGE: Record<string, Phase> = {
+  'Продано': 'intake',
+  'Заполнение данных': 'intake',
+  'Заказ на фабрике': 'intake',
+  'Контрольный Замер': 'production',
+  'В Пройзводстве': 'production',
+  'В пути (на склад)': 'transit',
+  'Склад Альянс': 'warehouse',
+  'Склад Шымкент': 'warehouse',
+  'Контроль при приёмке': 'warehouse',
+  'Ожидание готовности объекта': 'install',
+  'План к установке': 'install',
+  'Обект Сдан': 'done',
+  'Finish': 'done',
+};
+const PHASE_STYLE: Record<Phase, { color: string; icon: typeof Circle }> = {
+  intake:     { color: '#64748b', icon: Inbox },
+  production: { color: '#d97706', icon: Factory },
+  transit:    { color: '#7c3aed', icon: Truck },
+  warehouse:  { color: '#4f46e5', icon: Warehouse },
+  install:    { color: '#0284c7', icon: Wrench },
+  done:       { color: '#059669', icon: CheckCircle2 },
+  other:      { color: '#94a3b8', icon: Circle },
+};
+function phaseOf(stageName: string): Phase {
+  return PHASE_BY_STAGE[stageName] ?? 'other';
+}
+
+// Название карточки у вас всегда собрано по шаблону
+// «код - клиент - адрес - телефон - товар - сумматг - Менеджер Имя» —
+// разбираем на поля, чтобы карточка читалась за секунду, а не была
+// одной длинной строкой.
+export interface ParsedCard {
+  client: string;
+  address: string | null;
+  phone: string | null;
+  product: string | null;
+  amount: number | null;
+  manager: string | null;
+}
+export function parseCardName(name: string): ParsedCard {
+  const parts = name.split(/\s-\s/).map(p => p.trim()).filter(Boolean);
+  if (parts.length < 2) return { client: name, address: null, phone: null, product: null, amount: null, manager: null };
+
+  let rest = parts;
+  if (/^[\d][\d.\-]*$/.test(rest[0])) rest = rest.slice(1);
+  if (rest.length === 0) return { client: name, address: null, phone: null, product: null, amount: null, manager: null };
+
+  const phoneRe = /(\+?7|8)[\s-]?\d{3}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}/;
+  const amountRe = /[\d\s]{3,}\s*тг/i;
+  const managerRe = /^менеджер\b/i;
+
+  const phoneIdx = rest.findIndex(p => phoneRe.test(p));
+  const amountIdx = rest.findIndex(p => amountRe.test(p));
+  const managerIdx = rest.findIndex(p => managerRe.test(p));
+
+  const client = rest[0] ?? name;
+  const addrEnd = phoneIdx !== -1 ? phoneIdx : (amountIdx !== -1 ? amountIdx : rest.length);
+  const address = addrEnd > 1 ? rest.slice(1, addrEnd).join(', ') : null;
+  const phone = phoneIdx !== -1 ? (rest[phoneIdx].match(phoneRe)?.[0] ?? null) : null;
+  const amount = amountIdx !== -1 ? (Number((rest[amountIdx].match(/[\d\s]+/)?.[0] ?? '').replace(/\s/g, '')) || null) : null;
+  const manager = managerIdx !== -1 ? rest[managerIdx].replace(managerRe, '').replace(/^[:\s.]+/, '').replace(/\.$/, '').trim() : null;
+  const prodStart = phoneIdx !== -1 ? phoneIdx + 1 : addrEnd;
+  const prodEnd = amountIdx !== -1 ? amountIdx : (managerIdx !== -1 ? managerIdx : rest.length);
+  const product = prodStart < prodEnd ? rest.slice(prodStart, prodEnd).join(', ') : null;
+
+  return { client, address, phone, product, amount, manager };
 }
 
 interface PlacedCard extends TrelloCard {
@@ -167,7 +245,7 @@ export default function ProductionPage() {
             <h1 className="text-xl font-semibold">Производство</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               Доска «Продажа Otau Mart ProfilDoors» — без захода в Trello ({totalCards} карточек).
-              Перетаскивание карточек сохраняется только у нас, саму Trello не меняет.
+              Перетаскивание сохраняется только у нас, саму Trello не меняет.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -192,85 +270,115 @@ export default function ProductionPage() {
           <div className="text-sm text-muted-foreground">Загрузка...</div>
         ) : !error && (
           <div className="flex gap-3 overflow-x-auto pb-4 items-start">
-            {visibleColumns.map(col => (
-              <div
-                key={col.name}
-                className={`shrink-0 w-72 rounded-xl transition-colors ${
-                  dragOverColumn === col.name ? 'bg-primary/5 ring-2 ring-primary/40' : col.isPlanned ? 'bg-muted/20' : 'bg-muted/40'
-                }`}
-                onDragOver={e => { e.preventDefault(); setDragOverColumn(col.name); }}
-                onDragLeave={() => setDragOverColumn(prev => (prev === col.name ? null : prev))}
-                onDrop={e => { e.preventDefault(); handleDrop(col.name); }}
-              >
-                <div className="flex items-center justify-between px-3 pt-3 pb-2">
-                  <h3 className="text-sm font-semibold flex items-center gap-1.5 min-w-0">
-                    <span className="truncate">{col.name}</span>
-                    {col.isPlanned && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-background text-muted-foreground border border-dashed border-border shrink-0">
-                        заготовка
-                      </span>
-                    )}
-                  </h3>
-                  <span className="text-xs text-muted-foreground bg-background rounded-full px-2 py-0.5 shrink-0">{col.cards.length}</span>
-                </div>
+            {visibleColumns.map(col => {
+              const phase = phaseOf(col.name);
+              const { color, icon: PhaseIcon } = PHASE_STYLE[phase];
+              return (
+                <div
+                  key={col.name}
+                  className={`shrink-0 w-72 rounded-xl transition-colors overflow-hidden ${
+                    dragOverColumn === col.name ? 'bg-primary/5 ring-2 ring-primary/40' : col.isPlanned ? 'bg-muted/20' : 'bg-muted/40'
+                  }`}
+                  style={{ borderTop: `3px solid ${color}` }}
+                  onDragOver={e => { e.preventDefault(); setDragOverColumn(col.name); }}
+                  onDragLeave={() => setDragOverColumn(prev => (prev === col.name ? null : prev))}
+                  onDrop={e => { e.preventDefault(); handleDrop(col.name); }}
+                >
+                  <div className="flex items-center justify-between px-3 pt-2.5 pb-2">
+                    <h3 className="text-sm font-semibold flex items-center gap-1.5 min-w-0">
+                      <PhaseIcon size={14} style={{ color }} className="shrink-0" />
+                      <span className="truncate">{col.name}</span>
+                      {col.isPlanned && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-background text-muted-foreground border border-dashed border-border shrink-0">
+                          заготовка
+                        </span>
+                      )}
+                    </h3>
+                    <span className="text-xs text-muted-foreground bg-background rounded-full px-2 py-0.5 shrink-0">{col.cards.length}</span>
+                  </div>
 
-                <div className={`space-y-2 px-3 pb-3 min-h-24 ${col.isPlanned && col.cards.length === 0 ? 'border-2 border-dashed border-border/70 rounded-lg mx-3 mb-3 mt-0' : ''}`}>
-                  {col.cards.length === 0 ? (
-                    <p className="text-xs text-muted-foreground px-1 py-2">
-                      {col.isPlanned ? 'Пока не используется — этап на будущее' : 'Пусто'}
-                    </p>
-                  ) : col.cards.map(card => (
-                    <div
-                      key={card.id}
-                      draggable
-                      onDragStart={() => { draggedCardId.current = card.id; }}
-                      onDragEnd={() => { draggedCardId.current = null; setDragOverColumn(null); }}
-                      onClick={() => setSelectedCard(card)}
-                      className={`group rounded-lg border bg-background p-3 shadow-sm hover:shadow-md hover:border-primary/40 transition-all cursor-grab active:cursor-grabbing ${
-                        card.due && new Date(card.due).getTime() < Date.now() ? 'border-l-4 border-l-destructive border-border' : 'border-border'
-                      }`}
-                    >
-                      {card.labels.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mb-1.5">
-                          {card.labels.map((lb, i) => (
-                            <span key={i} className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${labelClass(lb.color)}`}>
-                              {lb.name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      <p className="text-xs leading-snug">{card.name}</p>
-                      {card.isOverridden && (
-                        <button
-                          type="button"
-                          onClick={e => { e.stopPropagation(); handleReset(card); }}
-                          className="mt-1.5 text-[10px] text-primary flex items-center gap-1 hover:underline"
-                          title={`На самом деле в Trello: «${card.realStage}»`}
+                  <div className={`space-y-2 px-3 pb-3 min-h-24 ${col.isPlanned && col.cards.length === 0 ? 'border-2 border-dashed border-border/70 rounded-lg mx-3 mb-3 mt-0' : ''}`}>
+                    {col.cards.length === 0 ? (
+                      <p className="text-xs text-muted-foreground px-1 py-2">
+                        {col.isPlanned ? 'Пока не используется — этап на будущее' : 'Пусто'}
+                      </p>
+                    ) : col.cards.map(card => {
+                      const parsed = parseCardName(card.name);
+                      const overdue = !!card.due && new Date(card.due).getTime() < Date.now();
+                      return (
+                        <div
+                          key={card.id}
+                          draggable
+                          onDragStart={() => { draggedCardId.current = card.id; }}
+                          onDragEnd={() => { draggedCardId.current = null; setDragOverColumn(null); }}
+                          onClick={() => setSelectedCard(card)}
+                          className={`group rounded-lg border bg-background p-3 shadow-sm hover:shadow-md hover:border-primary/40 transition-all cursor-grab active:cursor-grabbing ${
+                            overdue ? 'border-l-4 border-l-destructive border-border' : 'border-border'
+                          }`}
                         >
-                          <RotateCcw size={10} />перемещено у нас — вернуть как в Trello
-                        </button>
-                      )}
-                      <div className="flex items-center justify-between mt-2">
-                        {card.due ? (
-                          <span className={`text-[10px] flex items-center gap-1 ${
-                            new Date(card.due).getTime() < Date.now() ? 'text-destructive font-medium' : 'text-muted-foreground'
-                          }`}>
-                            <Calendar size={10} />{formatDate(card.due)}
-                            {new Date(card.due).getTime() < Date.now() ? ' · просрочен' : ''}
-                          </span>
-                        ) : <span />}
-                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <GripVertical size={11} className="text-muted-foreground" />
-                          <a href={card.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
-                            <ExternalLink size={11} className="text-muted-foreground hover:text-primary" />
-                          </a>
+                          {card.labels.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-1.5">
+                              {card.labels.map((lb, i) => (
+                                <span key={i} className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${labelClass(lb.color)}`}>
+                                  {lb.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          <p className="text-sm font-semibold leading-snug">{parsed.client}</p>
+                          {parsed.address && (
+                            <p className="text-[11px] text-muted-foreground mt-0.5 flex items-start gap-1">
+                              <MapPin size={10} className="mt-0.5 shrink-0" />
+                              <span className="line-clamp-1">{parsed.address}</span>
+                            </p>
+                          )}
+                          {parsed.product && (
+                            <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{parsed.product}</p>
+                          )}
+
+                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/60">
+                            <span className="text-sm font-semibold">
+                              {parsed.amount ? formatCurrency(parsed.amount) : '—'}
+                            </span>
+                            {parsed.phone && (
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                <Phone size={9} />{parsed.phone}
+                              </span>
+                            )}
+                          </div>
+
+                          {card.isOverridden && (
+                            <button
+                              type="button"
+                              onClick={e => { e.stopPropagation(); handleReset(card); }}
+                              className="mt-1.5 text-[10px] text-primary flex items-center gap-1 hover:underline"
+                              title={`На самом деле в Trello: «${card.realStage}»`}
+                            >
+                              <RotateCcw size={10} />перемещено у нас — вернуть как в Trello
+                            </button>
+                          )}
+
+                          <div className="flex items-center justify-between mt-1.5">
+                            {card.due ? (
+                              <span className={`text-[10px] flex items-center gap-1 ${overdue ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
+                                <Calendar size={10} />{formatDate(card.due)}{overdue ? ' · просрочен' : ''}
+                              </span>
+                            ) : <span />}
+                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <GripVertical size={11} className="text-muted-foreground" />
+                              <a href={card.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
+                                <ExternalLink size={11} className="text-muted-foreground hover:text-primary" />
+                              </a>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

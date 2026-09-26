@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/button';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Calendar, ExternalLink, TrendingUp, MessageSquare, ListChecks } from 'lucide-react';
+import { Calendar, ExternalLink, TrendingUp, MessageSquare, ListChecks, MapPin, Phone } from 'lucide-react';
 import { getDealByPhone } from '@/lib/api';
 import { supabase } from '@/db/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal } from '@/types/types';
 import DealPayments from '@/components/sales/DealPayments';
 import ProductionChecklist from '@/components/production/ProductionChecklist';
+import { parseCardName } from './ProductionPage';
 
 // Комментарии обычно содержат «Оплата: 1 200 000(нал)» — вытаскиваем сумму
 // и подсказку канала, чтобы предзаполнить форму «Добавить оплату», а не
@@ -105,7 +106,25 @@ export default function ProductionCardDetail({
     <Sheet open={open} onOpenChange={v => !v && onClose()}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader className="text-left space-y-3">
-          <SheetTitle className="text-base leading-snug">{card.name}</SheetTitle>
+          <SheetTitle className="text-base leading-snug">{parseCardName(card.name).client}</SheetTitle>
+          {(() => {
+            const parsed = parseCardName(card.name);
+            return (parsed.address || parsed.product || parsed.phone) ? (
+              <div className="space-y-1">
+                {parsed.address && (
+                  <p className="text-xs text-muted-foreground flex items-start gap-1">
+                    <MapPin size={11} className="mt-0.5 shrink-0" />{parsed.address}
+                  </p>
+                )}
+                {parsed.product && <p className="text-xs text-muted-foreground">{parsed.product}</p>}
+                {parsed.phone && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Phone size={11} />{parsed.phone}
+                  </p>
+                )}
+              </div>
+            ) : null;
+          })()}
           <div className="flex items-center gap-2">
             <Select value={effectiveStage} onValueChange={v => onStageChange(card.id, v)}>
               <SelectTrigger className="h-8 text-xs w-auto"><SelectValue /></SelectTrigger>
