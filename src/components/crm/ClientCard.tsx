@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import TrelloLookup from '@/components/trello/TrelloLookup';
+import DealPayments from '@/components/sales/DealPayments';
 import {
   Phone, MapPin, Flame, Thermometer, Snowflake, Plus, Trash2,
   CheckSquare, Square, Calendar, Clock, MessageSquare, PhoneCall,
@@ -320,14 +321,20 @@ export default function ClientCard({ client, open, onClose, managers, onClientUp
               {/* Связь с реальной сделкой в «Продажи» — одна карточка клиента,
                   а не два независимых ввода данных */}
               {linkedDeal ? (
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
-                  <div className="text-sm">
-                    <span className="font-medium text-green-800">Привязана к «Продажи»</span>
-                    <span className="text-green-700 ml-2">
-                      {formatCurrency(linkedDeal.total_amount)} ·{' '}
-                      {linkedDeal.status === 'pending' ? 'на проверке' : linkedDeal.status === 'approved' ? 'подтверждена' : 'отклонена'}
-                    </span>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+                    <div className="text-sm">
+                      <span className="font-medium text-green-800">Привязана к «Продажи»</span>
+                      <span className="text-green-700 ml-2">
+                        {formatCurrency(linkedDeal.total_amount)} ·{' '}
+                        {linkedDeal.status === 'pending' ? 'на проверке' : linkedDeal.status === 'approved' ? 'подтверждена' : 'отклонена'}
+                      </span>
+                    </div>
                   </div>
+                  <DealPayments
+                    deal={linkedDeal}
+                    onChanged={() => client.deal_id && getDealById(client.deal_id).then(setLinkedDeal)}
+                  />
                 </div>
               ) : client.is_deal_closed && !showCreateDeal ? (
                 <Button size="sm" variant="outline" className="h-8 text-xs w-full" onClick={() => setShowCreateDeal(true)}>
