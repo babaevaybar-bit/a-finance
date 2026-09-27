@@ -47,8 +47,8 @@
     --gradient-primary: linear-gradient(135deg, hsl(155 34% 37%), hsl(155 39% 30%));
     --gradient-card: linear-gradient(180deg, hsl(45 55% 98%), hsl(40 35% 96%));
     --gradient-background: linear-gradient(180deg, hsl(40 35% 95%), hsl(40 30% 93%));
-    --shadow-card: -8px -8px 18px rgba(255,255,255,0.9), 8px 8px 22px rgba(180,158,110,0.4);
-    --shadow-hover: -10px -10px 22px rgba(255,255,255,0.95), 10px 10px 26px rgba(180,158,110,0.5);
+    --shadow-card: -5px -5px 12px rgba(255,255,255,0.7), 5px 5px 14px rgba(180,158,110,0.18);
+    --shadow-hover: -6px -6px 15px rgba(255,255,255,0.75), 6px 6px 17px rgba(180,158,110,0.22);
   }
 
   .dark {
