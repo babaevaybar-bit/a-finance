@@ -15,8 +15,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Users, KeyRound, Check, X } from 'lucide-react';
-import { getManagers, createManager, updateManager, deleteManager, getSalarySettings, upsertSalarySetting } from '@/lib/api';
+import { Plus, Pencil, Trash2, Users, KeyRound, Check, X, Mail, Phone, Calendar, Wallet, ShieldCheck, Layers } from 'lucide-react';
+import { getManagers, createManager, updateManager, deleteManager, getSalarySettings, upsertSalarySetting, getAllProfiles } from '@/lib/api';
+import type { Profile } from '@/types/types';
 import { supabase } from '@/db/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Manager, SalarySetting } from '@/types/types';
@@ -92,6 +93,94 @@ function SalaryInlineRow({ manager, setting, onSaved }: SalaryRowProps) {
 }
 
 // Сложный случайный пароль — буквы разного регистра, цифры, спецсимвол
+const SYSTEM_ROLE_LABELS: Record<string, string> = {
+  director: 'Главный админ',
+  director_view: 'Директор',
+  rop: 'РОП',
+  lidorub: 'Лидоруб',
+  manager: 'Менеджер',
+};
+
+// Полный профиль сотрудника — вся информация в одном месте, а не
+// разрозненно по строке списка.
+function EmployeeProfileDialog({ manager, setting, profile, onClose }: {
+  manager: Manager | null;
+  setting?: SalarySetting;
+  profile?: Profile;
+  onClose: () => void;
+}) {
+  if (!manager) return null;
+  return (
+    <Dialog open={!!manager} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center text-base font-display font-bold text-primary shrink-0">
+              {manager.name.trim().charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <DialogTitle className="text-base">{manager.name}</DialogTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">{manager.role}</p>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="space-y-4 pt-1">
+          <div className="flex flex-wrap gap-1.5">
+            {!manager.is_active && (
+              <Badge variant="outline" className="text-xs border-destructive/40 text-destructive">Неактивен</Badge>
+            )}
+            {profile ? (
+              <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                <ShieldCheck size={11} />{SYSTEM_ROLE_LABELS[profile.role] ?? profile.role}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs text-muted-foreground">Без аккаунта</Badge>
+            )}
+            {manager.amocrm_user_id && (
+              <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                <Layers size={11} />amoCRM
+              </Badge>
+            )}
+          </div>
+
+          <div className="space-y-2.5 text-sm">
+            {manager.phone && (
+              <div className="flex items-center gap-2.5">
+                <Phone size={14} className="text-muted-foreground shrink-0" />
+                <span>{manager.phone}</span>
+              </div>
+            )}
+            {profile?.email && (
+              <div className="flex items-center gap-2.5">
+                <Mail size={14} className="text-muted-foreground shrink-0" />
+                <span className="truncate">{profile.email}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2.5">
+              <Calendar size={14} className="text-muted-foreground shrink-0" />
+              <span>В системе с {formatDate(manager.created_at)}</span>
+            </div>
+            {setting && (
+              <div className="flex items-center gap-2.5">
+                <Wallet size={14} className="text-muted-foreground shrink-0" />
+                <span>
+                  Оклад {formatCurrency(setting.base_salary)}
+                  {setting.commission_pct > 0 ? ` + ${setting.commission_pct}% от выручки` : ''}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Закрыть</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function generateStrongPassword(): string {
   const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   const lower = 'abcdefghijkmnpqrstuvwxyz';
@@ -108,6 +197,8 @@ export default function ManagersPage() {
   const { isDirector } = useAuth(); // Директор (director_view) видит страницу, но не управляет — только Главный админ
   const [managers, setManagers]     = useState<Manager[]>([]);
   const [settings, setSettings]     = useState<SalarySetting[]>([]);
+  const [profiles, setProfiles]     = useState<Profile[]>([]);
+  const [profileTarget, setProfileTarget] = useState<Manager | null>(null); // открытый профиль сотрудника
   const [loading, setLoading]       = useState(true);
   const [newName, setNewName]       = useState('');
   const [newRole, setNewRole]       = useState<string>(ROLES[0]);
@@ -130,9 +221,10 @@ export default function ManagersPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [mgrs, setts] = await Promise.all([getManagers(), getSalarySettings()]);
+      const [mgrs, setts, profs] = await Promise.all([getManagers(), getSalarySettings(), getAllProfiles()]);
       setManagers(mgrs);
       setSettings(setts);
+      setProfiles(profs);
     } catch { toast.error('Ошибка загрузки'); }
     finally { setLoading(false); }
   }, []);
@@ -355,7 +447,11 @@ export default function ManagersPage() {
                         <li key={m.id} className="flex items-start justify-between py-3 gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <p className="text-sm font-medium truncate">{m.name}</p>
+                              <button
+                                type="button"
+                                className="text-sm font-medium truncate text-left hover:text-primary hover:underline"
+                                onClick={() => setProfileTarget(m)}
+                              >{m.name}</button>
                               <Badge variant={roleBadgeVariant(m.role)} className="text-xs shrink-0">{m.role || '—'}</Badge>
                               {m.user_id && (
                                 <span className="text-xs text-muted-foreground flex items-center gap-0.5">
@@ -488,6 +584,13 @@ export default function ManagersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <EmployeeProfileDialog
+        manager={profileTarget}
+        setting={profileTarget ? settings.find(s => s.manager_id === profileTarget.id) : undefined}
+        profile={profileTarget ? profiles.find(p => p.id === profileTarget.user_id) : undefined}
+        onClose={() => setProfileTarget(null)}
+      />
     </AppLayout>
   );
 }
