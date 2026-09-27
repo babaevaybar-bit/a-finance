@@ -168,22 +168,18 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {kpis.map(({ label, value, icon: Icon, sub }) => (
-              <Card key={label} className="border border-border">
-                <CardContent className="pt-4 pb-3 px-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">{label}</p>
-                      <p className="text-lg font-semibold mt-0.5 truncate">{value}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
-                    </div>
-                    <div className="shrink-0 w-8 h-8 rounded-md bg-primary/8 flex items-center justify-center">
-                      <Icon size={15} className="text-primary" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            {kpis.map(({ label, value, sub }, i) => {
+              const isLast = i === kpis.length - 1;
+              return (
+                <Card key={label} className={isLast ? 'bg-primary border-0' : undefined}>
+                  <CardContent className="pt-4 pb-3 px-4">
+                    <p className={`text-xs ${isLast ? 'text-primary-foreground/75' : 'text-muted-foreground'}`}>{label}</p>
+                    <p className={`text-lg font-semibold mt-1 truncate ${isLast ? 'text-primary-foreground' : ''}`}>{value}</p>
+                    <p className={`text-xs mt-0.5 ${isLast ? 'text-primary-foreground/75' : 'text-muted-foreground'}`}>{sub}</p>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
 
@@ -219,76 +215,109 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Bar chart: revenue by manager per month */}
+        {/* Bar chart: revenue by manager per month + activity feed side by side */}
         {loading ? (
           <div className="h-72 rounded-lg bg-muted animate-pulse" />
         ) : (
-          <Card className="border border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Выручка по менеджерам (по месяцам)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {managers.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-10">Нет данных</p>
-              ) : (
-                <div className="w-full min-w-0 overflow-hidden">
-                  <ResponsiveContainer width="100%" height={280}>
-                    <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                      <XAxis
-                        dataKey="month"
-                        tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                        axisLine={false}
-                        tickLine={false}
-                        tickFormatter={v => {
-                          // Abbreviate: «июль 2026» → «июл '26»
-                          const parts = v.split(' ');
-                          return parts.length >= 2 ? `${parts[0].slice(0, 3)} '${parts[1].slice(2)}` : v;
-                        }}
-                      />
-                      <YAxis
-                        tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                        axisLine={false}
-                        tickLine={false}
-                        tickFormatter={v => v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v)}
-                        width={52}
-                      />
-                      <Tooltip content={<CustomTooltip />} />
-                      <Legend
-                        wrapperStyle={{ fontSize: 12, paddingTop: 12 }}
-                        layout="horizontal"
-                      />
-                      {managers.map((m, i) => (
-                        <Bar
-                          key={m.id}
-                          dataKey={m.id}
-                          name={m.name}
-                          stackId="revenue"
-                          fill={MANAGER_COLORS[i % MANAGER_COLORS.length]}
-                          radius={i === managers.length - 1 ? [2, 2, 0, 0] : 0}
-                          maxBarSize={40}
+          <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4 items-start">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Выручка по менеджерам (по месяцам)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {managers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-10">Нет данных</p>
+                ) : (
+                  <div className="w-full min-w-0 overflow-hidden">
+                    <ResponsiveContainer width="100%" height={280}>
+                      <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="4 6" stroke="hsl(var(--border))" strokeOpacity={0.6} vertical={false} />
+                        <XAxis
+                          dataKey="month"
+                          tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={v => {
+                            // Abbreviate: «июль 2026» → «июл '26»
+                            const parts = v.split(' ');
+                            return parts.length >= 2 ? `${parts[0].slice(0, 3)} '${parts[1].slice(2)}` : v;
+                          }}
                         />
-                      ))}
-                      {/* Нулевой столбик наверху стопки — только чтобы подписать общую сумму по месяцу */}
-                      <Bar dataKey="__zero" stackId="revenue" fill="transparent" legendType="none" isAnimationActive={false}>
-                        <LabelList
-                          dataKey="total"
-                          position="top"
-                          formatter={(v: number) => (v > 0 ? formatCurrency(v) : '')}
-                          style={{ fontSize: 11, fill: 'hsl(var(--foreground))' }}
+                        <YAxis
+                          tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={v => v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v)}
+                          width={52}
                         />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend
+                          wrapperStyle={{ fontSize: 12, paddingTop: 12 }}
+                          layout="horizontal"
+                        />
+                        {managers.map((m, i) => (
+                          <Bar
+                            key={m.id}
+                            dataKey={m.id}
+                            name={m.name}
+                            stackId="revenue"
+                            fill={MANAGER_COLORS[i % MANAGER_COLORS.length]}
+                            radius={i === managers.length - 1 ? [8, 8, 0, 0] : 0}
+                            maxBarSize={40}
+                          />
+                        ))}
+                        {/* Нулевой столбик наверху стопки — только чтобы подписать общую сумму по месяцу */}
+                        <Bar dataKey="__zero" stackId="revenue" fill="transparent" legendType="none" isAnimationActive={false}>
+                          <LabelList
+                            dataKey="total"
+                            position="top"
+                            formatter={(v: number) => (v > 0 ? formatCurrency(v) : '')}
+                            style={{ fontSize: 11, fill: 'hsl(var(--foreground))' }}
+                          />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Лента последних событий — сразу видно, что произошло, без захода
+                в каждый раздел по очереди */}
+            {activity.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Последние события</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 divide-y divide-border">
+                  {activity.map(a => {
+                    const managerName = managers.find(m => m.id === a.managerId)?.name;
+                    const Icon = a.type === 'deal_approved' ? CheckCircle2 : UserPlus;
+                    const iconColor = a.type === 'deal_approved' ? 'text-green-600' : 'text-blue-500';
+                    return (
+                      <div key={a.id} className="flex items-center gap-3 px-4 py-2.5">
+                        <Icon size={16} className={`shrink-0 ${iconColor}`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{a.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {a.subtitle}{managerName ? ` · ${managerName}` : ''}
+                          </p>
+                        </div>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {new Date(a.at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            )}
+          </div>
         )}
 
         {/* Line chart: overall revenue trend */}
         {!loading && (
-          <Card className="border border-border">
+          <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Динамика выручки (общая)</CardTitle>
             </CardHeader>
@@ -296,7 +325,7 @@ export default function DashboardPage() {
               <div className="w-full min-w-0 overflow-hidden">
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={trendData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <CartesianGrid strokeDasharray="4 6" stroke="hsl(var(--border))" strokeOpacity={0.6} vertical={false} />
                     <XAxis
                       dataKey="month"
                       tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
@@ -407,36 +436,6 @@ export default function DashboardPage() {
           </Card>
         )}
 
-        {/* Лента последних событий — сразу видно, что произошло, без захода
-            в каждый раздел по очереди */}
-        {!loading && activity.length > 0 && (
-          <Card className="border border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Последние события</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0 divide-y divide-border">
-              {activity.map(a => {
-                const managerName = managers.find(m => m.id === a.managerId)?.name;
-                const Icon = a.type === 'deal_approved' ? CheckCircle2 : UserPlus;
-                const iconColor = a.type === 'deal_approved' ? 'text-green-600' : 'text-blue-500';
-                return (
-                  <div key={a.id} className="flex items-center gap-3 px-4 py-2.5">
-                    <Icon size={16} className={`shrink-0 ${iconColor}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{a.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {a.subtitle}{managerName ? ` · ${managerName}` : ''}
-                      </p>
-                    </div>
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      {new Date(a.at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
-                    </span>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-        )}
       </div>
     </AppLayout>
   );
