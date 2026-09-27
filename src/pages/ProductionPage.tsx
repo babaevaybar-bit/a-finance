@@ -276,14 +276,14 @@ export default function ProductionPage() {
         {loading ? (
           <div className="text-sm text-muted-foreground">Загрузка...</div>
         ) : !error && (
-          <div className="flex gap-3 overflow-x-auto pb-4 items-start production-scroll">
+          <div className="flex gap-3 overflow-x-auto pb-4 items-start production-scroll h-[calc(100vh-220px)]">
             {visibleColumns.map(col => {
               const phase = phaseOf(col.name);
               const { color, icon: PhaseIcon } = PHASE_STYLE[phase];
               return (
                 <div
                   key={col.name}
-                  className={`shrink-0 w-72 rounded-xl transition-colors overflow-hidden ${
+                  className={`shrink-0 w-72 h-full rounded-xl transition-colors overflow-hidden flex flex-col ${
                     dragOverColumn === col.name ? 'bg-primary/5 ring-2 ring-primary/40' : col.isPlanned ? 'bg-muted/20' : 'bg-muted/40'
                   }`}
                   style={{ borderTop: `3px solid ${color}` }}
@@ -291,7 +291,7 @@ export default function ProductionPage() {
                   onDragLeave={() => setDragOverColumn(prev => (prev === col.name ? null : prev))}
                   onDrop={e => { e.preventDefault(); handleDrop(col.name); }}
                 >
-                  <div className="flex items-center justify-between px-3 pt-2.5 pb-2">
+                  <div className="flex items-center justify-between px-3 pt-2.5 pb-2 shrink-0">
                     <h3 className="text-sm font-semibold flex items-center gap-1.5 min-w-0">
                       <PhaseIcon size={14} style={{ color }} className="shrink-0" />
                       <span className="truncate">{col.name}</span>
@@ -304,7 +304,7 @@ export default function ProductionPage() {
                     <span className="text-xs text-muted-foreground bg-background rounded-full px-2 py-0.5 shrink-0">{col.cards.length}</span>
                   </div>
 
-                  <div className={`space-y-2 px-3 pb-3 min-h-24 ${col.isPlanned && col.cards.length === 0 ? 'border-2 border-dashed border-border/70 rounded-lg mx-3 mb-3 mt-0' : ''}`}>
+                  <div className={`space-y-2 px-3 pb-3 min-h-24 flex-1 overflow-y-auto production-scroll ${col.isPlanned && col.cards.length === 0 ? 'border-2 border-dashed border-border/70 rounded-lg mx-3 mb-3 mt-0' : ''}`}>
                     {col.cards.length === 0 ? (
                       <p className="text-xs text-muted-foreground px-1 py-2">
                         {col.isPlanned ? 'Пока не используется — этап на будущее' : 'Пусто'}
