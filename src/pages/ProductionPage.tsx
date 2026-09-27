@@ -276,7 +276,7 @@ export default function ProductionPage() {
         {loading ? (
           <div className="text-sm text-muted-foreground">Загрузка...</div>
         ) : !error && (
-          <div className="flex gap-3 overflow-x-auto pb-4 items-start">
+          <div className="flex gap-3 overflow-x-auto pb-4 items-start production-scroll">
             {visibleColumns.map(col => {
               const phase = phaseOf(col.name);
               const { color, icon: PhaseIcon } = PHASE_STYLE[phase];

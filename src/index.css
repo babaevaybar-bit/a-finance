@@ -113,3 +113,25 @@
     line-height: 1.25;
   }
 }
+
+/* Заметный горизонтальный ползунок для доски «Производство» — глобальный
+   тонкий скроллбар там легко не заметить при большом числе колонок. */
+.production-scroll {
+  scrollbar-width: auto;
+  scrollbar-color: hsl(var(--primary) / 0.45) hsl(var(--muted));
+}
+.production-scroll::-webkit-scrollbar {
+  height: 14px;
+}
+.production-scroll::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 7px;
+}
+.production-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary) / 0.45);
+  border-radius: 7px;
+  border: 3px solid hsl(var(--muted));
+}
+.production-scroll::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.65);
+}
