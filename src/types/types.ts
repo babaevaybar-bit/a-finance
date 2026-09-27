@@ -15,7 +15,7 @@ export interface Profile {
   id: string;
   name: string;
   email: string | null;
-  role: 'director' | 'rop' | 'manager' | 'lidorub';
+  role: 'director' | 'director_view' | 'rop' | 'manager' | 'lidorub';
   manager_id: string | null;
   created_at: string;
   updated_at: string;
@@ -149,6 +149,7 @@ export const DEAL_STATUS_LABELS: Record<string, string> = {
 };
 
 export const ROLES = [
+  'Директор',
   'Менеджер по продажам',
   'Лидоруб',
   'Технолог',

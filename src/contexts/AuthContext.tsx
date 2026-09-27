@@ -13,8 +13,9 @@ async function fetchProfile(userId: string): Promise<Profile | null> {
 interface AuthContextType {
   user: User | null;
   profile: Profile | null;
-  isAdmin: boolean;       // алиас isDirector, для обратной совместимости со старым кодом
-  isDirector: boolean;    // Директор — полный доступ
+  isAdmin: boolean;       // алиас isDirector || isDirectorView, для обратной совместимости со старым кодом
+  isDirector: boolean;    // Главный админ — полный доступ, включая управление сотрудниками/правами
+  isDirectorView: boolean; // Директор — видит всё, но не создаёт/не редактирует сотрудников и права
   isRop: boolean;         // РОП — CRM и отчёты по всем менеджерам
   isManager: boolean;     // Менеджер — только свои клиенты/сделки
   isLidorub: boolean;     // Лидоруб — доступ как у менеджера, ЗП как у РОП (от общей выручки)
@@ -43,13 +44,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [disableAuth, setDisableAuth] = useState<boolean>(DISABLE_AUTH_ENV);
 
   const isDirector = profile?.role === 'director';
+  const isDirectorView = profile?.role === 'director_view'; // Директор — видит всё, но не управляет сотрудниками/правами
   const isRop      = profile?.role === 'rop';
   const isManager  = profile?.role === 'manager';
   const isLidorub  = profile?.role === 'lidorub';
-  const isAdmin    = isDirector; // обратная совместимость со старым кодом
+  const isAdmin    = isDirector || isDirectorView; // обратная совместимость со старым кодом + доступ ко всем adminOnly-разделам
 
   // Директор и РОП видят сделки/CRM всех менеджеров; обычный менеджер — только свои
-  const canViewAllManagers = isDirector || isRop;
+  const canViewAllManagers = isDirector || isDirectorView || isRop;
 
   // Может подтверждать/отклонять сделки: директор и РОП всегда, остальные — по разрешению can_approve
   const canApprove = isDirector || isRop || permissions.some(p => p.page === 'approvals' && p.can_approve);
@@ -216,8 +218,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // РОП — полный доступ к разделам надзора (approvals, reports) + видит sales/CRM всех менеджеров,
   //   но не финансовые/зарплатные/административные разделы.
   // Менеджер — только то, что явно разрешено в employee_permissions (по умолчанию скрыты RESTRICTED_BY_DEFAULT).
+  // Разделы, в которых управление (создание/изменение сотрудников, выдача прав)
+  // остаётся строго за Главным админом — «Директор» видит их, но не редактирует.
+  const DIRECTOR_ONLY_EDIT_PAGES = new Set(['managers', 'permissions']);
+
   function canView(page: string): boolean {
-    if (isDirector) return true;
+    if (isDirector || isDirectorView) return true;
     if (isRop && ROP_PAGES.has(page)) return true;
     const perm = permissions.find(p => p.page === page);
     if (perm) return perm.can_view;
@@ -226,6 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function canEdit(page: string): boolean {
     if (isDirector) return true;
+    if (isDirectorView) return !DIRECTOR_ONLY_EDIT_PAGES.has(page);
     if (isRop && ROP_PAGES.has(page)) return true;
     const perm = permissions.find(p => p.page === page);
     if (perm) return perm.can_edit;
@@ -234,7 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, profile, isAdmin, isDirector, isRop, isManager, isLidorub, canApprove, canViewAllManagers,
+      user, profile, isAdmin, isDirector, isDirectorView, isRop, isManager, isLidorub, canApprove, canViewAllManagers,
       loading, permissions, canView, canEdit, signIn, signOut, refreshProfile,
     }}>
       {children}

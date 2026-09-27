@@ -16,6 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const ROLE_LABELS: Record<Profile['role'], string> = {
   director: 'Главный админ',
+  director_view: 'Директор',
   rop: 'РОП',
   manager: 'Менеджер',
   lidorub: 'Лидоруб',
@@ -23,7 +24,7 @@ const ROLE_LABELS: Record<Profile['role'], string> = {
 
 // ─── Блок: назначение ролей (Директор / РОП / Менеджер) ───────────────────────
 function RolesSection() {
-  const { user } = useAuth();
+  const { user, isDirector } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState<Record<string, boolean>>({});
@@ -79,11 +80,12 @@ function RolesSection() {
                   <Select
                     value={p.role}
                     onValueChange={v => changeRole(p.id, v as Profile['role'])}
-                    disabled={!!saving[p.id] || p.id === user?.id}
+                    disabled={!isDirector || !!saving[p.id] || p.id === user?.id}
                   >
                     <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="director">Главный админ</SelectItem>
+                      <SelectItem value="director_view">Директор</SelectItem>
                       <SelectItem value="rop">РОП</SelectItem>
                       <SelectItem value="lidorub">Лидоруб</SelectItem>
                       <SelectItem value="manager">Менеджер</SelectItem>
@@ -108,6 +110,7 @@ function getPerm(map: PermMap, managerId: string, page: string) {
 }
 
 export default function PermissionsPage() {
+  const { isDirector } = useAuth();
   const [managers, setManagers]     = useState<Manager[]>([]);
   const [permMap, setPermMap]       = useState<PermMap>({});
   const [saving, setSaving]         = useState<Record<string, boolean>>({});
@@ -290,14 +293,14 @@ export default function PermissionsPage() {
                                 <td className="py-3 px-4 text-center">
                                   <Switch
                                     checked={perm.can_view}
-                                    disabled={!!savingView}
+                                    disabled={!isDirector || !!savingView}
                                     onCheckedChange={v => toggle(m.id, key, 'can_view', v)}
                                   />
                                 </td>
                                 <td className="py-3 px-4 text-center">
                                   <Switch
                                     checked={perm.can_edit}
-                                    disabled={!perm.can_view || !!savingEdit}
+                                    disabled={!isDirector || !perm.can_view || !!savingEdit}
                                     onCheckedChange={v => toggle(m.id, key, 'can_edit', v)}
                                   />
                                 </td>
@@ -305,7 +308,7 @@ export default function PermissionsPage() {
                                   {showApprove ? (
                                     <Switch
                                       checked={perm.can_approve}
-                                      disabled={!!savingApprove}
+                                      disabled={!isDirector || !!savingApprove}
                                       onCheckedChange={v => toggle(m.id, key, 'can_approve', v)}
                                     />
                                   ) : (

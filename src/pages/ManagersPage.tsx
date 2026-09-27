@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Users, KeyRound, Check, X } from 'lucide-react';
 import { getManagers, createManager, updateManager, deleteManager, getSalarySettings, upsertSalarySetting } from '@/lib/api';
 import { supabase } from '@/db/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import type { Manager, SalarySetting } from '@/types/types';
 import { ROLES } from '@/types/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -104,6 +105,7 @@ function generateStrongPassword(): string {
 }
 
 export default function ManagersPage() {
+  const { isDirector } = useAuth(); // Директор (director_view) видит страницу, но не управляет — только Главный админ
   const [managers, setManagers]     = useState<Manager[]>([]);
   const [settings, setSettings]     = useState<SalarySetting[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -112,7 +114,7 @@ export default function ManagersPage() {
   const [newRoleCustom, setNewRoleCustom] = useState('');
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newAuthRole, setNewAuthRole] = useState<'manager' | 'rop' | 'director' | 'lidorub'>('manager');
+  const [newAuthRole, setNewAuthRole] = useState<'manager' | 'rop' | 'director' | 'director_view' | 'lidorub'>('manager');
   const [newRecoveryEmail, setNewRecoveryEmail] = useState('');
   const [saving, setSaving]         = useState(false);
   const [editManager, setEditManager]   = useState<Manager | null>(null);
@@ -121,7 +123,7 @@ export default function ManagersPage() {
   const [editRoleCustom, setEditRoleCustom] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
-  const [editAuthRole, setEditAuthRole] = useState<'manager' | 'rop' | 'director' | 'lidorub'>('manager');
+  const [editAuthRole, setEditAuthRole] = useState<'manager' | 'rop' | 'director' | 'director_view' | 'lidorub'>('manager');
   const [editRecoveryEmail, setEditRecoveryEmail] = useState('');
   const [editSaving, setEditSaving]     = useState(false);
 
@@ -255,6 +257,7 @@ export default function ManagersPage() {
           <p className="text-sm text-muted-foreground mt-0.5">Управление персоналом и аккаунтами</p>
         </div>
 
+        {isDirector && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Добавить сотрудника</CardTitle>
@@ -315,6 +318,7 @@ export default function ManagersPage() {
                       <SelectItem value="manager">Менеджер — только свои клиенты и сделки</SelectItem>
                       <SelectItem value="lidorub">Лидоруб — доступ как у менеджера, ЗП от общей выручки</SelectItem>
                       <SelectItem value="rop">РОП — CRM и продажи всех менеджеров</SelectItem>
+                      <SelectItem value="director_view">Директор — видит всё, но не управляет сотрудниками/правами</SelectItem>
                       <SelectItem value="director">Главный админ — полный доступ</SelectItem>
                     </SelectContent>
                   </Select>
@@ -327,6 +331,7 @@ export default function ManagersPage() {
             </Button>
           </CardContent>
         </Card>
+        )}
 
         <Card>
           <CardHeader className="pb-3">
@@ -368,6 +373,7 @@ export default function ManagersPage() {
                             </div>
                             <SalaryInlineRow manager={m} setting={settings.find(s => s.manager_id === m.id)} onSaved={load} />
                           </div>
+                          {isDirector && (
                           <div className="flex gap-1 shrink-0">
                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(m)}>
                               <Pencil size={14} />
@@ -395,6 +401,7 @@ export default function ManagersPage() {
                               </AlertDialogContent>
                             </AlertDialog>
                           </div>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -465,6 +472,7 @@ export default function ManagersPage() {
                       <SelectItem value="manager">Менеджер — только свои клиенты и сделки</SelectItem>
                       <SelectItem value="lidorub">Лидоруб — доступ как у менеджера, ЗП от общей выручки</SelectItem>
                       <SelectItem value="rop">РОП — CRM и продажи всех менеджеров</SelectItem>
+                      <SelectItem value="director_view">Директор — видит всё, но не управляет сотрудниками/правами</SelectItem>
                       <SelectItem value="director">Главный админ — полный доступ</SelectItem>
                     </SelectContent>
                   </Select>
