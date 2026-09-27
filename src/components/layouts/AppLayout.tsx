@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -9,9 +9,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   Menu, LayoutDashboard, TrendingUp, Wallet, BarChart2,
-  Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench,
+  Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { getNotifications } from '@/lib/api';
 
 const navItems = [
   { path: '/',             label: 'Дашборд',          icon: LayoutDashboard, adminOnly: false, pageKey: 'dashboard'    },
@@ -21,6 +22,7 @@ const navItems = [
   { path: '/reports',      label: 'Отчёты',            icon: BarChart2,       adminOnly: true,  pageKey: 'reports'      },
   { path: '/amocrm',       label: 'amoCRM',            icon: Layers,          adminOnly: true,  pageKey: 'amocrm'       },
   { path: '/production',   label: 'Производство',      icon: Wrench,          adminOnly: true,  pageKey: 'production'   },
+  { path: '/messages',     label: 'Сообщения',         icon: Bell,            adminOnly: false, pageKey: 'messages'     },
   { path: '/salary',       label: 'Зарплаты',          icon: Banknote,        adminOnly: true,  pageKey: 'salary'       },
   { path: '/profit',       label: 'Чистая прибыль',    icon: TrendingDown,    adminOnly: true,  pageKey: 'profit'       },
   { path: '/daily-report', label: 'Ежедневный отчёт',  icon: ClipboardList,   adminOnly: false, pageKey: 'daily-report' },
@@ -30,7 +32,14 @@ const navItems = [
 
 function NavLinks({ onClose }: { onClose?: () => void }) {
   const { pathname } = useLocation();
-  const { isAdmin, isDirector, isRop, canView } = useAuth();
+  const { isAdmin, isDirector, isRop, canView, profile, canViewAllManagers } = useAuth();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    getNotifications(canViewAllManagers ? null : (profile?.manager_id ?? null))
+      .then(list => setUnreadCount(list.filter(n => !n.is_read).length))
+      .catch(() => {});
+  }, [profile?.manager_id, canViewAllManagers]);
 
   const visibleItems = navItems.filter(item => {
     // Администратор видит всё
@@ -57,7 +66,12 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
           )}
         >
           <Icon size={16} className="shrink-0" />
-          <span>{label}</span>
+          <span className="flex-1">{label}</span>
+          {path === '/messages' && unreadCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive text-destructive-foreground font-semibold shrink-0">
+              {unreadCount}
+            </span>
+          )}
         </Link>
       ))}
     </nav>

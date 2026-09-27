@@ -1,6 +1,6 @@
 import { supabase } from '@/db/supabase';
 import { CHANNELS } from '@/types/types';
-import type { Manager, Profile, SalesPlan, Deal, Expense, Income, Transfer, SalarySetting, EmployeePermission, ProfitRow, DailyReport, ClientReport, ClientInteraction, ClientTask, ClientChangeLog, InteractionType, DealStage, ClientQuality, DealPayment } from '@/types/types';
+import type { Manager, Profile, SalesPlan, Deal, Expense, Income, Transfer, SalarySetting, EmployeePermission, ProfitRow, DailyReport, ClientReport, ClientInteraction, ClientTask, ClientChangeLog, InteractionType, DealStage, ClientQuality, DealPayment, AppNotification } from '@/types/types';
 
 // ─── Profiles ─────────────────────────────────────────────────────────────────
 
@@ -779,5 +779,24 @@ export async function toggleProductionChecklistItem(id: string, checked: boolean
 
 export async function deleteProductionChecklistItem(id: string): Promise<void> {
   const { error } = await supabase.from('production_checklist_items').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── Уведомления сотрудникам ──────────────────────────────────────────────
+export async function getNotifications(managerId: string | null): Promise<AppNotification[]> {
+  let query = supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(100);
+  if (managerId) query = query.eq('manager_id', managerId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function markAllNotificationsRead(managerId: string): Promise<void> {
+  const { error } = await supabase.from('notifications').update({ is_read: true }).eq('manager_id', managerId).eq('is_read', false);
   if (error) throw error;
 }

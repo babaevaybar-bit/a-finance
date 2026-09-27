@@ -44,6 +44,7 @@ function emptyDeal(monthYear: string): Omit<Deal, 'id' | 'created_at' | 'updated
     total_amount: 0,
     paid_amount: 0,
     prepayment_date: null,
+    next_payment_date: null,
     comment: null,
     salary_amount: null,
     vat_gross_amount: null,
@@ -71,6 +72,7 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
         total_amount: deal.total_amount,
         paid_amount: deal.paid_amount,
         prepayment_date: deal.prepayment_date || null,
+        next_payment_date: deal.next_payment_date || null,
         comment: deal.comment || null,
         salary_amount: deal.salary_amount ?? null,
         vat_gross_amount: deal.vat_gross_amount ?? null,
@@ -109,6 +111,7 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
         client_name: form.client_name || null,
         door_model: form.door_model || null,
         prepayment_date: form.prepayment_date || null,
+        next_payment_date: form.next_payment_date || null,
         comment: form.comment || null,
         salary_amount: form.salary_amount !== null && form.salary_amount !== undefined && String(form.salary_amount) !== ''
           ? Number(form.salary_amount)
@@ -210,6 +213,10 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
           <div className="space-y-1">
             <Label>Дата предоплаты</Label>
             <Input type="date" value={form.prepayment_date || ''} onChange={e => set('prepayment_date', e.target.value || null)} />
+          </div>
+          <div className="space-y-1">
+            <Label>Дата следующей доплаты</Label>
+            <Input type="date" value={form.next_payment_date || ''} onChange={e => set('next_payment_date', e.target.value || null)} />
           </div>
           <div className="space-y-1">
             <Label>Стадия установки</Label>

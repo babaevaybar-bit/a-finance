@@ -49,6 +49,7 @@ export interface Deal {
   salary_amount: number | null; // base for commission calc; null = use total_amount
   vat_gross_amount: number | null; // сумма с НДС при оплате «Перечисление» (общая сумма вводится отдельно, вручную — процент бывает разный)
   contract_number: string | null; // номер договора — ключ для связки с карточкой в Trello
+  next_payment_date: string | null; // примерная дата следующей доплаты — для напоминаний сотруднику
   status: 'pending' | 'approved' | 'rejected'; // pending = awaiting director's approval
   stage: 'new' | 'in_progress' | 'installed' | 'closed' | 'canceled'; // жизненный цикл установки
   created_at: string;
@@ -336,3 +337,16 @@ export const LEAD_SOURCE_LABELS: Record<string, string> = {
   cold_call: 'Холодный звонок',
   other:     'Другое',
 };
+
+// ─── Уведомления сотрудникам ──────────────────────────────────────────────
+export interface AppNotification {
+  id: string;
+  manager_id: string;
+  type: 'payment_due' | 'stage_changed';
+  title: string;
+  body: string;
+  deal_id: string | null;
+  trello_card_id: string | null;
+  is_read: boolean;
+  created_at: string;
+}
