@@ -28,6 +28,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center space-y-1">
+          <span className="inline-flex w-11 h-11 rounded-[12px] bg-black text-white items-center justify-center text-lg font-display font-bold mb-2">A</span>
           <h1 className="text-2xl font-semibold tracking-tight">A-Finance</h1>
           <p className="text-sm text-muted-foreground">Войдите в свой аккаунт</p>
         </div>
