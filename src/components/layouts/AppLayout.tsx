@@ -101,7 +101,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex flex-col w-56 shrink-0 border-r border-sidebar-border bg-sidebar">
         <div className="h-14 flex items-center gap-2 px-4 border-b border-sidebar-border">
-          <span className="w-7 h-7 rounded-lg bg-black text-white flex items-center justify-center text-xs font-display font-bold shrink-0">A</span>
+          <span className="w-7 h-7 rounded-[8px] bg-black text-white flex items-center justify-center text-xs font-display font-bold shrink-0">A</span>
           <span className="font-semibold text-sm text-sidebar-foreground tracking-wide">A-Finance</span>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -143,7 +143,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </SheetTrigger>
             <SheetContent side="left" className="w-56 p-0 bg-sidebar flex flex-col">
               <div className="h-14 flex items-center gap-2 px-4 border-b border-sidebar-border">
-                <span className="w-7 h-7 rounded-lg bg-black text-white flex items-center justify-center text-xs font-display font-bold shrink-0">A</span>
+                <span className="w-7 h-7 rounded-[8px] bg-black text-white flex items-center justify-center text-xs font-display font-bold shrink-0">A</span>
                 <span className="font-semibold text-sm text-sidebar-foreground tracking-wide">A-Finance</span>
               </div>
               <div className="flex-1 overflow-y-auto">
@@ -166,7 +166,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
             </SheetContent>
           </Sheet>
-          <span className="w-7 h-7 rounded-lg bg-black text-white flex items-center justify-center text-xs font-display font-bold shrink-0">A</span>
+          <span className="w-7 h-7 rounded-[8px] bg-black text-white flex items-center justify-center text-xs font-display font-bold shrink-0">A</span>
           <span className="font-semibold text-sm flex-1 min-w-0 truncate ml-2">A-Finance</span>
         </header>
 
