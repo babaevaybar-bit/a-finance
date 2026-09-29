@@ -11,6 +11,7 @@ import {
 import { toast } from 'sonner';
 import { ChevronDown, Plus } from 'lucide-react';
 import { getDealPayments, addDealPayment } from '@/lib/api';
+import PaymentSchedule from './PaymentSchedule';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, DealPayment } from '@/types/types';
 import { PAYMENT_METHODS } from '@/types/types';
@@ -21,8 +22,8 @@ import { PAYMENT_METHODS } from '@/types/types';
  * запись в «Финансы» по указанному каналу (если это реальный банк/нал/
  * перечисление — не «Другое»).
  */
-export default function DealPayments({ deal, onChanged, suggestedAmount, suggestedChannel }: {
-  deal: Deal; onChanged: () => void; suggestedAmount?: number; suggestedChannel?: string;
+export default function DealPayments({ deal, onChanged, suggestedAmount, suggestedChannel, scheduleOpen = false }: {
+  deal: Deal; onChanged: () => void; suggestedAmount?: number; suggestedChannel?: string; scheduleOpen?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -74,10 +75,16 @@ export default function DealPayments({ deal, onChanged, suggestedAmount, suggest
     finally { setSaving(false); }
   }
 
-  if (deal.status !== 'approved') return null;
+  if (deal.status !== 'approved') {
+    return (
+      <div className="mt-2 pt-2 border-t border-border/60">
+        <PaymentSchedule deal={deal} defaultOpen={scheduleOpen} />
+      </div>
+    );
+  }
 
   return (
-    <div className="mt-1">
+    <div className="mt-1 space-y-2">
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -142,6 +149,10 @@ export default function DealPayments({ deal, onChanged, suggestedAmount, suggest
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <div className="pt-2 border-t border-border/60">
+        <PaymentSchedule deal={deal} defaultOpen={scheduleOpen} />
+      </div>
     </div>
   );
 }

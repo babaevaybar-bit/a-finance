@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '@/components/layouts/AppLayout';
+import RecurringTemplatesTab from '@/components/finance/RecurringTemplatesTab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -163,7 +164,7 @@ function ExpenseFormDialog({ open, onClose, onSaved, expense }: {
       if (expense) { await updateExpense(expense.id, payload); toast.success('Расход обновлён'); }
       else { await createExpense(payload); toast.success('Расход добавлен'); }
       onSaved(); onClose();
-    } catch { toast.error('Ошибка'); } finally { setSaving(false); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Ошибка'); } finally { setSaving(false); }
   }
 
   return (
@@ -258,7 +259,7 @@ function IncomeFormDialog({ open, onClose, onSaved, income, managers }: {
       if (income) { await updateIncome(income.id, payload); toast.success('Поступление обновлено'); }
       else { await createIncome(payload); toast.success('Поступление добавлено'); }
       onSaved(); onClose();
-    } catch { toast.error('Ошибка'); } finally { setSaving(false); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Ошибка'); } finally { setSaving(false); }
   }
 
   return (
@@ -346,7 +347,7 @@ function TransferFormDialog({ open, onClose, onSaved, transfer }: {
       if (transfer) { await updateTransfer(transfer.id, form); toast.success('Перевод обновлён'); }
       else { await createTransfer(form); toast.success('Перевод записан'); }
       onSaved(); onClose();
-    } catch { toast.error('Ошибка'); } finally { setSaving(false); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Ошибка'); } finally { setSaving(false); }
   }
 
   return (
@@ -509,7 +510,12 @@ export default function FinancePage() {
             <TabsTrigger value="expenses">Расходы ({expenses.length})</TabsTrigger>
             <TabsTrigger value="income">Поступления ({income.length})</TabsTrigger>
             <TabsTrigger value="transfers">Переводы ({transfers.length})</TabsTrigger>
+            <TabsTrigger value="recurring">Повторяющиеся</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="recurring" className="mt-4">
+            <RecurringTemplatesTab />
+          </TabsContent>
 
           {/* ── Expenses ── */}
           <TabsContent value="expenses" className="mt-4">

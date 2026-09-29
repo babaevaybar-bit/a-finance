@@ -350,3 +350,25 @@ export interface AppNotification {
   is_read: boolean;
   created_at: string;
 }
+
+export interface RecurringExpenseTemplate {
+  id: string;
+  description: string;
+  amount: number;
+  category: string;
+  channel: string;
+  day_of_month: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+// ─── График доплат по сделке ─────────────────────────────────────────────
+export interface PaymentScheduleItem {
+  id: string;
+  deal_id: string;
+  due_date: string;
+  amount: number;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
+}

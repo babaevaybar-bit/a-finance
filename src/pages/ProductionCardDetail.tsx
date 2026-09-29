@@ -313,6 +313,7 @@ export default function ProductionCardDetail({
                     <span>Остаток: {formatCurrency(Math.max(0, deal.total_amount - deal.paid_amount))}</span>
                   </div>
                   <DealPayments
+                    scheduleOpen
                     deal={deal}
                     onChanged={() => extractedPhone && getDealByPhone(extractedPhone).then(setDeal)}
                     suggestedAmount={extractPaymentSuggestion(comments)?.amount}

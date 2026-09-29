@@ -1,6 +1,6 @@
 import { supabase } from '@/db/supabase';
 import { CHANNELS } from '@/types/types';
-import type { Manager, Profile, SalesPlan, Deal, Expense, Income, Transfer, SalarySetting, EmployeePermission, ProfitRow, DailyReport, ClientReport, ClientInteraction, ClientTask, ClientChangeLog, InteractionType, DealStage, ClientQuality, DealPayment, AppNotification } from '@/types/types';
+import type { Manager, Profile, SalesPlan, Deal, Expense, Income, Transfer, SalarySetting, EmployeePermission, ProfitRow, DailyReport, ClientReport, ClientInteraction, ClientTask, ClientChangeLog, InteractionType, DealStage, ClientQuality, DealPayment, AppNotification, RecurringExpenseTemplate, PaymentScheduleItem } from '@/types/types';
 
 // ─── Profiles ─────────────────────────────────────────────────────────────────
 
@@ -129,6 +129,9 @@ export async function getLastDealsMonth(): Promise<string | null> {
 }
 
 export async function createDeal(deal: Omit<Deal, 'id' | 'created_at' | 'updated_at'>): Promise<void> {
+  if (deal.month_year && await isMonthLocked(deal.month_year)) {
+    throw new Error(`Месяц ${deal.month_year} закрыт — новые сделки нельзя добавлять`);
+  }
   const { error } = await supabase.from('deals').insert(deal);
   if (error) throw error;
 }
@@ -236,12 +239,87 @@ export async function searchClientReportsByQuery(q: string): Promise<ClientRepor
   return Array.isArray(data) ? data : [];
 }
 
+// ─── Аудит-след по финансовым изменениям ─────────────────────────────────
+// Кто и когда поменял конкретное поле — сравниваем со старым значением
+// перед записью и логируем только реальные изменения.
+async function logFieldChanges(
+  entityType: 'deal' | 'expense' | 'income' | 'salary_setting' | 'transfer',
+  entityId: string,
+  oldRow: Record<string, any>,
+  newValues: Record<string, any>
+): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  let changedByName: string | null = null;
+  if (user) {
+    const { data: prof } = await supabase.from('profiles').select('name').eq('id', user.id).maybeSingle();
+    changedByName = prof?.name ?? null;
+  }
+  const entries = Object.entries(newValues)
+    .filter(([key, newVal]) => key in oldRow && String(oldRow[key] ?? '') !== String(newVal ?? ''))
+    .map(([key, newVal]) => ({
+      entity_type: entityType,
+      entity_id: entityId,
+      changed_by: user?.id ?? null,
+      changed_by_name: changedByName,
+      field_name: key,
+      old_value: oldRow[key] != null ? String(oldRow[key]) : null,
+      new_value: newVal != null ? String(newVal) : null,
+    }));
+  if (entries.length > 0) {
+    await supabase.from('financial_audit_log').insert(entries);
+  }
+}
+
+export async function getFinancialAuditLog(entityType: string, entityId: string) {
+  const { data, error } = await supabase
+    .from('financial_audit_log')
+    .select('*')
+    .eq('entity_type', entityType)
+    .eq('entity_id', entityId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+// ─── Закрытие месяца — защита выданных зарплат от задних изменений ───────
+export async function getMonthLocks(): Promise<{ month_year: string; locked_by_name: string | null; locked_at: string }[]> {
+  const { data, error } = await supabase.from('month_locks').select('*').order('month_year', { ascending: false });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function isMonthLocked(monthYear: string): Promise<boolean> {
+  const { data } = await supabase.from('month_locks').select('month_year').eq('month_year', monthYear).maybeSingle();
+  return !!data;
+}
+
+export async function lockMonth(monthYear: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  let name: string | null = null;
+  if (user) {
+    const { data: prof } = await supabase.from('profiles').select('name').eq('id', user.id).maybeSingle();
+    name = prof?.name ?? null;
+  }
+  const { error } = await supabase.from('month_locks').insert({ month_year: monthYear, locked_by: user?.id ?? null, locked_by_name: name });
+  if (error) throw error;
+}
+
+export async function unlockMonth(monthYear: string): Promise<void> {
+  const { error } = await supabase.from('month_locks').delete().eq('month_year', monthYear);
+  if (error) throw error;
+}
+
 export async function updateDeal(id: string, deal: Partial<Omit<Deal, 'id' | 'created_at'>>): Promise<void> {
+  const { data: oldRow } = await supabase.from('deals').select('*').eq('id', id).maybeSingle();
+  if (oldRow?.month_year && await isMonthLocked(oldRow.month_year)) {
+    throw new Error(`Месяц ${oldRow.month_year} закрыт — изменения запрещены`);
+  }
   const { error } = await supabase
     .from('deals')
     .update({ ...deal, updated_at: new Date().toISOString() })
     .eq('id', id);
   if (error) throw error;
+  if (oldRow) logFieldChanges('deal', id, oldRow, deal).catch(() => {});
 }
 
 export async function deleteDeal(id: string): Promise<void> {
@@ -330,6 +408,8 @@ export async function addDealPayment(
     .eq('id', dealId);
   if (updErr) throw updErr;
 
+  await syncNextPaymentDate(dealId).catch(() => {});
+
   if ((CHANNELS as readonly string[]).includes(channel)) {
     await supabase.from('income').insert({
       manager_id: null,
@@ -395,16 +475,24 @@ export async function getExpenses(): Promise<Expense[]> {
 }
 
 export async function createExpense(expense: Omit<Expense, 'id' | 'created_at' | 'updated_at'>): Promise<void> {
+  if (expense.month_year && await isMonthLocked(expense.month_year)) {
+    throw new Error(`Месяц ${expense.month_year} закрыт — новые расходы нельзя добавлять`);
+  }
   const { error } = await supabase.from('expenses').insert(expense);
   if (error) throw error;
 }
 
 export async function updateExpense(id: string, expense: Partial<Omit<Expense, 'id' | 'created_at'>>): Promise<void> {
+  const { data: oldRow } = await supabase.from('expenses').select('*').eq('id', id).maybeSingle();
+  if (oldRow?.month_year && await isMonthLocked(oldRow.month_year)) {
+    throw new Error(`Месяц ${oldRow.month_year} закрыт — изменения запрещены`);
+  }
   const { error } = await supabase
     .from('expenses')
     .update({ ...expense, updated_at: new Date().toISOString() })
     .eq('id', id);
   if (error) throw error;
+  if (oldRow) logFieldChanges('expense', id, oldRow, expense).catch(() => {});
 }
 
 export async function deleteExpense(id: string): Promise<void> {
@@ -425,16 +513,24 @@ export async function getIncome(): Promise<Income[]> {
 }
 
 export async function createIncome(income: Omit<Income, 'id' | 'created_at' | 'updated_at'>): Promise<void> {
+  if (income.month_year && await isMonthLocked(income.month_year)) {
+    throw new Error(`Месяц ${income.month_year} закрыт — новые поступления нельзя добавлять`);
+  }
   const { error } = await supabase.from('income').insert(income);
   if (error) throw error;
 }
 
 export async function updateIncome(id: string, income: Partial<Omit<Income, 'id' | 'created_at'>>): Promise<void> {
+  const { data: oldRow } = await supabase.from('income').select('*').eq('id', id).maybeSingle();
+  if (oldRow?.month_year && await isMonthLocked(oldRow.month_year)) {
+    throw new Error(`Месяц ${oldRow.month_year} закрыт — изменения запрещены`);
+  }
   const { error } = await supabase
     .from('income')
     .update({ ...income, updated_at: new Date().toISOString() })
     .eq('id', id);
   if (error) throw error;
+  if (oldRow) logFieldChanges('income', id, oldRow, income).catch(() => {});
 }
 
 export async function deleteIncome(id: string): Promise<void> {
@@ -485,6 +581,7 @@ export async function getSalarySettings(): Promise<SalarySetting[]> {
 export async function upsertSalarySetting(
   s: Omit<SalarySetting, 'id' | 'created_at' | 'updated_at'>
 ): Promise<void> {
+  const { data: oldRow } = await supabase.from('salary_settings').select('*').eq('manager_id', s.manager_id).maybeSingle();
   const { error } = await supabase
     .from('salary_settings')
     .upsert(
@@ -492,6 +589,7 @@ export async function upsertSalarySetting(
       { onConflict: 'manager_id' }
     );
   if (error) throw error;
+  if (oldRow) logFieldChanges('salary_setting', oldRow.id, oldRow, s).catch(() => {});
 }
 
 // ─── Company plan (all managers, one month) ───────────────────────────────────
@@ -800,3 +898,104 @@ export async function markAllNotificationsRead(managerId: string): Promise<void>
   const { error } = await supabase.from('notifications').update({ is_read: true }).eq('manager_id', managerId).eq('is_read', false);
   if (error) throw error;
 }
+
+// ─── Шаблоны повторяющихся расходов (аренда, оклад и т.п.) ────────────────
+export async function getRecurringExpenseTemplates(): Promise<RecurringExpenseTemplate[]> {
+  const { data, error } = await supabase.from('recurring_expense_templates').select('*').order('created_at', { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function createRecurringExpenseTemplate(t: Omit<RecurringExpenseTemplate, 'id' | 'created_at'>): Promise<void> {
+  const { error } = await supabase.from('recurring_expense_templates').insert(t);
+  if (error) throw error;
+}
+
+export async function updateRecurringExpenseTemplate(id: string, t: Partial<Omit<RecurringExpenseTemplate, 'id' | 'created_at'>>): Promise<void> {
+  const { error } = await supabase.from('recurring_expense_templates').update(t).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteRecurringExpenseTemplate(id: string): Promise<void> {
+  const { error } = await supabase.from('recurring_expense_templates').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── График доплат по сделке ─────────────────────────────────────────────
+export async function getPaymentSchedule(dealId: string): Promise<PaymentScheduleItem[]> {
+  const { data, error } = await supabase
+    .from('deal_payment_schedule')
+    .select('*')
+    .eq('deal_id', dealId)
+    .order('due_date', { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function addPaymentScheduleItem(dealId: string, dueDate: string, amount: number, comment?: string): Promise<void> {
+  const { error } = await supabase.from('deal_payment_schedule').insert({
+    deal_id: dealId, due_date: dueDate, amount, comment: comment || null,
+  });
+  if (error) throw error;
+  await syncNextPaymentDate(dealId);
+}
+
+export async function updatePaymentScheduleItem(id: string, dealId: string, patch: { due_date?: string; amount?: number; comment?: string | null }): Promise<void> {
+  const { error } = await supabase
+    .from('deal_payment_schedule')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+  await syncNextPaymentDate(dealId);
+}
+
+export async function deletePaymentScheduleItem(id: string, dealId: string): Promise<void> {
+  const { error } = await supabase.from('deal_payment_schedule').delete().eq('id', id);
+  if (error) throw error;
+  await syncNextPaymentDate(dealId);
+}
+
+// Заменить весь график сразу (кнопка «Разделить на N частей»)
+export async function replacePaymentSchedule(dealId: string, items: { due_date: string; amount: number }[]): Promise<void> {
+  const { error: delErr } = await supabase.from('deal_payment_schedule').delete().eq('deal_id', dealId);
+  if (delErr) throw delErr;
+  if (items.length > 0) {
+    const { error } = await supabase.from('deal_payment_schedule').insert(items.map(i => ({ ...i, deal_id: dealId })));
+    if (error) throw error;
+  }
+  await syncNextPaymentDate(dealId);
+}
+
+// Какие части графика уже закрыты фактическими оплатами. Считаем с конца:
+// последние по дате части, в сумме равные остатку, — ещё не оплачены,
+// всё что раньше — закрыто. Так не нужно вручную отмечать «оплачено»:
+// добавили оплату — ближайшая часть закрылась сама.
+export function computeScheduleStatus(
+  items: PaymentScheduleItem[],
+  totalAmount: number,
+  paidAmount: number
+): Record<string, { paidPart: number; isPaid: boolean }> {
+  let unpaidBudget = Math.max(0, Number(totalAmount) - Number(paidAmount));
+  const result: Record<string, { paidPart: number; isPaid: boolean }> = {};
+  const sortedDesc = [...items].sort((a, b) => b.due_date.localeCompare(a.due_date));
+  for (const item of sortedDesc) {
+    const amount = Number(item.amount);
+    const unpaidHere = Math.min(amount, unpaidBudget);
+    unpaidBudget -= unpaidHere;
+    result[item.id] = { paidPart: amount - unpaidHere, isPaid: unpaidHere === 0 };
+  }
+  return result;
+}
+
+// deals.next_payment_date = дата ближайшей ещё не закрытой части графика —
+// чтобы старые места (напоминания, отображение) продолжали работать.
+async function syncNextPaymentDate(dealId: string): Promise<void> {
+  const { data: deal } = await supabase.from('deals').select('total_amount, paid_amount').eq('id', dealId).maybeSingle();
+  if (!deal) return;
+  const items = await getPaymentSchedule(dealId);
+  if (items.length === 0) return; // графика нет — не трогаем дату, заданную вручную в форме сделки
+  const status = computeScheduleStatus(items, deal.total_amount, deal.paid_amount);
+  const next = items.find(i => !status[i.id]?.isPaid);
+  await supabase.from('deals').update({ next_payment_date: next?.due_date ?? null }).eq('id', dealId);
+}
+export { syncNextPaymentDate };

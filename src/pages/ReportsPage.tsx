@@ -7,18 +7,26 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Download } from 'lucide-react';
-import { getAllDealsForMonth, getExpenses, getIncome, getManagers, getSalesPlans, getTransfers } from '@/lib/api';
+import { Download, Lock, Unlock } from 'lucide-react';
+import { getAllDealsForMonth, getExpenses, getIncome, getManagers, getSalesPlans, getTransfers, isMonthLocked, lockMonth, unlockMonth } from '@/lib/api';
 import { formatCurrency, getCurrentMonthYear, monthYearToLabel } from '@/lib/utils';
 import MonthYearPicker from '@/components/common/MonthYearPicker';
 import { exportMonthlyReport } from '@/lib/exportExcel';
 import type { Deal, Expense, Income, Manager, SalesPlan, Transfer } from '@/types/types';
 import { PAYMENT_METHODS } from '@/types/types';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 export default function ReportsPage() {
+  const { isDirector } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   // Открытие по ссылке с дашборда (?month=YYYY-MM) — сразу нужный месяц
   const [monthYear, setMonthYear] = useState(searchParams.get('month') || getCurrentMonthYear());
+  const [locked, setLocked] = useState(false);
+  const [lockBusy, setLockBusy] = useState(false);
 
   useEffect(() => {
     if (searchParams.get('month')) setSearchParams({}, { replace: true });
@@ -34,19 +42,30 @@ export default function ReportsPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [dls, exps, incs, mgrs, plns, trs] = await Promise.all([
+      const [dls, exps, incs, mgrs, plns, trs, lockStatus] = await Promise.all([
         getAllDealsForMonth(monthYear),
         getExpenses(),
         getIncome(),
         getManagers(),
         getSalesPlans(monthYear),
         getTransfers(),
+        isMonthLocked(monthYear),
       ]);
       setDeals(dls); setExpenses(exps); setIncome(incs); setManagers(mgrs); setPlans(plns); setTransfers(trs);
+      setLocked(lockStatus);
     } catch { /* silent */ } finally { setLoading(false); }
   }, [monthYear]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  async function handleToggleLock() {
+    setLockBusy(true);
+    try {
+      if (locked) { await unlockMonth(monthYear); setLocked(false); toast.success('Месяц снова открыт для изменений'); }
+      else { await lockMonth(monthYear); setLocked(true); toast.success('Месяц закрыт — изменения запрещены'); }
+    } catch { toast.error('Ошибка'); }
+    finally { setLockBusy(false); }
+  }
 
   // Payment method breakdown
   const paymentBreakdown = PAYMENT_METHODS.map(method => {
@@ -90,6 +109,35 @@ export default function ReportsPage() {
           </div>
           <div className="flex items-center gap-2">
             <MonthYearPicker value={monthYear} onChange={setMonthYear} />
+            {locked && (
+              <span className="text-xs px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+                <Lock size={11} />Закрыт
+              </span>
+            )}
+            {isDirector && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" disabled={lockBusy}>
+                    {locked ? <Unlock size={14} className="mr-1.5" /> : <Lock size={14} className="mr-1.5" />}
+                    {locked ? 'Открыть месяц' : 'Закрыть месяц'}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>{locked ? 'Открыть' : 'Закрыть'} {monthYearToLabel(monthYear)}?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {locked
+                        ? 'Сделки, расходы и поступления этого месяца снова можно будет редактировать.'
+                        : 'После закрытия сделки, расходы и поступления этого месяца нельзя будет добавлять или редактировать — защита выданных зарплат и отчётов от случайных задних изменений.'}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Отмена</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleToggleLock}>{locked ? 'Открыть' : 'Закрыть'}</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
             <Button variant="outline" onClick={handleExport} disabled={loading}>
               <Download size={14} className="mr-1.5" />
               Excel

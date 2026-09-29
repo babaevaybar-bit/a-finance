@@ -126,8 +126,8 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
       }
       onSaved();
       onClose();
-    } catch {
-      toast.error('Ошибка при сохранении');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка при сохранении');
     } finally {
       setSaving(false);
     }
@@ -215,7 +215,7 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
             <Input type="date" value={form.prepayment_date || ''} onChange={e => set('prepayment_date', e.target.value || null)} />
           </div>
           <div className="space-y-1">
-            <Label>Дата следующей доплаты</Label>
+            <Label>Дата следующей доплаты <span className="text-muted-foreground font-normal">(несколько доплат — в «График доплат» у сделки)</span></Label>
             <Input type="date" value={form.next_payment_date || ''} onChange={e => set('next_payment_date', e.target.value || null)} />
           </div>
           <div className="space-y-1">

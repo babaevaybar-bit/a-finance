@@ -332,6 +332,7 @@ export default function ClientCard({ client, open, onClose, managers, onClientUp
                     </div>
                   </div>
                   <DealPayments
+                    scheduleOpen
                     deal={linkedDeal}
                     onChanged={() => client.deal_id && getDealById(client.deal_id).then(setLinkedDeal)}
                   />
