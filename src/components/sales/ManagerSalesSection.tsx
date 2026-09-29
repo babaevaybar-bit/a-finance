@@ -298,7 +298,18 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                   </TableHeader>
                   <TableBody>
                     {visibleDeals.map(d => (
-                      <TableRow key={d.id} data-state={selectedIds.has(d.id) ? 'selected' : undefined}>
+                      <TableRow
+                        key={d.id}
+                        data-state={selectedIds.has(d.id) ? 'selected' : undefined}
+                        className="cursor-pointer select-none"
+                        title="Двойной клик — открыть продажу"
+                        onDoubleClick={e => {
+                          // Не открываем, если двойной клик пришёлся на кнопку, чекбокс, ссылку или поле ввода внутри строки
+                          const target = e.target as HTMLElement;
+                          if (target.closest('button, a, input, [role="checkbox"], [role="dialog"]')) return;
+                          setEditDeal(d); setFormOpen(true);
+                        }}
+                      >
                         <TableCell>
                           <Checkbox checked={selectedIds.has(d.id)} onCheckedChange={() => toggleSelect(d.id)} aria-label="Выбрать сделку" />
                         </TableCell>
