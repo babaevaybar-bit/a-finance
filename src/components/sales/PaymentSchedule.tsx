@@ -21,7 +21,7 @@ function addMonths(dateStr: string, months: number): string {
  * своя сумма и дата. Даты и суммы можно менять в любой момент. Какие части
  * уже закрыты — видно автоматически по фактически внесённым оплатам.
  */
-export default function PaymentSchedule({ deal, refreshKey, defaultOpen = false }: { deal: Deal; refreshKey?: number; defaultOpen?: boolean }) {
+export default function PaymentSchedule({ deal, refreshKey, defaultOpen = false, embedded = false }: { deal: Deal; refreshKey?: number; defaultOpen?: boolean; embedded?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   const [items, setItems] = useState<PaymentScheduleItem[] | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -121,31 +121,23 @@ export default function PaymentSchedule({ deal, refreshKey, defaultOpen = false 
 
   return (
     <div className="space-y-2 text-left whitespace-normal min-w-[260px]">
-      <div className="flex items-center justify-between gap-2">
-        <button type="button" className="text-xs font-semibold flex items-center gap-1.5" onClick={() => setOpen(false)}>
-          <ChevronDown size={12} className="rotate-180" /><CalendarClock size={13} />График доплат
-        </button>
-        <div className="flex items-center gap-2">
-          {remainder > 0 && (
-            <button type="button" className="text-xs text-primary flex items-center gap-1 hover:underline" onClick={openSplit}>
-              <Split size={12} />Разделить
-            </button>
-          )}
-          <button type="button" className="text-xs text-primary flex items-center gap-1 hover:underline" onClick={openAdd}>
-            <Plus size={12} />Добавить
+      {!embedded && (
+        <div className="flex items-center justify-between gap-2">
+          <button type="button" className="text-xs font-semibold flex items-center gap-1.5" onClick={() => setOpen(false)}>
+            <ChevronDown size={12} className="rotate-180" /><CalendarClock size={13} />План доплат
           </button>
         </div>
-      </div>
+      )}
 
       {splitMode && (
         <div className="rounded-lg border border-dashed border-border p-2.5 space-y-2">
           <p className="text-xs text-muted-foreground">
-            Остаток {formatCurrency(remainder)} разделится поровну, раз в месяц. Старый график заменится.
+            Остаток {formatCurrency(remainder)} разделится поровну — по одной доплате в месяц. Текущий план заменится, потом любую строку можно поправить.
           </p>
           <div className="flex items-center gap-2">
             <Input type="number" min={1} max={24} className="h-8 text-xs w-20" value={splitCount}
               onChange={e => setSplitCount(Math.max(1, Math.min(24, Number(e.target.value))))} />
-            <span className="text-xs text-muted-foreground shrink-0">частей, с</span>
+            <span className="text-xs text-muted-foreground shrink-0">частей, первая</span>
             <Input type="date" className="h-8 text-xs" value={splitStart} onChange={e => setSplitStart(e.target.value)} />
           </div>
           <div className="flex justify-end gap-2">
@@ -157,7 +149,7 @@ export default function PaymentSchedule({ deal, refreshKey, defaultOpen = false 
 
       {items.length === 0 && !adding && !splitMode && (
         <p className="text-xs text-muted-foreground">
-          {remainder > 0 ? 'Даты доплат не заданы' : 'Сделка оплачена полностью'}
+          {remainder > 0 ? 'План пока пустой — добавьте дату доплаты или разбейте остаток на части' : 'Сделка оплачена полностью — план не нужен'}
         </p>
       )}
 
@@ -207,8 +199,21 @@ export default function PaymentSchedule({ deal, refreshKey, defaultOpen = false 
         <div className="flex items-center gap-2">
           <Input type="date" className="h-8 text-xs flex-1" value={newDate} onChange={e => setNewDate(e.target.value)} />
           <Input type="number" className="h-8 text-xs w-28" placeholder="Сумма" value={newAmount || ''} onChange={e => setNewAmount(Number(e.target.value))} />
-          <Button size="sm" className="h-8 text-xs" disabled={busy} onClick={handleAdd}>OK</Button>
+          <Button size="sm" className="h-8 text-xs" disabled={busy} onClick={handleAdd}>Сохранить</Button>
           <button type="button" onClick={() => setAdding(false)} className="text-muted-foreground"><X size={14} /></button>
+        </div>
+      )}
+
+      {!adding && !splitMode && (
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={openAdd}>
+            <Plus size={13} className="mr-1" />Добавить дату доплаты
+          </Button>
+          {remainder > 0 && (
+            <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={openSplit}>
+              <Split size={13} className="mr-1" />Разбить остаток на части
+            </Button>
+          )}
         </div>
       )}
 
