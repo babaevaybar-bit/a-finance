@@ -132,18 +132,18 @@ export default function AmoCrmPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="rounded-lg border border-border p-3">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground"><UserPlus size={13} /> Новых лидов сегодня</div>
-                <p className="text-lg font-semibold mt-1">{today?.newLeads ?? '—'}</p>
+                <p className="text-lg font-semibold mt-1">{today?.newLeads ?? (loading ? '…' : '—')}</p>
               </div>
               <div className="rounded-lg border border-border p-3">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground"><PhoneIncoming size={13} /> Звонков сегодня</div>
-                <p className="text-lg font-semibold mt-1">{today?.calls ?? '—'}</p>
+                <p className="text-lg font-semibold mt-1">{today?.calls ?? (loading ? '…' : '—')}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {today ? `вход ${today.callsIn} / исход ${today.callsOut}` : ''}
                 </p>
               </div>
               <div className="rounded-lg border border-border p-3">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground"><ArrowRightLeft size={13} /> Переходов по этапам сегодня</div>
-                <p className="text-lg font-semibold mt-1">{today?.statusChanges ?? '—'}</p>
+                <p className="text-lg font-semibold mt-1">{today?.statusChanges ?? (loading ? '…' : '—')}</p>
               </div>
               <div className="rounded-lg border border-border p-3">
                 <p className="text-xs text-muted-foreground">Сумма сделок (Отдел продаж, список ниже)</p>
@@ -158,7 +158,7 @@ export default function AmoCrmPage() {
               </CardHeader>
               <CardContent className="px-0">
                 {dailyByUser.length === 0 ? (
-                  <p className="text-sm text-muted-foreground px-6 py-4">Пока нет активности за сегодня</p>
+                  <p className="text-sm text-muted-foreground px-6 py-4">{loading ? 'Загружаю данные из amoCRM — это может занять до 30 секунд…' : 'Пока нет активности за сегодня'}</p>
                 ) : (
                   <div className="w-full overflow-x-auto">
                     <Table>

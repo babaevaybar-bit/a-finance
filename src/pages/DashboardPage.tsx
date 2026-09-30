@@ -230,7 +230,7 @@ export default function DashboardPage() {
                 ) : (
                   <div className="w-full min-w-0 overflow-hidden">
                     <ResponsiveContainer width="100%" height={280}>
-                      <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                      <BarChart data={chartData} margin={{ top: 24, right: 8, left: 0, bottom: 4 }}>
                         <CartesianGrid strokeDasharray="4 6" stroke="hsl(var(--border))" strokeOpacity={0.6} vertical={false} />
                         <XAxis
                           dataKey="month"
@@ -270,9 +270,18 @@ export default function DashboardPage() {
                         <Bar dataKey="__zero" stackId="revenue" fill="transparent" legendType="none" isAnimationActive={false}>
                           <LabelList
                             dataKey="total"
-                            position="top"
-                            formatter={(v: number) => (v > 0 ? formatCurrency(v) : '')}
-                            style={{ fontSize: 11, fill: 'hsl(var(--foreground))' }}
+                            content={(props: any) => {
+                              const { x, y, width, value } = props;
+                              if (!value || Number(value) <= 0) return null;
+                              // Своя подпись одной строкой: стандартная переносит текст по ширине
+                              // столбика и уводит сумму за верх графика (было видно только «₸»)
+                              return (
+                                <text x={Number(x) + Number(width) / 2} y={Number(y) - 6} textAnchor="middle"
+                                  fontSize={11} fontWeight={600} fill="hsl(var(--foreground))">
+                                  {formatCurrency(Number(value))}
+                                </text>
+                              );
+                            }}
                           />
                         </Bar>
                       </BarChart>

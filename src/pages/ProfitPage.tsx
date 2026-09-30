@@ -104,7 +104,7 @@ export default function ProfitPage() {
       );
 
       // Динамика чистой прибыли (выручка − закуп − операционные расходы − ФОТ) за последние доступные месяцы
-      const months = getAvailableMonths().slice(-6);
+      const months = getAvailableMonths().filter(mm => mm <= getCurrentMonthYear()).slice(-6); // прошлые 6 месяцев, а не будущие
       const trend = await Promise.all(months.map(async (mm) => {
         const [mDeals, mExps] = await Promise.all([getAllDealsForMonth(mm), Promise.resolve(exps)]);
         const mApproved = mDeals.filter(d => d.status === 'approved');
@@ -293,10 +293,11 @@ export default function ProfitPage() {
                 <CardContent className="px-2 pb-3">
                   <div className="w-full min-w-0 overflow-hidden h-56">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={monthlyTrend} margin={{ top: 4, right: 12, left: -16, bottom: 0 }}>
+                      <LineChart data={monthlyTrend} margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                         <XAxis dataKey="month" tick={{ fontSize: 10 }} />
-                        <YAxis tick={{ fontSize: 10 }} />
+                        <YAxis tick={{ fontSize: 10 }} width={56}
+                          tickFormatter={(v: number) => Math.abs(v) >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : Math.abs(v) >= 1000 ? `${Math.round(v / 1000)}K` : String(v)} />
                         <Tooltip formatter={(v: number) => formatCurrency(v)} />
                         <Line type="monotone" dataKey="profit" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} name="Чистая прибыль" />
                       </LineChart>

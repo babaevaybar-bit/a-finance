@@ -13,7 +13,7 @@ import { formatCurrency, getCurrentMonthYear, monthYearToLabel } from '@/lib/uti
 import MonthYearPicker from '@/components/common/MonthYearPicker';
 import { exportMonthlyReport } from '@/lib/exportExcel';
 import type { Deal, Expense, Income, Manager, SalesPlan, Transfer } from '@/types/types';
-import { PAYMENT_METHODS } from '@/types/types';
+import { PAYMENT_METHODS, SALES_ROLES } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -77,7 +77,8 @@ export default function ReportsPage() {
   const totalPaid = deals.reduce((s, d) => s + Number(d.paid_amount), 0);
 
   // Per-manager summary for the selected month
-  const managerSummary = managers.map(m => {
+  // Только продавцы; но если у кого-то другого вдруг есть сделки за месяц — тоже показываем
+  const managerSummary = managers.filter(m => SALES_ROLES.includes(m.role) || deals.some(d => d.manager_id === m.id)).map(m => {
     const mDeals = deals.filter(d => d.manager_id === m.id);
     const revenue = mDeals.reduce((s, d) => s + Number(d.total_amount), 0);
     const paid = mDeals.reduce((s, d) => s + Number(d.paid_amount), 0);

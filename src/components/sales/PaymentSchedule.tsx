@@ -88,7 +88,7 @@ export default function PaymentSchedule({ deal, refreshKey, defaultOpen = false,
   }
 
   function openAdd() {
-    setNewDate(items && items.length > 0 ? addMonths(items[items.length - 1].due_date, 1) : today);
+    setNewDate(items && items.length > 0 ? addMonths(items[items.length - 1].due_date, 1) : (deal.next_payment_date || today));
     setNewAmount(diff > 0 ? diff : 0);
     setAdding(true);
   }
@@ -149,7 +149,11 @@ export default function PaymentSchedule({ deal, refreshKey, defaultOpen = false,
 
       {items.length === 0 && !adding && !splitMode && (
         <p className="text-xs text-muted-foreground">
-          {remainder > 0 ? 'План пока пустой — добавьте дату доплаты или разбейте остаток на части' : 'Сделка оплачена полностью — план не нужен'}
+          {remainder > 0
+            ? (deal.next_payment_date
+                ? `Сейчас задана одна дата доплаты — ${formatDate(deal.next_payment_date)} (из формы сделки). Чтобы разбить на несколько доплат, добавьте даты ниже.`
+                : 'План пока пустой — добавьте дату доплаты или разбейте остаток на части')
+            : 'Сделка оплачена полностью — план не нужен'}
         </p>
       )}
 

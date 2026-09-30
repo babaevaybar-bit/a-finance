@@ -205,7 +205,7 @@ export default function ManagersPage() {
   const [accountBusy, setAccountBusy] = useState(false);
   const [loading, setLoading]       = useState(true);
   const [newName, setNewName]       = useState('');
-  const [newRole, setNewRole]       = useState<string>(ROLES[0]);
+  const [newRole, setNewRole]       = useState<string>('Менеджер по продажам');
   const [newRoleCustom, setNewRoleCustom] = useState('');
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -305,7 +305,7 @@ export default function ManagersPage() {
         // Привязываем user_id к записи менеджера
         await updateManager(managerId, name, role, userId);
       }
-      setNewName(''); setNewRole(ROLES[0]); setNewRoleCustom(''); setNewUsername(''); setNewPassword('');
+      setNewName(''); setNewRole('Менеджер по продажам'); setNewRoleCustom(''); setNewUsername(''); setNewPassword('');
       toast.success(
         userId
           ? `Сотрудник «${name}» добавлен — на его почту отправлено письмо для подтверждения аккаунта`
