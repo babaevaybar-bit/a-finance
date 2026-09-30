@@ -279,7 +279,6 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                         <span className="inline-flex items-center gap-1">Дата <ArrowUpDown size={11} className="text-muted-foreground" /></span>
                       </TableHead>
                       <TableHead className="whitespace-nowrap">ФИО</TableHead>
-                      <TableHead className="whitespace-nowrap">№ договора</TableHead>
                       <TableHead className="whitespace-nowrap">Оплата</TableHead>
                       <TableHead className="whitespace-nowrap">Модель</TableHead>
                       <TableHead className="whitespace-nowrap">Статус</TableHead>
@@ -314,15 +313,17 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                           <Checkbox checked={selectedIds.has(d.id)} onCheckedChange={() => toggleSelect(d.id)} aria-label="Выбрать сделку" />
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm">{formatDate(d.deal_date)}</TableCell>
-                        <TableCell className="whitespace-nowrap text-sm">{d.client_name || '—'}</TableCell>
-                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{d.contract_number || '—'}</TableCell>
+                        <TableCell className="text-sm">
+                          <div className="whitespace-nowrap">{d.client_name || '—'}</div>
+                          {d.contract_number && <div className="text-[11px] text-muted-foreground whitespace-nowrap">Договор №{d.contract_number}</div>}
+                        </TableCell>
                         <TableCell className="whitespace-nowrap text-sm">
                           {d.payment_method}
                           {d.vat_gross_amount ? (
                             <span className="block text-xs text-muted-foreground">с НДС: {formatCurrency(d.vat_gross_amount)}</span>
                           ) : null}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-sm max-w-[150px] truncate">{d.door_model || '—'}</TableCell>
+                        <TableCell className="whitespace-nowrap text-sm max-w-[150px] truncate" title={d.door_model || undefined}>{d.door_model || '—'}</TableCell>
                         <TableCell className="whitespace-nowrap">
                           <Badge className={`text-[11px] font-normal ${STATUS_BADGE_VARIANT[d.status] || ''}`} variant="secondary">
                             {DEAL_STATUS_LABELS[d.status] || d.status}

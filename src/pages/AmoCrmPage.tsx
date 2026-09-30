@@ -62,8 +62,34 @@ export default function AmoCrmPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
+  // Кэш последнего ответа: страница открывается мгновенно со вчерашними/
+  // недавними цифрами, а свежие данные из amoCRM (~30 с) подтягиваются в фоне.
+  const CACHE_KEY = 'afin-amocrm-cache-v1';
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+
+  function applyData(d: any) {
+    setLeads(d?.salesStageLeads ?? []);
+    setLeadsByDay(d?.leadsByDay ?? []);
+    setCallsByDay(d?.callsByDay ?? []);
+    setFunnel(d?.funnel ?? []);
+    setTransitions(d?.recentTransitions ?? []);
+    setDailyByUser(d?.dailyByUser ?? []);
+    setToday(d?.todayStats ?? null);
+  }
+
   const load = useCallback(async () => {
-    setLoading(true);
+    let hasCache = false;
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        applyData(cached.data);
+        setUpdatedAt(cached.at);
+        hasCache = true;
+      }
+    } catch { /* кэш повреждён — просто грузим заново */ }
+    if (hasCache) { setLoading(false); setRefreshing(true); } else { setLoading(true); }
     setError(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -72,21 +98,18 @@ export default function AmoCrmPage() {
         headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
       });
       if (res.error || res.data?.error) {
-        setError(res.data?.error ?? res.error?.message ?? 'Ошибка загрузки');
-        setLeads([]);
+        if (!hasCache) { setError(res.data?.error ?? res.error?.message ?? 'Ошибка загрузки'); setLeads([]); }
       } else {
-        setLeads(res.data?.salesStageLeads ?? []);
-        setLeadsByDay(res.data?.leadsByDay ?? []);
-        setCallsByDay(res.data?.callsByDay ?? []);
-        setFunnel(res.data?.funnel ?? []);
-        setTransitions(res.data?.recentTransitions ?? []);
-        setDailyByUser(res.data?.dailyByUser ?? []);
-        setToday(res.data?.todayStats ?? null);
+        applyData(res.data);
+        const at = Date.now();
+        setUpdatedAt(at);
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at, data: res.data })); } catch { /* нет места — не страшно */ }
       }
     } catch {
-      setError('Не удалось связаться с amoCRM');
+      if (!hasCache) setError('Не удалось связаться с amoCRM');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -114,8 +137,13 @@ export default function AmoCrmPage() {
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">Активность CRM — без захода в саму amoCRM</p>
           </div>
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw size={14} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+          {updatedAt && (
+            <span className="text-xs text-muted-foreground mr-2">
+              {refreshing ? 'Обновляю из amoCRM…' : `Обновлено в ${new Date(updatedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`}
+            </span>
+          )}
+          <Button variant="outline" size="sm" onClick={load} disabled={loading || refreshing}>
+            <RefreshCw size={14} className={`mr-1.5 ${loading || refreshing ? 'animate-spin' : ''}`} />
             Обновить
           </Button>
         </div>

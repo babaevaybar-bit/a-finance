@@ -141,8 +141,17 @@ export default function ProductionPage() {
   const draggedCardId = useRef<string | null>(null);
   const [selectedCard, setSelectedCard] = useState<PlacedCard | null>(null);
 
+  // Кэш доски: открывается мгновенно, свежие карточки из Trello подтягиваются в фоне
+  const CACHE_KEY = 'afin-trello-board-cache-v1';
+  const [refreshing, setRefreshing] = useState(false);
+
   const load = useCallback(async () => {
-    setLoading(true);
+    let hasCache = false;
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (raw) { setRawLists(JSON.parse(raw).lists ?? []); hasCache = true; }
+    } catch { /* ignore */ }
+    if (hasCache) { setLoading(false); setRefreshing(true); } else { setLoading(true); }
     setError(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -153,17 +162,19 @@ export default function ProductionPage() {
         }),
         getProductionOverrides().catch(() => []),
       ]);
-      if (boardRes.error || boardRes.data?.error) {
-        setError(boardRes.data?.error ?? boardRes.error?.message ?? 'Ошибка загрузки');
-        setRawLists([]);
-      } else {
-        setRawLists(boardRes.data?.lists ?? []);
-      }
       setOverrides(Object.fromEntries(overridesRes.map(o => [o.trello_card_id, o.overridden_stage])));
+      if (boardRes.error || boardRes.data?.error) {
+        if (!hasCache) { setError(boardRes.data?.error ?? boardRes.error?.message ?? 'Ошибка загрузки'); setRawLists([]); }
+      } else {
+        const lists = boardRes.data?.lists ?? [];
+        setRawLists(lists);
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), lists })); } catch { /* ignore */ }
+      }
     } catch {
-      setError('Не удалось связаться с Trello');
+      if (!hasCache) setError('Не удалось связаться с Trello');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -261,8 +272,8 @@ export default function ProductionPage() {
               <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по клиенту" className="h-9 pl-7 w-56" />
             </div>
             <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-              <RefreshCw size={14} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`} />
-              Обновить
+              <RefreshCw size={14} className={`mr-1.5 ${loading || refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Обновляю…' : 'Обновить'}
             </Button>
           </div>
         </div>
