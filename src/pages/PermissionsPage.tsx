@@ -8,7 +8,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { ShieldCheck, Eye, EyeOff, UserCog } from 'lucide-react';
+import { ShieldCheck, Eye, EyeOff, UserCog, Trash2 } from 'lucide-react';
+import { supabase } from '@/db/supabase';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { getManagers, getAllPermissions, upsertPermission, getAllProfiles, updateProfile } from '@/lib/api';
 import type { Manager, EmployeePermission, Profile } from '@/types/types';
 import { PERMISSION_PAGES } from '@/types/types';
@@ -52,6 +57,24 @@ function RolesSection() {
     }
   }
 
+  async function deleteAccount(p: Profile) {
+    setSaving(s => ({ ...s, [p.id]: true }));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await supabase.functions.invoke('create-employee', {
+        body: { action: 'delete', userId: p.id },
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      });
+      if (res.error || res.data?.error) throw new Error(res.data?.error ?? res.error?.message);
+      setProfiles(prev => prev.filter(x => x.id !== p.id));
+      toast.success(`Аккаунт ${p.email ?? p.name} удалён`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Не удалось удалить');
+    } finally {
+      setSaving(s => { const n = { ...s }; delete n[p.id]; return n; });
+    }
+  }
+
   return (
     <Card className="border border-border">
       <CardHeader className="pb-3">
@@ -91,6 +114,27 @@ function RolesSection() {
                       <SelectItem value="manager">Менеджер</SelectItem>
                     </SelectContent>
                   </Select>
+                  {isDirector && p.id !== user?.id && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" disabled={!!saving[p.id]} title="Удалить аккаунт">
+                          <Trash2 size={14} />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent className="max-w-[calc(100%-2rem)] md:max-w-md">
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Удалить аккаунт {p.email ?? p.name}?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Этот логин больше не сможет входить в A-Finance. Карточка сотрудника, его сделки и история останутся — удаляется только доступ.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Отмена</AlertDialogCancel>
+                          <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => deleteAccount(p)}>Удалить</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
                 </div>
               </div>
             ))}
