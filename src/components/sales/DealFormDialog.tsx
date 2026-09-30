@@ -207,8 +207,13 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
             <Label>Оплачено (₸)</Label>
             <Input
               type="number" min="0" value={form.paid_amount || ''}
+              disabled={deal?.status === 'approved'}
+              title={deal?.status === 'approved' ? 'У подтверждённой сделки оплаты вносятся через кнопку «Оплаты»' : undefined}
               onChange={e => set('paid_amount', Number(e.target.value))}
             />
+            {deal?.status === 'approved' && (
+              <p className="text-[11px] text-muted-foreground">Сделка подтверждена — новые оплаты вносите через кнопку «Оплаты» в строке сделки</p>
+            )}
           </div>
           <div className="space-y-1">
             <Label>Дата предоплаты</Label>

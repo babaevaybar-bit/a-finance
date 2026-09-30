@@ -54,7 +54,7 @@ export default function ApprovalsPage() {
           : 'Сделка подтверждена — способ оплаты не привязан к конкретному каналу, добавьте поступление в «Финансы» вручную'
       );
       await load();
-    } catch { toast.error('Ошибка'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
   }
 
   async function handleReject(id: string) {

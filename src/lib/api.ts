@@ -139,6 +139,9 @@ export async function createDeal(deal: Omit<Deal, 'id' | 'created_at' | 'updated
 // Как createDeal, но возвращает id новой записи — нужно, когда сделку создают
 // не со страницы «Продажи», а из карточки клиента (чтобы сразу привязать её)
 export async function createDealAndGetId(deal: Omit<Deal, 'id' | 'created_at' | 'updated_at'>): Promise<string> {
+  if (deal.month_year && await isMonthLocked(deal.month_year)) {
+    throw new Error(`Месяц ${deal.month_year} закрыт — новые сделки нельзя добавлять`);
+  }
   const { data, error } = await supabase.from('deals').insert(deal).select('id').single();
   if (error) throw error;
   return (data as { id: string }).id;
@@ -330,6 +333,12 @@ export async function deleteDeal(id: string): Promise<void> {
 export async function approveDeal(id: string): Promise<{ incomeRecorded: boolean; channel: string | null }> {
   const { data: deal, error: fetchErr } = await supabase.from('deals').select('*').eq('id', id).single();
   if (fetchErr || !deal) throw fetchErr ?? new Error('Сделка не найдена');
+  if (Number(deal.paid_amount) > 0 && !(CHANNELS as readonly string[]).includes(deal.payment_method)) {
+    throw new Error('Укажите способ оплаты предоплаты (Kaspi, Halyk, Freedom, RBK, наличные или перечисление) — откройте сделку и выберите его, иначе деньги не попадут в «Финансы»');
+  }
+  if (deal.month_year && await isMonthLocked(deal.month_year)) {
+    throw new Error(`Месяц ${deal.month_year} закрыт — подтверждение невозможно. Откройте месяц в «Отчётах»`);
+  }
 
   const { error } = await supabase.from('deals').update({ status: 'approved', updated_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;
@@ -390,6 +399,9 @@ export async function addDealPayment(
   paymentDate: string,
   comment?: string
 ): Promise<{ incomeRecorded: boolean }> {
+  if (await isMonthLocked(paymentDate.slice(0, 7))) {
+    throw new Error(`Месяц ${paymentDate.slice(0, 7)} закрыт — укажите другую дату оплаты или откройте месяц в «Отчётах»`);
+  }
   const { data: deal, error: dealErr } = await supabase.from('deals').select('*').eq('id', dealId).single();
   if (dealErr || !deal) throw dealErr ?? new Error('Сделка не найдена');
 

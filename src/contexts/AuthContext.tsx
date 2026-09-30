@@ -54,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const canViewAllManagers = isDirector || isDirectorView || isRop;
 
   // Может подтверждать/отклонять сделки: директор и РОП всегда, остальные — по разрешению can_approve
-  const canApprove = isDirector || isRop || permissions.some(p => p.page === 'approvals' && p.can_approve);
+  const canApprove = isDirector || isDirectorView || isRop || permissions.some(p => p.page === 'approvals' && p.can_approve);
 
   async function loadPermissions(managerId: string | null | undefined) {
     if (!managerId) { setPermissions([]); return; }
