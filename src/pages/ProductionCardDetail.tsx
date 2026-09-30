@@ -198,7 +198,7 @@ export default function ProductionCardDetail({
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-2xl p-0 flex flex-col max-h-[85vh] overflow-hidden gap-0">
+      <DialogContent className="max-w-2xl p-0 flex flex-col max-h-[85vh] overflow-hidden gap-0 [&>*]:min-w-0">
         {/* Header — как в карточке клиента: имя+сумма, значки статуса, крестик */}
         <div className="px-5 pt-5 pb-3 border-b border-border shrink-0">
           <div className="flex items-start justify-between gap-3">
@@ -359,7 +359,7 @@ export default function ProductionCardDetail({
                     >
                       <p className="flex items-start gap-1.5">
                         {isPayment && <Banknote size={11} className="mt-0.5 shrink-0 text-green-700" />}
-                        <span>{c.text}</span>
+                        <span className="break-words min-w-0">{c.text}</span>
                       </p>
                       <p className="text-muted-foreground mt-0.5">{c.by ? `${c.by} · ` : ''}{formatDate(c.date)}</p>
                     </div>

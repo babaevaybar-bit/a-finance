@@ -115,7 +115,7 @@ function PaymentsDialog({ open, onClose, deal, onChanged, suggestedAmount, sugge
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg max-h-[88vh] overflow-y-auto">
+      <DialogContent className="max-w-lg max-h-[88vh] overflow-y-auto overflow-x-hidden grid-cols-[minmax(0,1fr)] [&>*]:min-w-0">
         <DialogHeader>
           <DialogTitle className="text-base">Оплаты — {deal.client_name || 'клиент'}</DialogTitle>
         </DialogHeader>
@@ -216,9 +216,9 @@ function PaymentsDialog({ open, onClose, deal, onChanged, suggestedAmount, sugge
             <div className="space-y-1">
               {payments.map(p => (
                 <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p>{formatDate(p.payment_date)} · {p.channel}</p>
-                    {p.comment && <p className="text-muted-foreground truncate">{p.comment}</p>}
+                    {p.comment && <p className="text-muted-foreground break-words">{p.comment}</p>}
                   </div>
                   <span className="font-semibold shrink-0">{formatCurrency(p.amount)}</span>
                 </div>
