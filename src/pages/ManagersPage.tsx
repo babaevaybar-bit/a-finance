@@ -16,7 +16,7 @@ import {
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Users, KeyRound, Check, X, Mail, Phone, Calendar, Wallet, ShieldCheck, Layers } from 'lucide-react';
-import { getManagers, createManager, updateManager, deleteManager, getSalarySettings, upsertSalarySetting, getAllProfiles } from '@/lib/api';
+import { getManagers, createManager, updateManager, deleteManager, getSalarySettings, upsertSalarySetting, getAllProfiles, updateProfile } from '@/lib/api';
 import type { Profile } from '@/types/types';
 import { supabase } from '@/db/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -199,6 +199,10 @@ export default function ManagersPage() {
   const [settings, setSettings]     = useState<SalarySetting[]>([]);
   const [profiles, setProfiles]     = useState<Profile[]>([]);
   const [profileTarget, setProfileTarget] = useState<Manager | null>(null); // открытый профиль сотрудника
+  // Существующий аккаунт в окне редактирования
+  const [accountStatus, setAccountStatus] = useState<{ email: string; confirmed: boolean } | null | 'loading'>(null);
+  const [replaceAccount, setReplaceAccount] = useState(false);
+  const [accountBusy, setAccountBusy] = useState(false);
   const [loading, setLoading]       = useState(true);
   const [newName, setNewName]       = useState('');
   const [newRole, setNewRole]       = useState<string>(ROLES[0]);
@@ -233,19 +237,37 @@ export default function ManagersPage() {
 
   // Создаём auth-пользователя через Edge Function (Admin API на сервере),
   // чтобы signUp не переключал сессию текущего администратора.
-  async function createAuthUser(username: string, password: string, managerId: string, role: string, recoveryEmail: string): Promise<string | null> {
+  async function callEmployeeFn(body: Record<string, unknown>): Promise<any> {
     const { data: { session } } = await supabase.auth.getSession();
     const res = await supabase.functions.invoke('create-employee', {
-      body: { username: username.trim().toLowerCase(), password, managerId, role, recoveryEmail: recoveryEmail.trim().toLowerCase() },
-      headers: session?.access_token
-        ? { Authorization: `Bearer ${session.access_token}` }
-        : {},
+      body,
+      headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
     });
-    if (res.error || res.data?.error) {
-      toast.error(`Ошибка создания аккаунта: ${res.data?.error ?? res.error?.message}`);
+    if (res.error) {
+      let msg = res.error.message;
+      try { const b = await (res.error as any).context?.json?.(); if (b?.error) msg = b.error; } catch { /* ignore */ }
+      return { error: msg };
+    }
+    return res.data ?? {};
+  }
+
+  async function accountAction(action: 'resend' | 'confirm') {
+    if (!editManager?.user_id || accountStatus === 'loading' || !accountStatus) return;
+    setAccountBusy(true);
+    const r = await callEmployeeFn({ action, userId: editManager.user_id, email: accountStatus.email });
+    setAccountBusy(false);
+    if (r.error) { toast.error(r.error); return; }
+    if (action === 'resend') toast.success(`Письмо отправлено на ${accountStatus.email} — пусть проверит и папку «Спам»`);
+    else { toast.success('Почта подтверждена — сотрудник может входить'); setAccountStatus({ ...accountStatus, confirmed: true }); }
+  }
+
+  async function createAuthUser(username: string, password: string, managerId: string, role: string, recoveryEmail: string): Promise<string | null> {
+    const r = await callEmployeeFn({ username: username.trim().toLowerCase(), password, managerId, role, recoveryEmail: recoveryEmail.trim().toLowerCase() });
+    if (r.error) {
+      toast.error(`Аккаунт не создан: ${r.error}`);
       return null;
     }
-    return res.data?.userId ?? null;
+    return r.userId ?? null;
   }
 
   async function handleCreate() {
@@ -255,6 +277,13 @@ export default function ManagersPage() {
     if (!role) { toast.error('Введите должность'); return; }
     setSaving(true);
     try {
+      // Начали заполнять аккаунт, но не до конца — не создаём молча без аккаунта
+      const anyAcc = !!(newUsername.trim() || newPassword || newRecoveryEmail.trim());
+      if (anyAcc && (!newUsername.trim() || newPassword.length < 6 || !/^\S+@\S+\.\S+$/.test(newRecoveryEmail.trim()))) {
+        toast.error('Для аккаунта заполните все три поля: логин, пароль (мин. 6 символов) и почту');
+        setSaving(false);
+        return;
+      }
       // Сначала создаём менеджера, чтобы получить его ID для Edge Function
       const managerId = await createManager(name, role, null);
       let userId: string | null = null;
@@ -297,6 +326,17 @@ export default function ManagersPage() {
     setEditUsername('');
     setEditPassword('');
     setEditRecoveryEmail('');
+    setReplaceAccount(false);
+    const prof = profiles.find(p => p.id === m.user_id);
+    setEditAuthRole((prof?.role as typeof editAuthRole) ?? 'manager');
+    if (m.user_id) {
+      setAccountStatus('loading');
+      callEmployeeFn({ action: 'status', userId: m.user_id }).then(r => {
+        setAccountStatus(r.error ? null : { email: r.email, confirmed: r.confirmed });
+      });
+    } else {
+      setAccountStatus(null);
+    }
   }
 
   async function handleUpdate() {
@@ -305,24 +345,33 @@ export default function ManagersPage() {
     if (!name) { toast.error('Введите имя'); return; }
     const role = editRole === '__custom__' ? editRoleCustom.trim() : editRole;
     if (!role) { toast.error('Введите должность'); return; }
+
+    const creatingAccount = !editManager.user_id || replaceAccount;
+    const anyAccountField = !!(editUsername.trim() || editPassword || editRecoveryEmail.trim());
+    if (creatingAccount && anyAccountField) {
+      if (!editUsername.trim()) { toast.error('Для аккаунта заполните «Логин»'); return; }
+      if (editPassword.length < 6) { toast.error('Для аккаунта заполните «Пароль» (мин. 6 символов) или нажмите «Сгенерировать»'); return; }
+      if (!/^\S+@\S+\.\S+$/.test(editRecoveryEmail.trim())) { toast.error('Укажите настоящую почту сотрудника — на неё придёт письмо подтверждения'); return; }
+    }
+
     setEditSaving(true);
     try {
       let userId = editManager.user_id;
-      if (editUsername.trim() && editPassword) {
-        if (!editRecoveryEmail.trim() || !/^\S+@\S+\.\S+$/.test(editRecoveryEmail.trim())) {
-          toast.error('Укажите настоящую почту сотрудника — для восстановления пароля');
-          setEditSaving(false);
-          return;
-        }
-        // Edge Function создаёт auth-пользователя + профиль атомарно, без смены сессии
+      if (creatingAccount && anyAccountField) {
         const newUserId = await createAuthUser(editUsername, editPassword, editManager.id, editAuthRole, editRecoveryEmail);
-        if (newUserId) userId = newUserId;
+        if (!newUserId) { setEditSaving(false); return; } // ошибка уже показана — окно не закрываем, данные не теряются
+        userId = newUserId;
+      } else if (editManager.user_id && !replaceAccount) {
+        const prof = profiles.find(p => p.id === editManager.user_id);
+        if (prof && prof.role !== editAuthRole) await updateProfile(prof.id, { role: editAuthRole });
       }
       await updateManager(editManager.id, name, role, userId);
-      toast.success('Данные обновлены');
+      toast.success(creatingAccount && anyAccountField
+        ? `Аккаунт создан. На ${editRecoveryEmail.trim()} отправлено письмо — сотрудник должен нажать ссылку в нём, потом сможет входить`
+        : 'Данные обновлены');
       setEditManager(null);
       await load();
-    } catch { toast.error('Не удалось обновить'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Не удалось обновить'); }
     finally { setEditSaving(false); }
   }
 
@@ -537,6 +586,58 @@ export default function ManagersPage() {
                 )}
               </div>
             </div>
+            {editManager?.user_id && !replaceAccount ? (
+              <div className="rounded-md border border-border p-3 space-y-3">
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <KeyRound size={12} />Аккаунт для входа
+                </p>
+                {accountStatus === 'loading' ? (
+                  <p className="text-xs text-muted-foreground">Проверяю аккаунт...</p>
+                ) : accountStatus === null ? (
+                  <p className="text-xs text-destructive">Аккаунт не найден — создайте новый ниже.</p>
+                ) : (
+                  <>
+                    <div className="text-sm space-y-0.5">
+                      <p>Логин: <span className="font-medium">{profiles.find(p => p.id === editManager.user_id)?.name ?? '—'}</span></p>
+                      <p>Почта: <span className="font-medium">{accountStatus.email}</span></p>
+                    </div>
+                    {accountStatus.confirmed ? (
+                      <p className="text-xs px-2 py-1 rounded-md bg-green-50 text-green-800 border border-green-200 inline-flex items-center gap-1">
+                        <Check size={12} />Почта подтверждена — сотрудник может входить
+                      </p>
+                    ) : (
+                      <div className="rounded-md bg-amber-50 border border-amber-200 p-2.5 space-y-2">
+                        <p className="text-xs text-amber-800">
+                          Почта ещё не подтверждена — сотрудник не сможет войти, пока не нажмёт ссылку в письме.
+                          Если письма нет (проверьте «Спам»), отправьте ещё раз или подтвердите вручную.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled={accountBusy}
+                            onClick={() => accountAction('resend')}>Отправить письмо ещё раз</Button>
+                          <Button type="button" size="sm" className="h-8 text-xs" disabled={accountBusy}
+                            onClick={() => accountAction('confirm')}>Подтвердить вручную</Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+                <div className="space-y-1">
+                  <Label className="text-xs">Роль в системе</Label>
+                  <Select value={editAuthRole} onValueChange={v => setEditAuthRole(v as typeof editAuthRole)}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manager">Менеджер — только свои клиенты и сделки</SelectItem>
+                      <SelectItem value="lidorub">Лидоруб — доступ как у менеджера, ЗП от общей выручки</SelectItem>
+                      <SelectItem value="rop">РОП — CRM и продажи всех менеджеров</SelectItem>
+                      <SelectItem value="director_view">Директор — видит всё, но не управляет сотрудниками/правами</SelectItem>
+                      <SelectItem value="director">Главный админ — полный доступ</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <button type="button" className="text-xs text-muted-foreground underline hover:text-foreground"
+                  onClick={() => setReplaceAccount(true)}>Создать новый аккаунт вместо этого</button>
+              </div>
+            ) : (
             <div className="rounded-md border border-border p-3 space-y-2">
               <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
                 <KeyRound size={12} />{editManager?.user_id ? 'Новый аккаунт (заменит текущий)' : 'Создать аккаунт для входа'}
@@ -575,6 +676,7 @@ export default function ManagersPage() {
                 </div>
               </div>
             </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditManager(null)}>Отмена</Button>
