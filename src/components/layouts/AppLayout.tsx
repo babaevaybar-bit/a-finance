@@ -12,7 +12,7 @@ import {
   Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getNotifications } from '@/lib/api';
+import { getNotifications, getPendingDeals } from '@/lib/api';
 
 const navItems = [
   { path: '/',             label: 'Дашборд',          icon: LayoutDashboard, adminOnly: false, pageKey: 'dashboard'    },
@@ -32,8 +32,14 @@ const navItems = [
 
 function NavLinks({ onClose }: { onClose?: () => void }) {
   const { pathname } = useLocation();
-  const { isAdmin, isDirector, isRop, canView, profile, canViewAllManagers } = useAuth();
+  const { isAdmin, isDirector, isRop, canView, profile, canViewAllManagers, canApprove } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    if (!canApprove) return;
+    getPendingDeals().then(list => setPendingCount(list.length)).catch(() => {});
+  }, [canApprove, pathname]);
 
   useEffect(() => {
     getNotifications(canViewAllManagers ? null : (profile?.manager_id ?? null))
@@ -67,6 +73,11 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
         >
           <Icon size={16} className="shrink-0" />
           <span className="flex-1">{label}</span>
+          {path === '/approvals' && pendingCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-semibold shrink-0">
+              {pendingCount}
+            </span>
+          )}
           {path === '/messages' && unreadCount > 0 && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive text-destructive-foreground font-semibold shrink-0">
               {unreadCount}

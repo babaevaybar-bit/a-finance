@@ -14,7 +14,7 @@ import {
 import type { Deal, Manager, SalesPlan } from '@/types/types';
 import type { ActivityItem } from '@/lib/api';
 import { SALES_ROLES } from '@/types/types';
-import { TrendingUp, ShoppingCart, Users, Wallet, CheckCircle2, UserPlus } from 'lucide-react';
+import { TrendingUp, ShoppingCart, Users, Wallet, CheckCircle2, UserPlus, CalendarClock } from 'lucide-react';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const MANAGER_COLORS = [
@@ -214,6 +214,54 @@ export default function DashboardPage() {
             )}
           </div>
         )}
+
+        {/* Ждём оплату: просроченные доплаты и доплаты на ближайшие 7 дней — кому звонить сегодня */}
+        {!loading && (() => {
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const weekStr = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+          const due = deals
+            .filter(d => Number(d.total_amount) > Number(d.paid_amount) && d.next_payment_date && d.next_payment_date <= weekStr)
+            .sort((a, b) => (a.next_payment_date ?? '').localeCompare(b.next_payment_date ?? ''));
+          if (due.length === 0) return null;
+          const overdueSum = due.filter(d => d.next_payment_date! < todayStr)
+            .reduce((s, d) => s + Number(d.total_amount) - Number(d.paid_amount), 0);
+          return (
+            <Card>
+              <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-base flex items-center gap-2"><CalendarClock size={16} />Ждём оплату</CardTitle>
+                {overdueSum > 0 && (
+                  <span className="text-xs px-2 py-1 rounded-full bg-red-50 text-red-700 border border-red-200">
+                    Просрочено: {formatCurrency(overdueSum)}
+                  </span>
+                )}
+              </CardHeader>
+              <CardContent className="p-0 divide-y divide-border">
+                {due.map(d => {
+                  const overdue = d.next_payment_date! < todayStr;
+                  const isToday = d.next_payment_date === todayStr;
+                  const mgr = managers.find(m => m.id === d.manager_id)?.name;
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => navigate(`/sales?manager=${d.manager_id}&month=${d.month_year}`)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/40 transition-colors"
+                    >
+                      <span className={`text-xs font-medium w-24 shrink-0 ${overdue ? 'text-destructive' : isToday ? 'text-amber-700' : 'text-muted-foreground'}`}>
+                        {overdue ? 'просрочено ' : isToday ? 'сегодня ' : ''}{new Date(d.next_payment_date! + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="text-sm font-medium truncate block">{d.client_name || 'Без имени'}</span>
+                        {mgr && <span className="text-xs text-muted-foreground">{mgr}</span>}
+                      </span>
+                      <span className="text-sm font-semibold shrink-0">{formatCurrency(Number(d.total_amount) - Number(d.paid_amount))}</span>
+                    </button>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* Bar chart: revenue by manager per month + activity feed side by side */}
         {loading ? (

@@ -137,6 +137,7 @@ export default function ProductionPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const draggedCardId = useRef<string | null>(null);
   const [selectedCard, setSelectedCard] = useState<PlacedCard | null>(null);
@@ -212,8 +213,11 @@ export default function ProductionPage() {
 
   const q = search.trim().toLowerCase();
   const visibleColumns = columns
-    .map(col => ({ ...col, cards: q ? col.cards.filter(c => c.name.toLowerCase().includes(q)) : col.cards }))
-    .filter(col => col.cards.length > 0 || !q || col.isPlanned);
+    .map(col => ({ ...col, cards: col.cards.filter(c =>
+      (!q || c.name.toLowerCase().includes(q)) &&
+      (!overdueOnly || (!!c.due && new Date(c.due).getTime() < Date.now()))) }))
+    .filter(col => col.cards.length > 0 || (!q && !overdueOnly) || col.isPlanned);
+  const overdueTotal = columns.reduce((s, c) => s + c.cards.filter(x => !!x.due && new Date(x.due).getTime() < Date.now()).length, 0);
   const totalCards = columns.reduce((s, c) => s + c.cards.length, 0);
 
   async function moveCard(cardId: string, columnName: string) {
@@ -271,6 +275,9 @@ export default function ProductionPage() {
               <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по клиенту" className="h-9 pl-7 w-56" />
             </div>
+            <Button variant={overdueOnly ? 'default' : 'outline'} size="sm" onClick={() => setOverdueOnly(v => !v)}>
+              Просроченные{overdueTotal > 0 ? ` (${overdueTotal})` : ''}
+            </Button>
             <Button variant="outline" size="sm" onClick={load} disabled={loading}>
               <RefreshCw size={14} className={`mr-1.5 ${loading || refreshing ? 'animate-spin' : ''}`} />
               {refreshing ? 'Обновляю…' : 'Обновить'}
