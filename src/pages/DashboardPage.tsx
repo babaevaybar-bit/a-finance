@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
+import MonthYearPicker from '@/components/common/MonthYearPicker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -85,7 +86,8 @@ export default function DashboardPage() {
   const [activity, setActivity] = useState<ActivityItem[]>([]);
 
   const months = getDashboardMonths();
-  const currentMonth = getCurrentMonthYear();
+  // Выбранный месяц (по умолчанию — текущий); все показатели дашборда считаются за него
+  const [currentMonth, setCurrentMonth] = useState(getCurrentMonthYear());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -154,11 +156,19 @@ export default function DashboardPage() {
     <AppLayout>
       <div className="space-y-6">
         {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Дашборд</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {monthYearToLabel(currentMonth)} — сводка показателей
           </p>
+        </div>
+          <div className="flex items-center gap-2">
+            {currentMonth !== getCurrentMonthYear() && (
+              <Button variant="ghost" size="sm" onClick={() => setCurrentMonth(getCurrentMonthYear())}>Текущий месяц</Button>
+            )}
+            <MonthYearPicker value={currentMonth} onChange={setCurrentMonth} />
+          </div>
         </div>
 
         {/* KPI cards */}
