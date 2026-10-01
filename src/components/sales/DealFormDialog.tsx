@@ -11,7 +11,7 @@ import {
 import { toast } from 'sonner';
 import { createDeal, updateDeal } from '@/lib/api';
 import type { Deal } from '@/types/types';
-import { PAYMENT_METHODS, DEAL_STAGES, INSTALL_STAGE_LABELS } from '@/types/types';
+import { PAYMENT_METHODS, DEAL_STAGES, INSTALL_STAGE_LABELS, CHANNELS, SPLIT_PAYMENT_METHOD } from '@/types/types';
 
 interface Props {
   open: boolean;
@@ -45,6 +45,7 @@ function emptyDeal(monthYear: string): Omit<Deal, 'id' | 'created_at' | 'updated
     paid_amount: 0,
     prepayment_date: null,
     next_payment_date: null,
+        payment_split: null,
     comment: null,
     salary_amount: null,
     vat_gross_amount: null,
@@ -73,6 +74,7 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
         paid_amount: deal.paid_amount,
         prepayment_date: deal.prepayment_date || null,
         next_payment_date: deal.next_payment_date || null,
+        payment_split: deal.payment_split ?? null,
         comment: deal.comment || null,
         salary_amount: deal.salary_amount ?? null,
         vat_gross_amount: deal.vat_gross_amount ?? null,
@@ -95,12 +97,21 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
     }
     if (form.total_amount <= 0) { toast.error('Общая сумма должна быть больше 0'); return; }
     if (form.paid_amount > form.total_amount) { toast.error('Оплачено не может превышать общую сумму'); return; }
+    const split = form.payment_method === SPLIT_PAYMENT_METHOD ? (form.payment_split ?? []).filter(r => Number(r.amount) > 0) : null;
+    if (split && Number(form.paid_amount) > 0) {
+      const splitSum = split.reduce((s, r) => s + Number(r.amount), 0);
+      if (split.length < 2) { toast.error('Для «Несколько способов» укажите минимум две части оплаты'); return; }
+      if (Math.round(splitSum) !== Math.round(Number(form.paid_amount))) {
+        toast.error(`Сумма частей (${splitSum.toLocaleString('ru-RU')} ₸) должна равняться «Оплачено» (${Number(form.paid_amount).toLocaleString('ru-RU')} ₸)`); return;
+      }
+    }
     if (form.salary_amount !== null && Number(form.salary_amount) < 0) { toast.error('Сумма для ЗП не может быть отрицательной'); return; }
 
     setSaving(true);
     try {
       const payload = {
         ...form,
+        payment_split: form.payment_method === SPLIT_PAYMENT_METHOD ? (form.payment_split ?? []).filter(r => Number(r.amount) > 0) : null,
         manager_id: managerId,
         month_year: monthYear,
         vat_gross_amount: form.payment_method === 'Перечисление' && form.vat_gross_amount
@@ -156,6 +167,9 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
                   ...f,
                   payment_method: v,
                   vat_gross_amount: v === 'Перечисление' ? f.vat_gross_amount : null,
+                  payment_split: v === SPLIT_PAYMENT_METHOD
+                    ? (f.payment_split?.length ? f.payment_split : [{ channel: 'Наличные', amount: Number(f.paid_amount || 0) }, { channel: 'Kaspi Bank', amount: 0 }])
+                    : null,
                 }));
               }}
             >
@@ -215,6 +229,39 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
               <p className="text-[11px] text-muted-foreground">Сделка подтверждена — новые оплаты вносите через кнопку «Оплаты» в строке сделки</p>
             )}
           </div>
+          {form.payment_method === SPLIT_PAYMENT_METHOD && deal?.status !== 'approved' && (
+            <div className="md:col-span-2 rounded-xl border border-border p-3 space-y-2">
+              <p className="text-sm font-medium">Как оплачено «Оплачено» — по способам</p>
+              <p className="text-[11px] text-muted-foreground">При подтверждении каждая часть попадёт в «Финансы» в свою кассу.</p>
+              {(form.payment_split ?? []).map((row, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Select value={row.channel} onValueChange={v => setForm(f => ({ ...f, payment_split: (f.payment_split ?? []).map((r, j) => j === i ? { ...r, channel: v } : r) }))}>
+                    <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
+                    <SelectContent>{CHANNELS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Input type="number" min="0" className="h-9" placeholder="Сумма" value={row.amount || ''}
+                    onChange={e => setForm(f => ({ ...f, payment_split: (f.payment_split ?? []).map((r, j) => j === i ? { ...r, amount: Number(e.target.value) } : r) }))} />
+                  <Button type="button" variant="ghost" size="sm" className="h-9 px-2 text-muted-foreground"
+                    onClick={() => setForm(f => ({ ...f, payment_split: (f.payment_split ?? []).filter((_, j) => j !== i) }))}>✕</Button>
+                </div>
+              ))}
+              {(() => {
+                const sum = (form.payment_split ?? []).reduce((s, r) => s + Number(r.amount || 0), 0);
+                const rest = Number(form.paid_amount || 0) - sum;
+                return (
+                  <div className="flex items-center justify-between gap-2">
+                    <Button type="button" variant="outline" size="sm" className="h-8 text-xs"
+                      onClick={() => setForm(f => ({ ...f, payment_split: [...(f.payment_split ?? []), { channel: 'Kaspi Bank', amount: Math.max(0, rest) }] }))}>
+                      + Добавить способ
+                    </Button>
+                    <span className={`text-xs ${Math.round(rest) === 0 ? 'text-green-700' : 'text-amber-700'}`}>
+                      {Math.round(rest) === 0 ? 'Сходится с «Оплачено»' : rest > 0 ? `Не распределено ${rest.toLocaleString('ru-RU')} ₸` : `Лишнее ${(-rest).toLocaleString('ru-RU')} ₸`}
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
           <div className="space-y-1">
             <Label>Дата предоплаты</Label>
             <Input type="date" value={form.prepayment_date || ''} onChange={e => set('prepayment_date', e.target.value || null)} />

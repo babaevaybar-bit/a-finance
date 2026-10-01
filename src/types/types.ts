@@ -50,6 +50,7 @@ export interface Deal {
   vat_gross_amount: number | null; // сумма с НДС при оплате «Перечисление» (общая сумма вводится отдельно, вручную — процент бывает разный)
   contract_number: string | null; // номер договора — ключ для связки с карточкой в Trello
   next_payment_date: string | null; // примерная дата следующей доплаты — для напоминаний сотруднику
+  payment_split: { channel: string; amount: number }[] | null; // предоплата несколькими способами (часть нал, часть Kaspi…)
   status: 'pending' | 'approved' | 'rejected'; // pending = awaiting director's approval
   stage: 'new' | 'in_progress' | 'installed' | 'closed' | 'canceled'; // жизненный цикл установки
   created_at: string;
@@ -132,7 +133,8 @@ export interface SalarySetting {
   updated_at: string;
 }
 
-export const PAYMENT_METHODS = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'RBK Bank', 'Наличные', 'Перечисление', 'Другое'] as const;
+export const PAYMENT_METHODS = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'RBK Bank', 'Наличные', 'Перечисление', 'Несколько способов', 'Другое'] as const;
+export const SPLIT_PAYMENT_METHOD = 'Несколько способов';
 export const CHANNELS = ['Kaspi Bank', 'Halyk Bank', 'Freedom Bank', 'RBK Bank', 'Наличные', 'Перечисление'] as const;
 
 export const DEAL_STAGES = ['new', 'in_progress', 'installed', 'closed', 'canceled'] as const;

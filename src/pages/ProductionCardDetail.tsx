@@ -97,6 +97,7 @@ function CreateDealInline({ card, parsed, onCreated }: {
         door_model: parsed.product,
         contract_number: null,
         next_payment_date: null,
+        payment_split: null,
         payment_method: paymentMethod,
         total_amount: amount,
         paid_amount: 0,

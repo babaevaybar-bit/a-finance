@@ -1,5 +1,5 @@
 import { supabase } from '@/db/supabase';
-import { CHANNELS } from '@/types/types';
+import { CHANNELS, SPLIT_PAYMENT_METHOD } from '@/types/types';
 import type { Manager, Profile, SalesPlan, Deal, Expense, Income, Transfer, SalarySetting, EmployeePermission, ProfitRow, DailyReport, ClientReport, ClientInteraction, ClientTask, ClientChangeLog, InteractionType, DealStage, ClientQuality, DealPayment, AppNotification, RecurringExpenseTemplate, PaymentScheduleItem } from '@/types/types';
 
 // ─── Profiles ─────────────────────────────────────────────────────────────────
@@ -333,7 +333,15 @@ export async function deleteDeal(id: string): Promise<void> {
 export async function approveDeal(id: string): Promise<{ incomeRecorded: boolean; channel: string | null }> {
   const { data: deal, error: fetchErr } = await supabase.from('deals').select('*').eq('id', id).single();
   if (fetchErr || !deal) throw fetchErr ?? new Error('Сделка не найдена');
-  if (Number(deal.paid_amount) > 0 && !(CHANNELS as readonly string[]).includes(deal.payment_method)) {
+  // Предоплата несколькими способами: каждая часть — своя оплата и своё поступление в кассу
+  const split: { channel: string; amount: number }[] | null =
+    deal.payment_method === SPLIT_PAYMENT_METHOD && Array.isArray(deal.payment_split) ? deal.payment_split : null;
+  if (split && Number(deal.paid_amount) > 0) {
+    const sum = split.reduce((acc, r) => acc + Number(r.amount || 0), 0);
+    if (split.some(r => !(CHANNELS as readonly string[]).includes(r.channel)) || Math.round(sum) !== Math.round(Number(deal.paid_amount))) {
+      throw new Error('Разбивка оплаты по способам не сходится с «Оплачено» — откройте сделку и проверьте части');
+    }
+  } else if (Number(deal.paid_amount) > 0 && !(CHANNELS as readonly string[]).includes(deal.payment_method)) {
     throw new Error('Укажите способ оплаты предоплаты (Kaspi, Halyk, Freedom, RBK, наличные или перечисление) — откройте сделку и выберите его, иначе деньги не попадут в «Финансы»');
   }
   if (deal.month_year && await isMonthLocked(deal.month_year)) {
@@ -350,6 +358,23 @@ export async function approveDeal(id: string): Promise<{ incomeRecorded: boolean
   // Защита от задвоения при повторном подтверждении (после восстановления
   // из отклонённых) — проверяем, нет ли уже платежа по этой сделке.
   const { data: existingPayment } = await supabase.from('deal_payments').select('id').eq('deal_id', id).limit(1).maybeSingle();
+  if (!existingPayment && split && Number(deal.paid_amount) > 0) {
+    for (const part of split.filter(r => Number(r.amount) > 0)) {
+      const { data: payment } = await supabase.from('deal_payments').insert({
+        deal_id: id, amount: part.amount, payment_date: deal.prepayment_date || deal.deal_date,
+        channel: part.channel, comment: 'Предоплата при подтверждении (часть)',
+      }).select('id').single();
+      if (payment) {
+        await supabase.from('income').insert({
+          manager_id: null, income_date: deal.prepayment_date || deal.deal_date,
+          from_whom: deal.client_name || 'Клиент по сделке', total_amount: part.amount, quantity: null,
+          channel: part.channel, comment: `Предоплата по сделке (${deal.door_model || 'дверь'}), часть`,
+          month_year: (deal.prepayment_date || deal.deal_date).slice(0, 7), deal_id: id, payment_id: payment.id,
+        });
+      }
+    }
+    return { incomeRecorded: true, channel: split.map(r => r.channel).join(' + ') };
+  }
   if (!existingPayment && Number(deal.paid_amount) > 0 && (CHANNELS as readonly string[]).includes(deal.payment_method)) {
     const { data: payment, error: payErr } = await supabase.from('deal_payments').insert({
       deal_id: id,

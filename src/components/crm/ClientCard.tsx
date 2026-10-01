@@ -167,6 +167,7 @@ export default function ClientCard({ client, open, onClose, managers, onClientUp
         vat_gross_amount: null,
         contract_number: null,
         next_payment_date: null,
+        payment_split: null,
         status: 'pending',
         stage: 'new',
       });
