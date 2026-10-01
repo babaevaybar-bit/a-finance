@@ -16,7 +16,7 @@ import {
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Users, KeyRound, Check, X, Mail, Phone, Calendar, Wallet, ShieldCheck, Layers } from 'lucide-react';
-import { getManagers, createManager, updateManager, deleteManager, getSalarySettings, upsertSalarySetting, getAllProfiles, updateProfile } from '@/lib/api';
+import { getManagers, createManager, updateManager, deleteManager, getSalarySettings, upsertSalarySetting, getAllProfiles, updateProfile, getAllDeals } from '@/lib/api';
 import type { Profile } from '@/types/types';
 import { supabase } from '@/db/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -109,6 +109,23 @@ function EmployeeProfileDialog({ manager, setting, profile, onClose }: {
   profile?: Profile;
   onClose: () => void;
 }) {
+  const [stats, setStats] = useState<{ monthRevenue: number; monthDeals: number; totalDeals: number; debt: number } | null>(null);
+  useEffect(() => {
+    if (!manager) return;
+    setStats(null);
+    const month = new Date().toISOString().slice(0, 7);
+    getAllDeals().then(all => {
+      const mine = all.filter(d => d.manager_id === manager.id);
+      const thisMonth = mine.filter(d => d.month_year === month);
+      setStats({
+        monthRevenue: thisMonth.reduce((s, d) => s + Number(d.total_amount), 0),
+        monthDeals: thisMonth.length,
+        totalDeals: mine.length,
+        debt: mine.reduce((s, d) => s + Math.max(0, Number(d.total_amount) - Number(d.paid_amount)), 0),
+      });
+    }).catch(() => setStats({ monthRevenue: 0, monthDeals: 0, totalDeals: 0, debt: 0 }));
+  }, [manager?.id]);
+
   if (!manager) return null;
   return (
     <Dialog open={!!manager} onOpenChange={v => !v && onClose()}>
@@ -142,6 +159,23 @@ function EmployeeProfileDialog({ manager, setting, profile, onClose }: {
                 <Layers size={11} />amoCRM
               </Badge>
             )}
+          </div>
+
+          {/* Результаты — по подтверждённым сделкам */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-xl bg-muted/50 p-2.5">
+              <p className="text-[11px] text-muted-foreground">Продажи за месяц</p>
+              <p className="text-sm font-semibold mt-0.5">{stats ? formatCurrency(stats.monthRevenue) : '…'}</p>
+              {stats && <p className="text-[11px] text-muted-foreground">{stats.monthDeals} сделок</p>}
+            </div>
+            <div className="rounded-xl bg-muted/50 p-2.5">
+              <p className="text-[11px] text-muted-foreground">Всего сделок</p>
+              <p className="text-sm font-semibold mt-0.5">{stats ? stats.totalDeals : '…'}</p>
+            </div>
+            <div className={`rounded-xl p-2.5 ${stats && stats.debt > 0 ? 'bg-amber-50' : 'bg-muted/50'}`}>
+              <p className="text-[11px] text-muted-foreground">Клиенты должны</p>
+              <p className="text-sm font-semibold mt-0.5">{stats ? formatCurrency(stats.debt) : '…'}</p>
+            </div>
           </div>
 
           <div className="space-y-2.5 text-sm">
