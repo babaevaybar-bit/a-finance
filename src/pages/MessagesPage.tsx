@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Banknote, Factory, CheckCheck } from 'lucide-react';
+import { Banknote, Factory, CheckCheck, Scale } from 'lucide-react';
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import type { AppNotification } from '@/types/types';
@@ -51,7 +51,7 @@ export default function MessagesPage() {
           <div>
             <h1 className="text-xl font-semibold">Сообщения</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Напоминания об оплате и изменениях в производстве{unreadCount > 0 ? ` · ${unreadCount} новых` : ''}
+              Напоминания об оплате, изменения в производстве и расхождения сумм Trello / amoCRM{unreadCount > 0 ? ` · ${unreadCount} новых` : ''}
             </p>
           </div>
           {unreadCount > 0 && (
@@ -68,8 +68,8 @@ export default function MessagesPage() {
         ) : (
           <div className="space-y-2">
             {items.map(n => {
-              const Icon = n.type === 'payment_due' ? Banknote : Factory;
-              const iconColor = n.type === 'payment_due' ? 'text-amber-600' : 'text-primary';
+              const Icon = n.type === 'payment_due' ? Banknote : n.type === 'amount_mismatch' ? Scale : Factory;
+              const iconColor = n.type === 'payment_due' ? 'text-amber-600' : n.type === 'amount_mismatch' ? 'text-destructive' : 'text-primary';
               return (
                 <Card
                   key={n.id}
