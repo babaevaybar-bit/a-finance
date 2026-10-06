@@ -1036,3 +1036,23 @@ async function syncNextPaymentDate(dealId: string): Promise<void> {
   await supabase.from('deals').update({ next_payment_date: next?.due_date ?? null }).eq('id', dealId);
 }
 export { syncNextPaymentDate };
+
+// Оплата, записанная со способом «Другое», — указать реальную кассу:
+// меняем способ в журнале и создаём поступление в «Финансы».
+export async function assignPaymentChannel(paymentId: string, channel: string): Promise<void> {
+  if (!(CHANNELS as readonly string[]).includes(channel)) throw new Error('Выберите кассу');
+  const { data: p, error } = await supabase.from('deal_payments').select('*').eq('id', paymentId).single();
+  if (error || !p) throw error ?? new Error('Оплата не найдена');
+  if (await isMonthLocked(String(p.payment_date).slice(0, 7))) throw new Error('Месяц этой оплаты закрыт — откройте его в «Отчётах»');
+  const { data: existing } = await supabase.from('income').select('id').eq('payment_id', paymentId).maybeSingle();
+  if (existing) throw new Error('Эта оплата уже есть в «Финансах»');
+  const { data: deal } = await supabase.from('deals').select('client_name, door_model').eq('id', p.deal_id).single();
+  const { error: upErr } = await supabase.from('deal_payments').update({ channel }).eq('id', paymentId);
+  if (upErr) throw upErr;
+  const { error: incErr } = await supabase.from('income').insert({
+    manager_id: null, income_date: p.payment_date, from_whom: deal?.client_name || 'Клиент по сделке',
+    total_amount: p.amount, quantity: null, channel, comment: `Оплата по сделке (${deal?.door_model || 'дверь'})`,
+    month_year: String(p.payment_date).slice(0, 7), deal_id: p.deal_id, payment_id: paymentId,
+  });
+  if (incErr) throw incErr;
+}

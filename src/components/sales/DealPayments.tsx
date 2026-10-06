@@ -6,11 +6,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Wallet, Plus, CalendarClock, History, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { getDealPayments, addDealPayment } from '@/lib/api';
+import { getDealPayments, addDealPayment, assignPaymentChannel } from '@/lib/api';
 import PaymentSchedule from './PaymentSchedule';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, DealPayment } from '@/types/types';
-import { PAYMENT_METHODS } from '@/types/types';
+import { PAYMENT_METHODS, CHANNELS } from '@/types/types';
 
 /**
  * Оплаты по сделке — одно понятное место.
@@ -219,6 +219,22 @@ function PaymentsDialog({ open, onClose, deal, onChanged, suggestedAmount, sugge
                   <div className="min-w-0 flex-1">
                     <p>{formatDate(p.payment_date)} · {p.channel}</p>
                     {p.comment && <p className="text-muted-foreground break-words">{p.comment}</p>}
+                    {!(CHANNELS as readonly string[]).includes(p.channel) && (
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <span className="text-amber-700">Не в «Финансах» — укажите кассу:</span>
+                        <Select onValueChange={async v => {
+                          try {
+                            await assignPaymentChannel(p.id, v);
+                            toast.success(`Оплата ${formatCurrency(p.amount)} внесена в «Финансы» (${v})`);
+                            setPayments(prev => prev?.map(x => x.id === p.id ? { ...x, channel: v } : x) ?? prev);
+                            onChanged();
+                          } catch (err) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
+                        }}>
+                          <SelectTrigger className="h-7 w-36 text-xs"><SelectValue placeholder="Выбрать" /></SelectTrigger>
+                          <SelectContent>{CHANNELS.map(c => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                   <span className="font-semibold shrink-0">{formatCurrency(p.amount)}</span>
                 </div>
