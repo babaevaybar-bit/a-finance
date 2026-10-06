@@ -10,7 +10,7 @@ import {
 import { toast } from 'sonner';
 import { Pencil, Check, X } from 'lucide-react';
 import {
-  getManagers, getSalarySettings, upsertSalarySetting,
+  getManagers, getSalarySettings, upsertSalarySetting, getExpenses,
   getAllDealsForMonth,
 } from '@/lib/api';
 import {
@@ -18,7 +18,7 @@ import {
 } from '@/lib/utils';
 import MonthYearPicker from '@/components/common/MonthYearPicker';
 import type { Manager, SalarySetting, Deal } from '@/types/types';
-import { SALES_ROLES } from '@/types/types';
+import { SALES_ROLES, ADVANCE_CATEGORY } from '@/types/types';
 
 // ─── row with inline edit ──────────────────────────────────────────────────────
 interface RowProps {
@@ -29,7 +29,7 @@ interface RowProps {
   onSaved: () => void;
 }
 
-function ManagerSalaryRow({ manager, setting, revenue, companyRevenue, onSaved }: RowProps) {
+function ManagerSalaryRow({ manager, setting, revenue, companyRevenue, onSaved, advance = 0 }: RowProps & { advance?: number }) {
   const [editing, setEditing] = useState(false);
   const [base, setBase]       = useState(String(setting?.base_salary ?? 0));
   const [pct, setPct]         = useState(String(setting?.commission_pct ?? 0));
@@ -119,6 +119,9 @@ function ManagerSalaryRow({ manager, setting, revenue, companyRevenue, onSaved }
       <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums text-muted-foreground">{formatCurrency(commission)}</td>
       {/* Итого */}
       <td className="whitespace-nowrap py-3 pl-3 text-right text-sm tabular-nums font-semibold">{formatCurrency(total)}</td>
+      {/* Аванс и к выплате */}
+      <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums text-muted-foreground">{advance > 0 ? `− ${formatCurrency(advance)}` : '—'}</td>
+      <td className="whitespace-nowrap py-3 pl-3 text-right text-sm tabular-nums font-semibold text-primary">{formatCurrency(total - advance)}</td>
       {/* Действия */}
       <td className="whitespace-nowrap py-3 pl-3">
         {editing ? (
@@ -144,15 +147,22 @@ export default function SalaryPage() {
 
 
 
+  const [advances, setAdvances] = useState<Record<string, number>>({});
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [mgrs, setts, dls] = await Promise.all([
+      const [mgrs, setts, dls, exps] = await Promise.all([
         getManagers(),
         getSalarySettings(),
         getAllDealsForMonth(monthYear),
+        getExpenses(),
       ]);
       setManagers(mgrs); setSettings(setts); setDeals(dls);
+      // Авансы этого месяца по сотрудникам (вносятся в «Финансах» как расход «Аванс сотруднику»)
+      const adv: Record<string, number> = {};
+      exps.filter(e => e.category === ADVANCE_CATEGORY && e.manager_id && (e.month_year ?? e.expense_date.slice(0, 7)) === monthYear)
+        .forEach(e => { adv[e.manager_id!] = (adv[e.manager_id!] ?? 0) + Number(e.amount); });
+      setAdvances(adv);
     } catch { /* silent */ } finally { setLoading(false); }
   }, [monthYear]);
 
@@ -236,6 +246,8 @@ export default function SalaryPage() {
                       <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">% комиссии</th>
                       <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">Комиссия (₸)</th>
                       <th className="text-right whitespace-nowrap py-2 pl-3 font-medium text-muted-foreground">Итого ЗП</th>
+                      <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">Аванс</th>
+                      <th className="text-right whitespace-nowrap py-2 pl-3 font-medium text-muted-foreground">К выплате</th>
                       <th className="whitespace-nowrap py-2 pl-3 w-16"></th>
                     </tr>
                   </thead>
@@ -248,11 +260,14 @@ export default function SalaryPage() {
                          revenue={managerPersonalRevenue(m)}
                          companyRevenue={companyRevenue}
                          onSaved={load}
+                         advance={advances[m.id] ?? 0}
                        />
                     ))}
                     <tr className="border-t border-border bg-muted/30">
                       <td className="py-2.5 pr-4 text-sm font-semibold" colSpan={6}>ИТОГО ФОТ</td>
                       <td className="py-2.5 pl-3 text-right text-sm font-semibold tabular-nums">{formatCurrency(totalSalary)}</td>
+                      <td className="py-2.5 px-3 text-right text-sm tabular-nums text-muted-foreground">{(() => { const a = Object.values(advances).reduce((x, y) => x + y, 0); return a > 0 ? `− ${formatCurrency(a)}` : '—'; })()}</td>
+                      <td className="py-2.5 pl-3 text-right text-sm font-semibold tabular-nums text-primary">{formatCurrency(totalSalary - Object.values(advances).reduce((x, y) => x + y, 0))}</td>
                       <td></td>
                     </tr>
                   </tbody>

@@ -24,7 +24,9 @@ import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
 } from 'recharts';
 import type { ProfitRow } from '@/types/types';
-import { SALES_ROLES, COGS_CATEGORIES } from '@/types/types';
+import { SALES_ROLES, COGS_CATEGORIES, ADVANCE_CATEGORY } from '@/types/types';
+import type { Expense } from '@/types/types';
+import { ExpenseFormDialog } from '@/pages/FinancePage';
 
 // ─── Вычислитель формул ────────────────────────────────────────────────────────
 // Поддерживает: числа, +, -, *, /, скобки, переменные {revenue}, {expenses}, {salary}
@@ -55,6 +57,9 @@ export default function ProfitPage() {
 
   // Авто-переменные из других разделов
   const [autoVars, setAutoVars]   = useState({ revenue: 0, cogs: 0, expenses: 0, salary: 0 });
+  const [monthExpenses, setMonthExpenses] = useState<Expense[]>([]);
+  const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
+  const [editExpense, setEditExpense] = useState<Expense | null>(null);
   const [categoryBreakdown, setCategoryBreakdown] = useState<{ category: string; amount: number }[]>([]);
   const [monthlyTrend, setMonthlyTrend] = useState<{ month: string; profit: number }[]>([]);
 
@@ -76,7 +81,7 @@ export default function ProfitPage() {
         .filter(e => (COGS_CATEGORIES as readonly string[]).includes(e.category))
         .reduce((s, e) => s + Number(e.amount), 0);
       const expenses = expsThisMonth
-        .filter(e => !(COGS_CATEGORIES as readonly string[]).includes(e.category))
+        .filter(e => !(COGS_CATEGORIES as readonly string[]).includes(e.category) && e.category !== ADVANCE_CATEGORY)
         .reduce((s, e) => s + Number(e.amount), 0);
       // Зарплата: оклад + комиссия
       const salary = mgrs.reduce((s, m) => {
@@ -92,8 +97,9 @@ export default function ProfitPage() {
       setAutoVars({ revenue, cogs, expenses, salary });
 
       // Структура расходов по категориям за выбранный месяц
+      setMonthExpenses(expsThisMonth);
       const byCategory = new Map<string, number>();
-      expsThisMonth.forEach(e => {
+      expsThisMonth.filter(e => e.category !== ADVANCE_CATEGORY).forEach(e => {
         const cat = e.category || 'прочее';
         byCategory.set(cat, (byCategory.get(cat) ?? 0) + Number(e.amount));
       });
@@ -114,7 +120,7 @@ export default function ProfitPage() {
           .filter(e => (COGS_CATEGORIES as readonly string[]).includes(e.category))
           .reduce((s, e) => s + Number(e.amount), 0);
         const mExpenses = mExpsThisMonth
-          .filter(e => !(COGS_CATEGORIES as readonly string[]).includes(e.category))
+          .filter(e => !(COGS_CATEGORIES as readonly string[]).includes(e.category) && e.category !== ADVANCE_CATEGORY)
           .reduce((s, e) => s + Number(e.amount), 0);
         const mSalary = mgrs.reduce((s, m) => {
           const sett = setts.find(ss => ss.manager_id === m.id);
@@ -308,6 +314,62 @@ export default function ProfitPage() {
             )}
           </div>
         )}
+
+        {/* Расходы за месяц — видно, из чего складываются {cogs} и {expenses}, и можно добавить прямо отсюда */}
+        <Card className="border border-border">
+          <CardHeader className="pb-3 flex-row items-start justify-between gap-3 space-y-0">
+            <div>
+              <CardTitle className="text-base">Расходы за {monthYearToLabel(monthYear)}</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Всё, что внесено здесь или в «Финансы → Расходы». Закуп дверей идёт в {'{cogs}'}, остальное — в {'{expenses}'}.
+                Авансы сотрудникам показаны отдельно: они уже входят в ФОТ.
+              </p>
+            </div>
+            <Button size="sm" onClick={() => { setEditExpense(null); setExpenseDialogOpen(true); }}>
+              <Plus size={14} className="mr-1" />Добавить расход
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {monthExpenses.length === 0 ? (
+              <p className="text-sm text-muted-foreground">За этот месяц расходов пока нет</p>
+            ) : (() => {
+              const groups = new Map<string, Expense[]>();
+              monthExpenses.forEach(e => groups.set(e.category || 'прочее', [...(groups.get(e.category || 'прочее') ?? []), e]));
+              const sum = (l: Expense[]) => l.reduce((s, e) => s + Number(e.amount), 0);
+              const ordered = Array.from(groups.entries())
+                .sort((a, b) => (a[0] === ADVANCE_CATEGORY ? 1 : 0) - (b[0] === ADVANCE_CATEGORY ? 1 : 0) || sum(b[1]) - sum(a[1]));
+              return (
+                <div className="space-y-3">
+                  {ordered.map(([cat, list]) => (
+                    <div key={cat}>
+                      <div className="flex items-center justify-between text-sm font-medium">
+                        <span>{cat}{cat === ADVANCE_CATEGORY ? ' (в ФОТ, не в расходах)' : (COGS_CATEGORIES as readonly string[]).includes(cat) ? ' — себестоимость' : ''}</span>
+                        <span>{formatCurrency(sum(list))}</span>
+                      </div>
+                      <div className="mt-1 divide-y divide-border rounded-lg border border-border">
+                        {list.map(e => (
+                          <button key={e.id} type="button" onClick={() => { setEditExpense(e); setExpenseDialogOpen(true); }}
+                            className="w-full flex items-center justify-between gap-3 px-3 py-1.5 text-xs text-left hover:bg-muted/40">
+                            <span className="min-w-0 truncate">{new Date(e.expense_date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })} · {e.description} · {e.channel}</span>
+                            <span className="shrink-0">{formatCurrency(e.amount)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
+
+        <ExpenseFormDialog
+          open={expenseDialogOpen}
+          onClose={() => setExpenseDialogOpen(false)}
+          onSaved={() => loadAutoVars(monthYear)}
+          expense={editExpense}
+          defaultDate={monthYear === new Date().toISOString().slice(0, 7) ? undefined : `${monthYear}-01`}
+        />
 
         {/* Таблица строк */}
         <Card className="border border-border">

@@ -30,7 +30,7 @@ import {
 } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Expense, Income, Manager, Transfer, Deal } from '@/types/types';
-import { CHANNELS, EXPENSE_CATEGORIES } from '@/types/types';
+import { CHANNELS, EXPENSE_CATEGORIES, ADVANCE_CATEGORY } from '@/types/types';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function inRange(dateStr: string, from: string, to: string): boolean {
@@ -132,11 +132,14 @@ const EMPTY_EXP: Omit<Expense, 'id' | 'created_at' | 'updated_at'> = {
   description: '',
   month_year: null,
   deal_id: null,
+  manager_id: null,
 };
 
-function ExpenseFormDialog({ open, onClose, onSaved, expense }: {
-  open: boolean; onClose: () => void; onSaved: () => void; expense?: Expense | null;
+export function ExpenseFormDialog({ open, onClose, onSaved, expense, defaultDate }: {
+  open: boolean; onClose: () => void; onSaved: () => void; expense?: Expense | null; defaultDate?: string;
 }) {
+  const [staff, setStaff] = useState<Manager[]>([]);
+  useEffect(() => { getManagers().then(setStaff).catch(() => {}); }, []);
   const [form, setForm] = useState(EMPTY_EXP);
   const [saving, setSaving] = useState(false);
   const [recentDeals, setRecentDeals] = useState<Pick<Deal, 'id' | 'client_name' | 'total_amount' | 'deal_date'>[]>([]);
@@ -150,14 +153,15 @@ function ExpenseFormDialog({ open, onClose, onSaved, expense }: {
     if (expense) setForm({
       expense_date: expense.expense_date, amount: expense.amount, channel: expense.channel,
       category: expense.category ?? 'прочее', description: expense.description,
-      month_year: expense.expense_date.slice(0, 7), deal_id: expense.deal_id ?? null,
+      month_year: expense.expense_date.slice(0, 7), deal_id: expense.deal_id ?? null, manager_id: expense.manager_id ?? null,
     });
-    else setForm(EMPTY_EXP);
+    else setForm({ ...EMPTY_EXP, expense_date: defaultDate ?? new Date().toISOString().slice(0, 10) });
   }, [expense, open]);
 
   async function save() {
     if (!form.description.trim()) { toast.error('Введите описание'); return; }
     if (Number(form.amount) <= 0) { toast.error('Сумма должна быть больше 0'); return; }
+    if (form.category === ADVANCE_CATEGORY && !form.manager_id) { toast.error('Выберите сотрудника, которому выдан аванс'); return; }
     setSaving(true);
     try {
       const payload = { ...form, month_year: form.expense_date.slice(0, 7) };
@@ -192,6 +196,16 @@ function ExpenseFormDialog({ open, onClose, onSaved, expense }: {
               <SelectContent>{EXPENSE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
             </Select>
           </div>
+          {form.category === ADVANCE_CATEGORY && (
+            <div className="space-y-1">
+              <Label>Сотрудник *</Label>
+              <Select value={form.manager_id ?? ''} onValueChange={v => setForm(f => ({ ...f, manager_id: v }))}>
+                <SelectTrigger><SelectValue placeholder="Кому выдан аванс" /></SelectTrigger>
+                <SelectContent>{staff.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">Аванс вычтется из его зарплаты к выплате и не посчитается в прибыли дважды.</p>
+            </div>
+          )}
           <div className="space-y-1">
             <Label>Сумма (₸) *</Label>
             <Input type="number" min="0" value={form.amount || ''} onChange={e => set('amount', Number(e.target.value))} />
