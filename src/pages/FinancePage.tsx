@@ -31,6 +31,8 @@ import {
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Expense, Income, Manager, Transfer, Deal } from '@/types/types';
 import { CHANNELS, EXPENSE_CATEGORIES, SALARY_CATEGORIES } from '@/types/types';
+import { getCashCounts, addCashCount } from '@/lib/api';
+import type { CashCount } from '@/lib/api';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function inRange(dateStr: string, from: string, to: string): boolean {
@@ -69,7 +71,29 @@ function BalanceSummary({ expenses, income, transfers }: {
   expenses: Expense[]; income: Income[]; transfers: Transfer[];
 }) {
   const channels: string[] = [...CHANNELS];
+  const [counts, setCounts] = useState<CashCount[]>([]);
+  const [countFor, setCountFor] = useState<{ channel: string; book: number; expected: number | null } | null>(null);
+  const [actual, setActual] = useState('');
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { getCashCounts().then(setCounts).catch(() => {}); }, []);
+
+  async function saveCount() {
+    if (!countFor || actual === '') return;
+    setSaving(true);
+    try {
+      await addCashCount({ channel: countFor.channel, actual_amount: Number(actual), book_amount: countFor.book, expected_amount: countFor.expected, note });
+      const diff = countFor.expected != null ? Number(actual) - countFor.expected : null;
+      toast.success(diff == null ? 'Остаток зафиксирован — дальше система будет показывать, сколько должно быть в кассе'
+        : Math.abs(diff) < 1 ? 'Касса сходится ✓' : `Расхождение ${diff > 0 ? '+' : '−'}${formatCurrency(Math.abs(diff))} — проверьте, не забыт ли расход или поступление`);
+      setCountFor(null); setActual(''); setNote('');
+      setCounts(await getCashCounts());
+    } catch { toast.error('Не удалось сохранить'); }
+    finally { setSaving(false); }
+  }
+
   return (
+    <>
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
       {channels.map(ch => {
         const inc = income.filter(i => i.channel === ch).reduce((s, i) => s + Number(i.total_amount), 0);
@@ -77,6 +101,10 @@ function BalanceSummary({ expenses, income, transfers }: {
         const trOut = transfers.filter(t => t.from_channel === ch).reduce((s, t) => s + Number(t.amount), 0);
         const trIn  = transfers.filter(t => t.to_channel   === ch).reduce((s, t) => s + Number(t.amount), 0);
         const balance = inc - exp - trOut + trIn;
+        // После первой сверки: ожидаемый остаток = факт на сверке + движение по записям с тех пор
+        const last = counts.find(c => c.channel === ch);
+        const expected = last ? Number(last.actual_amount) + (balance - Number(last.book_amount)) : null;
+        const lastDiff = last && last.expected_amount != null ? Number(last.actual_amount) - Number(last.expected_amount) : null;
         return (
           <div key={ch} className="rounded-md border border-border p-3">
             <BankLabel channel={ch} />
@@ -90,10 +118,55 @@ function BalanceSummary({ expenses, income, transfers }: {
                 <span className="text-muted-foreground/70">⇄ {trIn > 0 ? `+${formatCurrency(trIn)}` : ''}{trOut > 0 ? ` −${formatCurrency(trOut)}` : ''}</span>
               )}
             </div>
+            {expected != null && (
+              <div className="mt-2 pt-2 border-t border-border text-[11px] space-y-0.5">
+                <div>Должно быть в кассе: <span className="font-semibold">{formatCurrency(expected)}</span></div>
+                <div className="text-muted-foreground">Сверка {new Date(last!.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
+                  {lastDiff != null && (Math.abs(lastDiff) < 1
+                    ? <span className="text-green-700"> · сходилось</span>
+                    : <span className="text-destructive"> · расхождение {lastDiff > 0 ? '+' : '−'}{formatCurrency(Math.abs(lastDiff))}</span>)}
+                </div>
+              </div>
+            )}
+            <button type="button" className="mt-2 text-[11px] text-primary underline"
+              onClick={() => { setCountFor({ channel: ch, book: balance, expected }); setActual(''); setNote(''); }}>
+              Сверить кассу
+            </button>
           </div>
         );
       })}
     </div>
+
+    <Dialog open={!!countFor} onOpenChange={v => !v && setCountFor(null)}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader><DialogTitle>Сверка: {countFor?.channel}</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            {countFor?.expected != null
+              ? <>По записям в кассе должно быть <b>{formatCurrency(countFor.expected)}</b>. Введите, сколько есть на самом деле (выписка банка / пересчёт наличных).</>
+              : <>Первая сверка: введите реальный остаток сейчас. Дальше система будет показывать, сколько должно быть в кассе, и подсвечивать расхождения.</>}
+          </p>
+          <div className="space-y-1">
+            <Label className="text-xs">Фактический остаток, ₸</Label>
+            <Input type="number" value={actual} onChange={e => setActual(e.target.value)} autoFocus />
+            {countFor?.expected != null && actual !== '' && (
+              <p className={`text-xs ${Math.abs(Number(actual) - countFor.expected) < 1 ? 'text-green-700' : 'text-destructive'}`}>
+                {Math.abs(Number(actual) - countFor.expected) < 1 ? 'Сходится' : `Расхождение ${Number(actual) > countFor.expected ? '+' : '−'}${formatCurrency(Math.abs(Number(actual) - countFor.expected))}`}
+              </p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Комментарий (необязательно)</Label>
+            <Input value={note} onChange={e => setNote(e.target.value)} placeholder="Например: выписка Kaspi на утро" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setCountFor(null)}>Отмена</Button>
+          <Button onClick={saveCount} disabled={saving || actual === ''}>Сохранить</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

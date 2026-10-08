@@ -1056,3 +1056,21 @@ export async function assignPaymentChannel(paymentId: string, channel: string): 
   });
   if (incErr) throw incErr;
 }
+
+// ─── Сверка касс ─────────────────────────────────────────────────────────
+export interface CashCount {
+  id: string; channel: string; actual_amount: number; book_amount: number;
+  expected_amount: number | null; note: string | null; counted_by_name: string | null; created_at: string;
+}
+export async function getCashCounts(): Promise<CashCount[]> {
+  const { data, error } = await supabase.from('cash_counts').select('*').order('created_at', { ascending: false }).limit(200);
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+export async function addCashCount(c: { channel: string; actual_amount: number; book_amount: number; expected_amount: number | null; note?: string }): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  let name: string | null = null;
+  if (user) { const { data: p } = await supabase.from('profiles').select('name').eq('id', user.id).maybeSingle(); name = p?.name ?? null; }
+  const { error } = await supabase.from('cash_counts').insert({ ...c, note: c.note || null, counted_by_name: name });
+  if (error) throw error;
+}
