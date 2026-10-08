@@ -10,15 +10,17 @@ import {
 import { toast } from 'sonner';
 import { Pencil, Check, X } from 'lucide-react';
 import {
-  getManagers, getSalarySettings, upsertSalarySetting, getExpenses,
+  getManagers, getSalarySettings, upsertSalarySetting, getExpenses, createExpense,
   getAllDealsForMonth,
 } from '@/lib/api';
 import {
   formatCurrency, getCurrentMonthYear, getAvailableMonths, monthYearToLabel,
 } from '@/lib/utils';
 import MonthYearPicker from '@/components/common/MonthYearPicker';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import type { Manager, SalarySetting, Deal } from '@/types/types';
-import { SALES_ROLES, ADVANCE_CATEGORY } from '@/types/types';
+import { SALES_ROLES, SALARY_CATEGORIES, PAYOUT_CATEGORY, CHANNELS } from '@/types/types';
 
 // ─── row with inline edit ──────────────────────────────────────────────────────
 interface RowProps {
@@ -29,7 +31,7 @@ interface RowProps {
   onSaved: () => void;
 }
 
-function ManagerSalaryRow({ manager, setting, revenue, companyRevenue, onSaved, advance = 0 }: RowProps & { advance?: number }) {
+function ManagerSalaryRow({ manager, setting, revenue, companyRevenue, onSaved, advance = 0, onPay }: RowProps & { advance?: number; onPay?: (amount: number) => void }) {
   const [editing, setEditing] = useState(false);
   const [base, setBase]       = useState(String(setting?.base_salary ?? 0));
   const [pct, setPct]         = useState(String(setting?.commission_pct ?? 0));
@@ -121,7 +123,14 @@ function ManagerSalaryRow({ manager, setting, revenue, companyRevenue, onSaved, 
       <td className="whitespace-nowrap py-3 pl-3 text-right text-sm tabular-nums font-semibold">{formatCurrency(total)}</td>
       {/* Аванс и к выплате */}
       <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums text-muted-foreground">{advance > 0 ? `− ${formatCurrency(advance)}` : '—'}</td>
-      <td className="whitespace-nowrap py-3 pl-3 text-right text-sm tabular-nums font-semibold text-primary">{formatCurrency(total - advance)}</td>
+      <td className="whitespace-nowrap py-3 pl-3 text-right text-sm tabular-nums">
+        <div className={`font-semibold ${total - advance > 0 ? 'text-primary' : 'text-green-700'}`}>
+          {total - advance > 0 ? formatCurrency(total - advance) : 'Выплачено'}
+        </div>
+        {total - advance > 0 && onPay && (
+          <button type="button" className="text-[11px] text-primary underline" onClick={() => onPay(total - advance)}>Выплатить</button>
+        )}
+      </td>
       {/* Действия */}
       <td className="whitespace-nowrap py-3 pl-3">
         {editing ? (
@@ -148,6 +157,31 @@ export default function SalaryPage() {
 
 
   const [advances, setAdvances] = useState<Record<string, number>>({});
+  const [payTarget, setPayTarget] = useState<{ id: string; name: string; amount: number } | null>(null);
+  const [payAmount, setPayAmount] = useState(0);
+  const [payChannel, setPayChannel] = useState<string>('Наличные');
+  const [paying, setPaying] = useState(false);
+
+  async function handlePay() {
+    if (!payTarget || payAmount <= 0) return;
+    setPaying(true);
+    try {
+      await createExpense({
+        expense_date: new Date().toISOString().slice(0, 10),
+        amount: payAmount,
+        channel: payChannel,
+        category: PAYOUT_CATEGORY,
+        description: `Зарплата за ${monthYearToLabel(monthYear)}: ${payTarget.name}`,
+        month_year: monthYear, // относится к месяцу начисления, даже если платим в следующем
+        deal_id: null,
+        manager_id: payTarget.id,
+      });
+      toast.success(`Выплачено ${formatCurrency(payAmount)} — ${payTarget.name} (${payChannel})`);
+      setPayTarget(null);
+      await load();
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
+    finally { setPaying(false); }
+  }
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -160,7 +194,7 @@ export default function SalaryPage() {
       setManagers(mgrs); setSettings(setts); setDeals(dls);
       // Авансы этого месяца по сотрудникам (вносятся в «Финансах» как расход «Аванс сотруднику»)
       const adv: Record<string, number> = {};
-      exps.filter(e => e.category === ADVANCE_CATEGORY && e.manager_id && (e.month_year ?? e.expense_date.slice(0, 7)) === monthYear)
+      exps.filter(e => SALARY_CATEGORIES.includes(e.category) && e.manager_id && (e.month_year ?? e.expense_date.slice(0, 7)) === monthYear)
         .forEach(e => { adv[e.manager_id!] = (adv[e.manager_id!] ?? 0) + Number(e.amount); });
       setAdvances(adv);
     } catch { /* silent */ } finally { setLoading(false); }
@@ -246,7 +280,7 @@ export default function SalaryPage() {
                       <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">% комиссии</th>
                       <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">Комиссия (₸)</th>
                       <th className="text-right whitespace-nowrap py-2 pl-3 font-medium text-muted-foreground">Итого ЗП</th>
-                      <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">Аванс</th>
+                      <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">Выплачено</th>
                       <th className="text-right whitespace-nowrap py-2 pl-3 font-medium text-muted-foreground">К выплате</th>
                       <th className="whitespace-nowrap py-2 pl-3 w-16"></th>
                     </tr>
@@ -261,6 +295,7 @@ export default function SalaryPage() {
                          companyRevenue={companyRevenue}
                          onSaved={load}
                          advance={advances[m.id] ?? 0}
+                         onPay={amount => { setPayTarget({ id: m.id, name: m.name, amount }); setPayAmount(amount); }}
                        />
                     ))}
                     <tr className="border-t border-border bg-muted/30">
@@ -283,6 +318,32 @@ export default function SalaryPage() {
           Остальные: база = общая подтверждённая выручка компании за месяц.
         </p>
       </div>
+      <Dialog open={!!payTarget} onOpenChange={v => !v && setPayTarget(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Выплата зарплаты — {payTarget?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              За {monthYearToLabel(monthYear)}. Осталось выплатить {payTarget ? formatCurrency(payTarget.amount) : ''}.
+              Запишется расходом «Выплата зарплаты» — в прибыли второй раз не посчитается.
+            </p>
+            <div className="space-y-1">
+              <Label className="text-xs">Сумма</Label>
+              <Input type="number" value={payAmount || ''} onChange={e => setPayAmount(Number(e.target.value))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Из какой кассы</Label>
+              <Select value={payChannel} onValueChange={setPayChannel}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{CHANNELS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayTarget(null)}>Отмена</Button>
+            <Button onClick={handlePay} disabled={paying || payAmount <= 0}>{paying ? 'Сохранение...' : 'Выплатить'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

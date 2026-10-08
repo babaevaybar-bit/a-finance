@@ -26,6 +26,7 @@ export default function ReportsPage() {
   // Открытие по ссылке с дашборда (?month=YYYY-MM) — сразу нужный месяц
   const [monthYear, setMonthYear] = useState(searchParams.get('month') || getCurrentMonthYear());
   const [locked, setLocked] = useState(false);
+  const [prevDeals, setPrevDeals] = useState<Deal[]>([]);
   const [lockBusy, setLockBusy] = useState(false);
 
   useEffect(() => {
@@ -51,6 +52,9 @@ export default function ReportsPage() {
         getTransfers(),
         isMonthLocked(monthYear),
       ]);
+      const [py, pm] = monthYear.split('-').map(Number);
+      const prevMonth = pm === 1 ? `${py - 1}-12` : `${py}-${String(pm - 1).padStart(2, '0')}`;
+      getAllDealsForMonth(prevMonth).then(setPrevDeals).catch(() => setPrevDeals([]));
       setDeals(dls); setExpenses(exps); setIncome(incs); setManagers(mgrs); setPlans(plns); setTransfers(trs);
       setLocked(lockStatus);
     } catch { /* silent */ } finally { setLoading(false); }
@@ -155,16 +159,24 @@ export default function ReportsPage() {
             {/* ── Month KPIs ── */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
-                { label: 'Всего сделок', value: deals.length, currency: false },
-                { label: 'Общая выручка', value: deals.reduce((s, d) => s + Number(d.total_amount), 0), currency: true },
-                { label: 'Оплачено', value: totalPaid, currency: true },
-                { label: 'Остатки', value: deals.reduce((s, d) => s + Math.max(0, Number(d.total_amount) - Number(d.paid_amount)), 0), currency: true },
-              ].map(({ label, value, currency }) => (
-                <div key={label} className="rounded-md border border-border p-3">
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                  <p className="text-base font-semibold mt-1">{currency ? formatCurrency(value as number) : value}</p>
-                </div>
-              ))}
+                { label: 'Всего сделок', value: deals.length, prev: prevDeals.length, currency: false, upGood: true },
+                { label: 'Общая выручка', value: deals.reduce((s, d) => s + Number(d.total_amount), 0), prev: prevDeals.reduce((s, d) => s + Number(d.total_amount), 0), currency: true, upGood: true },
+                { label: 'Оплачено', value: totalPaid, prev: prevDeals.reduce((s, d) => s + Number(d.paid_amount), 0), currency: true, upGood: true },
+                { label: 'Остатки', value: deals.reduce((s, d) => s + Math.max(0, Number(d.total_amount) - Number(d.paid_amount)), 0), prev: prevDeals.reduce((s, d) => s + Math.max(0, Number(d.total_amount) - Number(d.paid_amount)), 0), currency: true, upGood: false },
+              ].map(({ label, value, prev, currency, upGood }) => {
+                const diff = value - prev;
+                const pct = prev > 0 ? Math.round((diff / prev) * 100) : null;
+                const good = diff === 0 ? null : (diff > 0) === upGood;
+                return (
+                  <div key={label} className="rounded-md border border-border p-3">
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                    <p className="text-base font-semibold mt-1">{currency ? formatCurrency(value) : value}</p>
+                    <p className={`text-[11px] mt-0.5 ${good === null ? 'text-muted-foreground' : good ? 'text-green-700' : 'text-destructive'}`}>
+                      {diff === 0 ? 'как в прошлом месяце' : `${diff > 0 ? '▲' : '▼'} ${currency ? formatCurrency(Math.abs(diff)) : Math.abs(diff)}${pct !== null ? ` (${diff > 0 ? '+' : '−'}${Math.abs(pct)}%)` : ''} к прошлому месяцу`}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
 
             {/* ── Per-manager summary ── */}

@@ -30,7 +30,7 @@ import {
 } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Expense, Income, Manager, Transfer, Deal } from '@/types/types';
-import { CHANNELS, EXPENSE_CATEGORIES, ADVANCE_CATEGORY } from '@/types/types';
+import { CHANNELS, EXPENSE_CATEGORIES, SALARY_CATEGORIES } from '@/types/types';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function inRange(dateStr: string, from: string, to: string): boolean {
@@ -161,7 +161,7 @@ export function ExpenseFormDialog({ open, onClose, onSaved, expense, defaultDate
   async function save() {
     if (!form.description.trim()) { toast.error('Введите описание'); return; }
     if (Number(form.amount) <= 0) { toast.error('Сумма должна быть больше 0'); return; }
-    if (form.category === ADVANCE_CATEGORY && !form.manager_id) { toast.error('Выберите сотрудника, которому выдан аванс'); return; }
+    if (SALARY_CATEGORIES.includes(form.category) && !form.manager_id) { toast.error('Выберите сотрудника'); return; }
     setSaving(true);
     try {
       const payload = { ...form, month_year: form.expense_date.slice(0, 7) };
@@ -196,14 +196,14 @@ export function ExpenseFormDialog({ open, onClose, onSaved, expense, defaultDate
               <SelectContent>{EXPENSE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          {form.category === ADVANCE_CATEGORY && (
+          {SALARY_CATEGORIES.includes(form.category) && (
             <div className="space-y-1">
               <Label>Сотрудник *</Label>
               <Select value={form.manager_id ?? ''} onValueChange={v => setForm(f => ({ ...f, manager_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Кому выдан аванс" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Кому выдано" /></SelectTrigger>
                 <SelectContent>{staff.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
               </Select>
-              <p className="text-[11px] text-muted-foreground">Аванс вычтется из его зарплаты к выплате и не посчитается в прибыли дважды.</p>
+              <p className="text-[11px] text-muted-foreground">Учтётся в «Зарплатах» как уже выплаченное и не посчитается в прибыли дважды.</p>
             </div>
           )}
           <div className="space-y-1">

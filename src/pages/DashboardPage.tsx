@@ -13,9 +13,10 @@ import {
   formatCurrency, getDashboardMonths, monthYearToLabel, getCurrentMonthYear,
 } from '@/lib/utils';
 import type { Deal, Manager, SalesPlan } from '@/types/types';
+import { CHANNELS, SPLIT_PAYMENT_METHOD } from '@/types/types';
 import type { ActivityItem } from '@/lib/api';
 import { SALES_ROLES } from '@/types/types';
-import { TrendingUp, ShoppingCart, Users, Wallet, CheckCircle2, UserPlus, CalendarClock } from 'lucide-react';
+import { TrendingUp, ShoppingCart, Users, Wallet, CheckCircle2, UserPlus, CalendarClock, AlertTriangle } from 'lucide-react';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const MANAGER_COLORS = [
@@ -218,9 +219,12 @@ export default function DashboardPage() {
                 </div>
               </>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                Планы не заданы. Перейдите в раздел «Продажи» и установите план для каждого менеджера.
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  Планы на {monthYearToLabel(currentMonth)} не заданы — без них не видно % выполнения и сравнения менеджеров.
+                </p>
+                <Button size="sm" variant="outline" onClick={() => navigate(`/sales?month=${currentMonth}`)}>Задать планы</Button>
+              </div>
             )}
           </div>
         )}
@@ -268,6 +272,40 @@ export default function DashboardPage() {
                     </button>
                   );
                 })}
+              </CardContent>
+            </Card>
+          );
+        })()}
+
+        {/* Требует внимания: незаполненные данные, из-за которых не работают сверки и напоминания */}
+        {!loading && (() => {
+          const issuesOf = (d: Deal) => {
+            const list: string[] = [];
+            if (!d.contract_number || !/\d/.test(d.contract_number)) list.push('нет № договора');
+            if (!d.client_phone) list.push('нет телефона');
+            if (!(CHANNELS as readonly string[]).includes(d.payment_method) && d.payment_method !== SPLIT_PAYMENT_METHOD) list.push('способ оплаты «' + d.payment_method + '»');
+            if (Number(d.total_amount) > Number(d.paid_amount) && !d.next_payment_date) list.push('нет даты доплаты');
+            return list;
+          };
+          const problems = deals.map(d => ({ d, issues: issuesOf(d) })).filter(x => x.issues.length > 0);
+          if (problems.length === 0) return null;
+          return (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2"><AlertTriangle size={16} className="text-amber-600" />Требует внимания ({problems.length})</CardTitle>
+                <p className="text-xs text-muted-foreground">Без этих данных не работают сверка с Trello, напоминания о доплатах и учёт в «Финансах».</p>
+              </CardHeader>
+              <CardContent className="p-0 divide-y divide-border">
+                {problems.slice(0, 8).map(({ d, issues }) => (
+                  <button key={d.id} type="button" onClick={() => navigate(`/sales?manager=${d.manager_id}&month=${d.month_year}`)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/40 transition-colors">
+                    <span className="text-sm font-medium flex-1 min-w-0 truncate">{d.client_name || 'Без имени'}</span>
+                    <span className="flex flex-wrap gap-1 justify-end">
+                      {issues.map(i => <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">{i}</span>)}
+                    </span>
+                  </button>
+                ))}
+                {problems.length > 8 && <p className="px-4 py-2 text-xs text-muted-foreground">и ещё {problems.length - 8}</p>}
               </CardContent>
             </Card>
           );

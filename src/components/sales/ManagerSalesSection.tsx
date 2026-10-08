@@ -47,6 +47,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
   const [formOpen, setFormOpen] = useState(false);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
   const [search, setSearch] = useState('');
+  const [quick, setQuick] = useState<'all' | 'debt' | 'overdue' | 'pending'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('deal_date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -76,6 +77,11 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
         (d.contract_number || '').toLowerCase().includes(q)
       );
     }
+    // Быстрые фильтры
+    const today = new Date().toISOString().slice(0, 10);
+    if (quick === 'debt') list = list.filter(d => Number(d.total_amount) > Number(d.paid_amount));
+    if (quick === 'overdue') list = list.filter(d => Number(d.total_amount) > Number(d.paid_amount) && !!d.next_payment_date && d.next_payment_date < today);
+    if (quick === 'pending') list = list.filter(d => d.status === 'pending');
     const sorted = [...list].sort((a, b) => {
       let av: number, bv: number;
       if (sortKey === 'deal_date') { av = new Date(a.deal_date).getTime(); bv = new Date(b.deal_date).getTime(); }
@@ -84,7 +90,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
       return sortDir === 'asc' ? av - bv : bv - av;
     });
     return sorted;
-  }, [deals, search, sortKey, sortDir]);
+  }, [deals, search, quick, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
@@ -219,7 +225,15 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <span className="text-sm font-medium">Сделки</span>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex gap-1">
+                  {([['all', 'Все'], ['debt', 'С долгом'], ['overdue', 'Просрочено'], ['pending', 'На проверке']] as const).map(([k, label]) => (
+                    <button key={k} type="button" onClick={() => setQuick(k)}
+                      className={`h-8 px-2.5 rounded-full text-xs border transition-colors ${quick === k ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted/50'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <div className="relative">
                   <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <Input

@@ -24,7 +24,7 @@ import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
 } from 'recharts';
 import type { ProfitRow } from '@/types/types';
-import { SALES_ROLES, COGS_CATEGORIES, ADVANCE_CATEGORY } from '@/types/types';
+import { SALES_ROLES, COGS_CATEGORIES, SALARY_CATEGORIES } from '@/types/types';
 import type { Expense } from '@/types/types';
 import { ExpenseFormDialog } from '@/pages/FinancePage';
 
@@ -81,7 +81,7 @@ export default function ProfitPage() {
         .filter(e => (COGS_CATEGORIES as readonly string[]).includes(e.category))
         .reduce((s, e) => s + Number(e.amount), 0);
       const expenses = expsThisMonth
-        .filter(e => !(COGS_CATEGORIES as readonly string[]).includes(e.category) && e.category !== ADVANCE_CATEGORY)
+        .filter(e => !(COGS_CATEGORIES as readonly string[]).includes(e.category) && !SALARY_CATEGORIES.includes(e.category))
         .reduce((s, e) => s + Number(e.amount), 0);
       // Зарплата: оклад + комиссия
       const salary = mgrs.reduce((s, m) => {
@@ -99,7 +99,7 @@ export default function ProfitPage() {
       // Структура расходов по категориям за выбранный месяц
       setMonthExpenses(expsThisMonth);
       const byCategory = new Map<string, number>();
-      expsThisMonth.filter(e => e.category !== ADVANCE_CATEGORY).forEach(e => {
+      expsThisMonth.filter(e => !SALARY_CATEGORIES.includes(e.category)).forEach(e => {
         const cat = e.category || 'прочее';
         byCategory.set(cat, (byCategory.get(cat) ?? 0) + Number(e.amount));
       });
@@ -120,7 +120,7 @@ export default function ProfitPage() {
           .filter(e => (COGS_CATEGORIES as readonly string[]).includes(e.category))
           .reduce((s, e) => s + Number(e.amount), 0);
         const mExpenses = mExpsThisMonth
-          .filter(e => !(COGS_CATEGORIES as readonly string[]).includes(e.category) && e.category !== ADVANCE_CATEGORY)
+          .filter(e => !(COGS_CATEGORIES as readonly string[]).includes(e.category) && !SALARY_CATEGORIES.includes(e.category))
           .reduce((s, e) => s + Number(e.amount), 0);
         const mSalary = mgrs.reduce((s, m) => {
           const sett = setts.find(ss => ss.manager_id === m.id);
@@ -322,7 +322,7 @@ export default function ProfitPage() {
               <CardTitle className="text-base">Расходы за {monthYearToLabel(monthYear)}</CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
                 Всё, что внесено здесь или в «Финансы → Расходы». Закуп дверей идёт в {'{cogs}'}, остальное — в {'{expenses}'}.
-                Авансы сотрудникам показаны отдельно: они уже входят в ФОТ.
+                Авансы и выплаты зарплаты показаны отдельно: они уже входят в ФОТ.
               </p>
             </div>
             <Button size="sm" onClick={() => { setEditExpense(null); setExpenseDialogOpen(true); }}>
@@ -337,13 +337,13 @@ export default function ProfitPage() {
               monthExpenses.forEach(e => groups.set(e.category || 'прочее', [...(groups.get(e.category || 'прочее') ?? []), e]));
               const sum = (l: Expense[]) => l.reduce((s, e) => s + Number(e.amount), 0);
               const ordered = Array.from(groups.entries())
-                .sort((a, b) => (a[0] === ADVANCE_CATEGORY ? 1 : 0) - (b[0] === ADVANCE_CATEGORY ? 1 : 0) || sum(b[1]) - sum(a[1]));
+                .sort((a, b) => (SALARY_CATEGORIES.includes(a[0]) ? 1 : 0) - (SALARY_CATEGORIES.includes(b[0]) ? 1 : 0) || sum(b[1]) - sum(a[1]));
               return (
                 <div className="space-y-3">
                   {ordered.map(([cat, list]) => (
                     <div key={cat}>
                       <div className="flex items-center justify-between text-sm font-medium">
-                        <span>{cat}{cat === ADVANCE_CATEGORY ? ' (в ФОТ, не в расходах)' : (COGS_CATEGORIES as readonly string[]).includes(cat) ? ' — себестоимость' : ''}</span>
+                        <span>{cat}{SALARY_CATEGORIES.includes(cat) ? ' (в ФОТ, не в расходах)' : (COGS_CATEGORIES as readonly string[]).includes(cat) ? ' — себестоимость' : ''}</span>
                         <span>{formatCurrency(sum(list))}</span>
                       </div>
                       <div className="mt-1 divide-y divide-border rounded-lg border border-border">
