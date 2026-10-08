@@ -11,6 +11,7 @@ import {
 import { toast } from 'sonner';
 import { createDeal, updateDeal } from '@/lib/api';
 import type { Deal } from '@/types/types';
+import DealFiles from './DealFiles';
 import { PAYMENT_METHODS, DEAL_STAGES, INSTALL_STAGE_LABELS, CHANNELS, SPLIT_PAYMENT_METHOD } from '@/types/types';
 
 interface Props {
@@ -307,6 +308,9 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
           </div>
         </div>
 
+        {deal?.id && (
+          <div className="rounded-xl border border-border p-3"><DealFiles dealId={deal.id} /></div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Отмена</Button>
           <Button onClick={handleSave} disabled={saving}>

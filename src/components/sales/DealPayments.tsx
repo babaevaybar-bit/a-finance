@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Wallet, Plus, CalendarClock, History, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { getDealPayments, addDealPayment, assignPaymentChannel } from '@/lib/api';
 import PaymentSchedule from './PaymentSchedule';
+import DealFiles from './DealFiles';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, DealPayment } from '@/types/types';
 import { PAYMENT_METHODS, CHANNELS } from '@/types/types';
@@ -117,7 +118,7 @@ function PaymentsDialog({ open, onClose, deal, onChanged, suggestedAmount, sugge
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
       <DialogContent className="max-w-lg max-h-[88vh] overflow-y-auto overflow-x-hidden grid-cols-[minmax(0,1fr)] [&>*]:min-w-0">
         <DialogHeader>
-          <DialogTitle className="text-base">Оплаты — {deal.client_name || 'клиент'}</DialogTitle>
+          <DialogTitle className="text-base">Оплаты и файлы — {deal.client_name || 'клиент'}</DialogTitle>
         </DialogHeader>
 
         {/* 1. Сводка */}
@@ -204,6 +205,9 @@ function PaymentsDialog({ open, onClose, deal, onChanged, suggestedAmount, sugge
           </p>
           <PaymentSchedule deal={deal} defaultOpen embedded refreshKey={scheduleKey} />
         </section>
+
+        {/* Файлы сделки */}
+        <section className="pt-1"><DealFiles dealId={deal.id} /></section>
 
         {/* 4. История */}
         <section className="space-y-2 pt-1">
