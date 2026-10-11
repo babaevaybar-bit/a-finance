@@ -27,10 +27,13 @@ export function dealCompleteness(d: Deal): { filled: number; total: number; miss
   return { filled: checks.length - missing.length, total: checks.length, missing };
 }
 
-// Цвет от красного (0%) через жёлтый к зелёному (100%)
+// Зелёный — только когда заполнено всё. Если чего-то не хватает,
+// цвет идёт от красного (почти пусто) до жёлто-оранжевого (не хватает одного поля).
 export function completenessColor(ratio: number): string {
-  const hue = Math.round(Math.max(0, Math.min(1, ratio)) * 130);
-  return `hsl(${hue} 70% 42%)`;
+  const r = Math.max(0, Math.min(1, ratio));
+  if (r >= 1) return 'hsl(135 65% 38%)';
+  const hue = Math.round(r * 48);
+  return `hsl(${hue} 85% 47%)`;
 }
 
 export default function DealCompleteness({ deal, showPercent = false, className = '' }: {
