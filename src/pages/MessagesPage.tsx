@@ -4,9 +4,11 @@ import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Banknote, Factory, CheckCheck, Scale } from 'lucide-react';
-import { getNotifications, markNotificationRead, markAllNotificationsRead } from '@/lib/api';
+import { getNotifications, markNotificationRead, markAllNotificationsRead, getDealById } from '@/lib/api';
+import DealFormDialog from '@/components/sales/DealFormDialog';
+import { toast } from 'sonner';
 import { formatDate } from '@/lib/utils';
-import type { AppNotification } from '@/types/types';
+import type { AppNotification, Deal } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function MessagesPage() {
@@ -14,6 +16,7 @@ export default function MessagesPage() {
   const navigate = useNavigate();
   const [items, setItems] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editDeal, setEditDeal] = useState<Deal | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -32,8 +35,17 @@ export default function MessagesPage() {
       setItems(prev => prev.map(i => i.id === n.id ? { ...i, is_read: true } : i));
       markNotificationRead(n.id).catch(() => {});
     }
-    if (n.type === 'stage_changed') navigate('/production');
-    else if (n.deal_id) navigate('/sales');
+    // Сделка → открываем её прямо здесь; этап производства → карточку на доске
+    if (n.deal_id) {
+      try {
+        const d = await getDealById(n.deal_id);
+        if (d) { setEditDeal(d); return; }
+        toast.error('Сделка не найдена — возможно, удалена');
+      } catch { toast.error('Не удалось открыть сделку'); }
+      return;
+    }
+    if (n.trello_card_id) navigate(`/production?card=${n.trello_card_id}`);
+    else navigate('/production');
   }
 
   async function handleMarkAllRead() {
@@ -95,6 +107,16 @@ export default function MessagesPage() {
           </div>
         )}
       </div>
+      {editDeal && (
+        <DealFormDialog
+          open={!!editDeal}
+          deal={editDeal}
+          managerId={editDeal.manager_id}
+          monthYear={editDeal.month_year}
+          onClose={() => setEditDeal(null)}
+          onSaved={() => setEditDeal(null)}
+        />
+      )}
     </AppLayout>
   );
 }

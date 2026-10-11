@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -141,6 +142,9 @@ export default function ProductionPage() {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const draggedCardId = useRef<string | null>(null);
   const [selectedCard, setSelectedCard] = useState<PlacedCard | null>(null);
+  // ?card=<trelloId> — открыть карточку сразу (переход из «Сообщений»)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const cardParam = searchParams.get('card');
 
   // Кэш доски: открывается мгновенно, свежие карточки из Trello подтягиваются в фоне
   const CACHE_KEY = 'afin-trello-board-cache-v1';
@@ -210,6 +214,15 @@ export default function ProductionPage() {
     }
     return columnOrder.map(name => byName.get(name)!);
   }, [rawLists, overrides, columnOrder]);
+
+  useEffect(() => {
+    if (!cardParam || columns.length === 0) return;
+    const found = columns.flatMap(c => c.cards).find(c => c.id === cardParam);
+    if (found) {
+      setSelectedCard(found);
+      setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('card'); return n; }, { replace: true });
+    }
+  }, [cardParam, columns, setSearchParams]);
 
   const q = search.trim().toLowerCase();
   const visibleColumns = columns
