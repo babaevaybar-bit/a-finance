@@ -10,6 +10,7 @@ import type { Deal, ClientReport, Manager } from '@/types/types';
 import { CLIENT_QUALITY_LABELS, DEAL_STAGE_LABELS } from '@/types/types';
 import TrelloLookup from '@/components/trello/TrelloLookup';
 import DealFormDialog from '@/components/sales/DealFormDialog';
+import DealCompleteness from '@/components/sales/DealCompleteness';
 
 const STATUS_LABELS: Record<string, string> = { pending: 'на проверке', approved: 'подтверждена', rejected: 'отклонена' };
 const STATUS_COLORS: Record<string, string> = {
@@ -94,7 +95,7 @@ export default function SearchPage() {
                   onClick={() => setEditDeal(d)}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <span className="font-medium text-sm">{d.client_name || 'Без имени'}</span>
+                    <span className="font-medium text-sm flex items-center gap-1.5"><DealCompleteness deal={d} />{d.client_name || 'Без имени'}</span>
                     <Badge variant="outline" className={`text-xs shrink-0 ${STATUS_COLORS[d.status]}`}>
                       {STATUS_LABELS[d.status] ?? d.status}
                     </Badge>

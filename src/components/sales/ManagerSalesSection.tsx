@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import DealCompleteness from './DealCompleteness';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -328,7 +329,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm">{formatDate(d.deal_date)}</TableCell>
                         <TableCell className="text-sm">
-                          <div className="whitespace-nowrap">{d.client_name || '—'}</div>
+                          <div className="whitespace-nowrap flex items-center gap-1.5"><DealCompleteness deal={d} />{d.client_name || '—'}</div>
                           {d.contract_number && <div className="text-[11px] text-muted-foreground whitespace-nowrap">Договор №{d.contract_number}</div>}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm">

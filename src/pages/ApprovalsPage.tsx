@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { CHANNELS, SPLIT_PAYMENT_METHOD } from '@/types/types';
 import TrelloLookup from '@/components/trello/TrelloLookup';
 import DealFormDialog from '@/components/sales/DealFormDialog';
+import DealCompleteness from '@/components/sales/DealCompleteness';
 
 export default function ApprovalsPage() {
   const { canApprove } = useAuth();
@@ -137,6 +138,7 @@ export default function ApprovalsPage() {
                           <XCircle size={14} className="shrink-0 text-destructive" />
                         )}
                         <span className="truncate">{managerName(d.manager_id)}</span>
+                        <DealCompleteness deal={d} showPercent />
                         {tab === 'pending' ? (
                           <Badge variant="outline" className="text-xs border-amber-300 text-amber-600 shrink-0">
                             Ожидает
