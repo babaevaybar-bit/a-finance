@@ -280,34 +280,37 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
               <p className="text-sm text-muted-foreground py-4 text-center">Ничего не найдено по запросу «{search}»</p>
             ) : (
               <div className="w-full overflow-x-auto rounded-md border border-border bg-card">
-                <Table>
+                <Table className="table-fixed min-w-[760px]">
+                  <colgroup>
+                    <col className="w-9" />
+                    <col />
+                    <col className="w-[17%]" />
+                    <col className="w-[17%]" />
+                    <col className="w-[230px]" />
+                    <col className="w-[72px]" />
+                  </colgroup>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-8">
+                      <TableHead>
                         <Checkbox
                           checked={selectedIds.size > 0 && selectedIds.size === visibleDeals.length}
                           onCheckedChange={toggleSelectAll}
                           aria-label="Выбрать все"
                         />
                       </TableHead>
-                      <TableHead className="whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort('deal_date')}>
-                        <span className="inline-flex items-center gap-1">Дата <ArrowUpDown size={11} className="text-muted-foreground" /></span>
+                      <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('deal_date')}>
+                        <span className="inline-flex items-center gap-1">Клиент · дата <ArrowUpDown size={11} className="text-muted-foreground" /></span>
                       </TableHead>
-                      <TableHead className="whitespace-nowrap">ФИО</TableHead>
-                      <TableHead className="whitespace-nowrap">Оплата</TableHead>
-                      <TableHead className="whitespace-nowrap">Модель</TableHead>
-                      <TableHead className="whitespace-nowrap">Статус</TableHead>
-                      <TableHead className="whitespace-nowrap">Стадия</TableHead>
-                      <TableHead className="whitespace-nowrap text-right cursor-pointer select-none" onClick={() => toggleSort('total_amount')}>
-                        <span className="inline-flex items-center gap-1">Сумма <ArrowUpDown size={11} className="text-muted-foreground" /></span>
+                      <TableHead>Оплата</TableHead>
+                      <TableHead>Статус</TableHead>
+                      <TableHead>
+                        <span className="inline-flex items-center gap-2">
+                          <span className="cursor-pointer select-none inline-flex items-center gap-1" onClick={() => toggleSort('total_amount')}>Сумма <ArrowUpDown size={11} className="text-muted-foreground" /></span>
+                          <span className="text-muted-foreground/60">·</span>
+                          <span className="cursor-pointer select-none inline-flex items-center gap-1" onClick={() => toggleSort('remainder')}>Остаток <ArrowUpDown size={11} className="text-muted-foreground" /></span>
+                        </span>
                       </TableHead>
-                      <TableHead className="whitespace-nowrap text-right">Оплачено</TableHead>
-                      <TableHead className="whitespace-nowrap text-right cursor-pointer select-none" onClick={() => toggleSort('remainder')}>
-                        <span className="inline-flex items-center gap-1">Остаток <ArrowUpDown size={11} className="text-muted-foreground" /></span>
-                      </TableHead>
-                      <TableHead className="whitespace-nowrap text-right">ЗП база</TableHead>
-                      <TableHead className="whitespace-nowrap">Комментарий</TableHead>
-                      <TableHead className="whitespace-nowrap w-16"></TableHead>
+                      <TableHead></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -324,45 +327,49 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                           setEditDeal(d); setFormOpen(true);
                         }}
                       >
-                        <TableCell>
+                        <TableCell className="align-top">
                           <Checkbox checked={selectedIds.has(d.id)} onCheckedChange={() => toggleSelect(d.id)} aria-label="Выбрать сделку" />
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-sm">{formatDate(d.deal_date)}</TableCell>
-                        <TableCell className="text-sm">
-                          <div className="whitespace-nowrap flex items-center gap-1.5"><DealCompleteness deal={d} />{d.client_name || '—'}</div>
-                          {d.contract_number && <div className="text-[11px] text-muted-foreground whitespace-nowrap">Договор №{d.contract_number}</div>}
+                        <TableCell className="text-sm align-top">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <DealCompleteness deal={d} />
+                            <span className="font-medium truncate" title={d.client_name || undefined}>{d.client_name || '—'}</span>
+                          </div>
+                          <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+                            {formatDate(d.deal_date)}{d.contract_number ? ` · Договор №${d.contract_number}` : ''}
+                          </div>
+                          {d.door_model && <div className="text-xs truncate mt-0.5" title={d.door_model}>{d.door_model}</div>}
+                          {d.comment && <div className="text-[11px] italic text-muted-foreground truncate mt-0.5" title={d.comment}>{d.comment}</div>}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-sm">
-                          {d.payment_method}
+                        <TableCell className="text-sm align-top">
+                          <div className="truncate" title={d.payment_method}>{d.payment_method}</div>
                           {d.vat_gross_amount ? (
-                            <span className="block text-xs text-muted-foreground">с НДС: {formatCurrency(d.vat_gross_amount)}</span>
+                            <span className="block text-[11px] text-muted-foreground">с НДС: {formatCurrency(d.vat_gross_amount)}</span>
                           ) : null}
+                          <div className="text-[11px] text-muted-foreground mt-0.5">
+                            ЗП база: {d.salary_amount !== null && d.salary_amount !== undefined ? formatCurrency(d.salary_amount) : <span className="italic">авто</span>}
+                          </div>
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-sm max-w-[150px] truncate" title={d.door_model || undefined}>{d.door_model || '—'}</TableCell>
-                        <TableCell className="whitespace-nowrap">
+                        <TableCell className="text-sm align-top">
                           <Badge className={`text-[11px] font-normal ${STATUS_BADGE_VARIANT[d.status] || ''}`} variant="secondary">
                             {DEAL_STATUS_LABELS[d.status] || d.status}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                          {INSTALL_STAGE_LABELS[d.stage] || d.stage}
-                          <div className="mt-1">
+                          <div className="text-xs text-muted-foreground mt-1">{INSTALL_STAGE_LABELS[d.stage] || d.stage}</div>
+                          <div className="mt-0.5">
                             <TrelloLookup phone={d.client_phone} contractNumber={d.contract_number} />
                           </div>
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-sm text-right">{formatCurrency(d.total_amount)}</TableCell>
-                        <TableCell className="whitespace-nowrap text-sm text-right">{formatCurrency(d.paid_amount)}</TableCell>
-                        <TableCell className="whitespace-nowrap text-sm text-right align-top">
-                          {formatCurrency(Math.max(0, d.total_amount - d.paid_amount))}
+                        <TableCell className="text-sm align-top">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="font-semibold tabular-nums whitespace-nowrap">{formatCurrency(d.total_amount)}</span>
+                            {d.total_amount - d.paid_amount > 0 && (
+                              <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">ост. {formatCurrency(Math.max(0, d.total_amount - d.paid_amount))}</span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground tabular-nums">оплачено {formatCurrency(d.paid_amount)}</div>
                           <DealPayments deal={d} onChanged={onRefresh} />
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-sm text-right text-muted-foreground">
-                          {d.salary_amount !== null && d.salary_amount !== undefined
-                            ? formatCurrency(d.salary_amount)
-                            : <span className="italic text-muted-foreground/50">авто</span>}
-                        </TableCell>
-                        <TableCell className="text-sm max-w-[160px] truncate">{d.comment || '—'}</TableCell>
-                        <TableCell className="whitespace-nowrap">
+                        <TableCell className="align-top">
                           <div className="flex gap-1">
                             <Button variant="ghost" size="icon" className="h-7 w-7"
                               onClick={() => { setEditDeal(d); setFormOpen(true); }}>

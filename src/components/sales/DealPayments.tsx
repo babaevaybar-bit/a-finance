@@ -32,7 +32,7 @@ export default function DealPayments({ deal, onChanged, suggestedAmount, suggest
   const nextOverdue = !!deal.next_payment_date && deal.next_payment_date < today && remainder > 0;
 
   return (
-    <div className="mt-1.5 space-y-1.5 text-left whitespace-normal min-w-[190px]">
+    <div className="mt-1.5 space-y-1.5 text-left whitespace-normal min-w-0">
       {/* Полоска прогресса оплаты */}
       <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
         <div className={`h-full rounded-full ${remainder === 0 ? 'bg-green-600' : 'bg-primary'}`} style={{ width: `${pct}%` }} />
