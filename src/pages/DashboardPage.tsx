@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import MonthYearPicker from '@/components/common/MonthYearPicker';
+import DealFormDialog from '@/components/sales/DealFormDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -81,6 +82,7 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [editDeal, setEditDeal] = useState<Deal | null>(null);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [plans, setPlans] = useState<SalesPlan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -258,7 +260,7 @@ export default function DashboardPage() {
                     <button
                       key={d.id}
                       type="button"
-                      onClick={() => navigate(`/sales?manager=${d.manager_id}&month=${d.month_year}`)}
+                      onClick={() => setEditDeal(d)}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/40 transition-colors"
                     >
                       <span className={`text-xs font-medium w-24 shrink-0 ${overdue ? 'text-destructive' : isToday ? 'text-amber-700' : 'text-muted-foreground'}`}>
@@ -297,7 +299,7 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent className="p-0 divide-y divide-border">
                 {problems.slice(0, 8).map(({ d, issues }) => (
-                  <button key={d.id} type="button" onClick={() => navigate(`/sales?manager=${d.manager_id}&month=${d.month_year}`)}
+                  <button key={d.id} type="button" onClick={() => setEditDeal(d)}
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/40 transition-colors">
                     <span className="text-sm font-medium flex-1 min-w-0 truncate">{d.client_name || 'Без имени'}</span>
                     <span className="flex flex-wrap gap-1 justify-end">
@@ -542,6 +544,16 @@ export default function DashboardPage() {
         )}
 
       </div>
+      {editDeal && (
+        <DealFormDialog
+          open={!!editDeal}
+          deal={editDeal}
+          managerId={editDeal.manager_id}
+          monthYear={editDeal.month_year}
+          onClose={() => setEditDeal(null)}
+          onSaved={() => { setEditDeal(null); load(); }}
+        />
+      )}
     </AppLayout>
   );
 }

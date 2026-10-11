@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,12 +16,13 @@ import type { Deal, Manager } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { CHANNELS, SPLIT_PAYMENT_METHOD } from '@/types/types';
 import TrelloLookup from '@/components/trello/TrelloLookup';
+import DealFormDialog from '@/components/sales/DealFormDialog';
 
 export default function ApprovalsPage() {
-  const navigate = useNavigate();
   const { canApprove } = useAuth();
   const [tab, setTab] = useState<'pending' | 'rejected'>('pending');
   const [deals, setDeals]       = useState<Deal[]>([]);
+  const [editDeal, setEditDeal] = useState<Deal | null>(null);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [loading, setLoading]   = useState(true);
 
@@ -196,8 +196,8 @@ export default function ApprovalsPage() {
                       <button
                         type="button"
                         className="truncate text-primary hover:underline text-left block"
-                        onClick={() => navigate(`/sales?manager=${d.manager_id}&month=${d.month_year}`)}
-                        title="Открыть в «Продажи» — вся информация о клиенте и сделке"
+                        onClick={() => setEditDeal(d)}
+                        title="Открыть сделку"
                       >
                         {d.client_name || '—'}
                       </button>
@@ -225,7 +225,7 @@ export default function ApprovalsPage() {
                     {Number(d.paid_amount) > 0 && !(CHANNELS as readonly string[]).includes(d.payment_method) && !(d.payment_method === SPLIT_PAYMENT_METHOD && (d.payment_split?.length ?? 0) > 1) && (
                       <div className="md:col-span-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 flex items-center justify-between gap-3">
                         <span>Не указан способ оплаты предоплаты {formatCurrency(d.paid_amount)} — без него деньги не попадут в «Финансы», подтвердить нельзя.</span>
-                        <button type="button" className="underline shrink-0" onClick={() => navigate(`/sales?manager=${d.manager_id}&month=${d.month_year}`)}>
+                        <button type="button" className="underline shrink-0" onClick={() => setEditDeal(d)}>
                           Открыть сделку
                         </button>
                       </div>
@@ -240,6 +240,16 @@ export default function ApprovalsPage() {
           </div>
         )}
       </div>
+      {editDeal && (
+        <DealFormDialog
+          open={!!editDeal}
+          deal={editDeal}
+          managerId={editDeal.manager_id}
+          monthYear={editDeal.month_year}
+          onClose={() => setEditDeal(null)}
+          onSaved={() => { setEditDeal(null); load(); }}
+        />
+      )}
     </AppLayout>
   );
 }

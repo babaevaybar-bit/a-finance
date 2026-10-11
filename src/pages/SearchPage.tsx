@@ -9,6 +9,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, ClientReport, Manager } from '@/types/types';
 import { CLIENT_QUALITY_LABELS, DEAL_STAGE_LABELS } from '@/types/types';
 import TrelloLookup from '@/components/trello/TrelloLookup';
+import DealFormDialog from '@/components/sales/DealFormDialog';
 
 const STATUS_LABELS: Record<string, string> = { pending: 'на проверке', approved: 'подтверждена', rejected: 'отклонена' };
 const STATUS_COLORS: Record<string, string> = {
@@ -23,6 +24,7 @@ export default function SearchPage() {
   const q = searchParams.get('q') ?? '';
   const [input, setInput] = useState(q);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [editDeal, setEditDeal] = useState<Deal | null>(null);
   const [clients, setClients] = useState<ClientReport[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [loading, setLoading] = useState(false);
@@ -89,7 +91,7 @@ export default function SearchPage() {
                 <div
                   key={d.id}
                   className="px-4 py-3 cursor-pointer hover:bg-muted/40 transition-colors"
-                  onClick={() => navigate(`/sales?manager=${d.manager_id}&month=${d.month_year}`)}
+                  onClick={() => setEditDeal(d)}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-medium text-sm">{d.client_name || 'Без имени'}</span>
@@ -154,6 +156,16 @@ export default function SearchPage() {
           </Card>
         )}
       </div>
+      {editDeal && (
+        <DealFormDialog
+          open={!!editDeal}
+          deal={editDeal}
+          managerId={editDeal.manager_id}
+          monthYear={editDeal.month_year}
+          onClose={() => setEditDeal(null)}
+          onSaved={() => { setEditDeal(null); searchDealsByQuery(q.trim()).then(setDeals).catch(() => {}); }}
+        />
+      )}
     </AppLayout>
   );
 }
