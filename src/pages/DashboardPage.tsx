@@ -83,6 +83,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const [deals, setDeals] = useState<Deal[]>([]);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
+  const [showAllProblems, setShowAllProblems] = useState(false);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [plans, setPlans] = useState<SalesPlan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -298,16 +299,26 @@ export default function DashboardPage() {
                 <p className="text-xs text-muted-foreground">Без этих данных не работают сверка с Trello, напоминания о доплатах и учёт в «Финансах».</p>
               </CardHeader>
               <CardContent className="p-0 divide-y divide-border">
-                {problems.slice(0, 8).map(({ d, issues }) => (
+                {(showAllProblems ? problems : problems.slice(0, 8)).map(({ d, issues }) => (
                   <button key={d.id} type="button" onClick={() => setEditDeal(d)}
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/40 transition-colors">
-                    <span className="text-sm font-medium flex-1 min-w-0 truncate">{d.client_name || 'Без имени'}</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="text-sm font-medium truncate block">{d.client_name || 'Без имени'}</span>
+                      {managers.find(m => m.id === d.manager_id)?.name && (
+                        <span className="text-xs text-muted-foreground">{managers.find(m => m.id === d.manager_id)?.name}</span>
+                      )}
+                    </span>
                     <span className="flex flex-wrap gap-1 justify-end">
                       {issues.map(i => <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">{i}</span>)}
                     </span>
                   </button>
                 ))}
-                {problems.length > 8 && <p className="px-4 py-2 text-xs text-muted-foreground">и ещё {problems.length - 8}</p>}
+                {problems.length > 8 && (
+                  <button type="button" onClick={() => setShowAllProblems(v => !v)}
+                    className="w-full px-4 py-2.5 text-sm font-medium text-primary hover:bg-muted/40 transition-colors text-center">
+                    {showAllProblems ? 'Свернуть' : `Показать все (ещё ${problems.length - 8})`}
+                  </button>
+                )}
               </CardContent>
             </Card>
           );
