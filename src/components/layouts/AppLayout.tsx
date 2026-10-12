@@ -12,7 +12,7 @@ import {
   Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getNotifications, getPendingDeals } from '@/lib/api';
+import { countPendingDeals, countUnreadNotifications } from '@/lib/api';
 
 const navItems = [
   { path: '/',             label: 'Дашборд',          icon: LayoutDashboard, adminOnly: false, pageKey: 'dashboard'    },
@@ -37,15 +37,15 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
-    if (!canApprove) return;
-    getPendingDeals().then(list => setPendingCount(list.length)).catch(() => {});
-  }, [canApprove, pathname]);
-
-  useEffect(() => {
-    getNotifications(canViewAllManagers ? null : (profile?.manager_id ?? null))
-      .then(list => setUnreadCount(list.filter(n => !n.is_read).length))
-      .catch(() => {});
-  }, [profile?.manager_id, canViewAllManagers]);
+    const managerFilter = canViewAllManagers ? null : (profile?.manager_id ?? null);
+    const refresh = () => {
+      if (canApprove) countPendingDeals().then(setPendingCount).catch(() => {});
+      countUnreadNotifications(managerFilter).then(setUnreadCount).catch(() => {});
+    };
+    refresh();
+    window.addEventListener('afin:counters', refresh);
+    return () => window.removeEventListener('afin:counters', refresh);
+  }, [canApprove, canViewAllManagers, profile?.manager_id]);
 
   const visibleItems = navItems.filter(item => {
     // Администратор видит всё

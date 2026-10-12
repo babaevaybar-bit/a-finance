@@ -918,6 +918,24 @@ export async function deleteProductionChecklistItem(id: string): Promise<void> {
 }
 
 // ─── Уведомления сотрудникам ──────────────────────────────────────────────
+// Лёгкие счётчики для бокового меню — только число, без загрузки строк
+export async function countPendingDeals(): Promise<number> {
+  const { count, error } = await supabase.from('deals').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+  if (error) throw error;
+  return count ?? 0;
+}
+export async function countUnreadNotifications(managerId: string | null): Promise<number> {
+  let q = supabase.from('notifications').select('id', { count: 'exact', head: true }).eq('is_read', false);
+  if (managerId) q = q.eq('manager_id', managerId);
+  const { count, error } = await q;
+  if (error) throw error;
+  return count ?? 0;
+}
+// Сообщить меню, что счётчики устарели (после подтверждения, прочтения и т.п.)
+export function notifyCountersChanged() {
+  try { window.dispatchEvent(new Event('afin:counters')); } catch { /* ignore */ }
+}
+
 export async function getNotifications(managerId: string | null): Promise<AppNotification[]> {
   let query = supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(100);
   if (managerId) query = query.eq('manager_id', managerId);

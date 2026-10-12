@@ -4,7 +4,7 @@ import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Banknote, Factory, CheckCheck, Scale } from 'lucide-react';
-import { getNotifications, markNotificationRead, markAllNotificationsRead, getDealById } from '@/lib/api';
+import { getNotifications, markNotificationRead, markAllNotificationsRead, getDealById, notifyCountersChanged } from '@/lib/api';
 import DealFormDialog from '@/components/sales/DealFormDialog';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/utils';
@@ -33,7 +33,7 @@ export default function MessagesPage() {
   async function handleOpen(n: AppNotification) {
     if (!n.is_read) {
       setItems(prev => prev.map(i => i.id === n.id ? { ...i, is_read: true } : i));
-      markNotificationRead(n.id).catch(() => {});
+      markNotificationRead(n.id).then(notifyCountersChanged).catch(() => {});
     }
     // Сделка → открываем её прямо здесь; этап производства → карточку на доске
     if (n.deal_id) {
@@ -51,7 +51,7 @@ export default function MessagesPage() {
   async function handleMarkAllRead() {
     if (!profile?.manager_id) return;
     setItems(prev => prev.map(i => ({ ...i, is_read: true })));
-    try { await markAllNotificationsRead(profile.manager_id); } catch { /* silent */ }
+    try { await markAllNotificationsRead(profile.manager_id); notifyCountersChanged(); } catch { /* silent */ }
   }
 
   const unreadCount = items.filter(i => !i.is_read).length;

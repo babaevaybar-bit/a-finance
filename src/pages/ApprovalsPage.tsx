@@ -10,7 +10,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { CheckCircle, XCircle, Clock, ShieldOff, RotateCcw } from 'lucide-react';
-import { getPendingDeals, getRejectedDeals, approveDeal, rejectDeal, restoreDeal, getManagers } from '@/lib/api';
+import { getPendingDeals, getRejectedDeals, approveDeal, rejectDeal, restoreDeal, getManagers, notifyCountersChanged } from '@/lib/api';
+import { Loader2 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, Manager } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,19 +28,30 @@ export default function ApprovalsPage() {
   const [managers, setManagers] = useState<Manager[]>([]);
   const [loading, setLoading]   = useState(true);
 
-  const load = useCallback(async () => {
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  // Скелетон — только при первой загрузке/смене вкладки; дальше обновляем тихо
+  const load = useCallback(async (silent = false) => {
     if (!canApprove) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const [list, mgrs] = await Promise.all([
         tab === 'pending' ? getPendingDeals() : getRejectedDeals(),
-        getManagers(),
+        managers.length ? Promise.resolve(managers) : getManagers(),
       ]);
       setDeals(list);
-      setManagers(mgrs);
-    } catch { toast.error('Ошибка загрузки'); }
-    finally { setLoading(false); }
+      if (mgrs !== managers) setManagers(mgrs);
+    } catch { if (!silent) toast.error('Ошибка загрузки'); }
+    finally { if (!silent) setLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canApprove, tab]);
+
+  // Убрать карточку сразу, не дожидаясь перезагрузки списка
+  function dropLocally(id: string) {
+    setDeals(prev => prev.filter(d => d.id !== id));
+    notifyCountersChanged();
+    load(true);
+  }
 
   useEffect(() => { load(); }, [load]);
 
@@ -48,6 +60,8 @@ export default function ApprovalsPage() {
   }
 
   async function handleApprove(id: string) {
+    if (busyId) return;
+    setBusyId(id);
     try {
       const { incomeRecorded, channel } = await approveDeal(id);
       toast.success(
@@ -55,18 +69,25 @@ export default function ApprovalsPage() {
           ? `Сделка подтверждена, сумма добавлена в «Финансы» (${channel})`
           : 'Сделка подтверждена — способ оплаты не привязан к конкретному каналу, добавьте поступление в «Финансы» вручную'
       );
-      await load();
+      dropLocally(id);
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
+    finally { setBusyId(null); }
   }
 
   async function handleReject(id: string) {
-    try { await rejectDeal(id); toast.success('Сделка отклонена'); await load(); }
+    if (busyId) return;
+    setBusyId(id);
+    try { await rejectDeal(id); toast.success('Сделка отклонена'); dropLocally(id); }
     catch { toast.error('Ошибка'); }
+    finally { setBusyId(null); }
   }
 
   async function handleRestore(id: string) {
-    try { await restoreDeal(id); toast.success('Сделка возвращена на проверку'); await load(); }
+    if (busyId) return;
+    setBusyId(id);
+    try { await restoreDeal(id); toast.success('Сделка возвращена на проверку'); dropLocally(id); }
     catch { toast.error('Ошибка'); }
+    finally { setBusyId(null); }
   }
 
   // Нет права — показываем заглушку вместо пустой страницы
@@ -127,7 +148,7 @@ export default function ApprovalsPage() {
         ) : (
           <div className="space-y-3">
             {deals.map(d => (
-              <Card key={d.id} className="border border-border">
+              <Card key={d.id} className={`border border-border transition-opacity ${busyId === d.id ? 'opacity-60 pointer-events-none' : ''}`}>
                 <CardHeader className="pb-2 pt-4 px-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
@@ -175,12 +196,13 @@ export default function ApprovalsPage() {
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
-                          <Button size="sm" className="h-7 text-xs" onClick={() => handleApprove(d.id)}>
-                            <CheckCircle size={13} className="mr-1" />Подтвердить
+                          <Button size="sm" className="h-7 text-xs" disabled={busyId === d.id} onClick={() => handleApprove(d.id)}>
+                            {busyId === d.id ? <Loader2 size={13} className="mr-1 animate-spin" /> : <CheckCircle size={13} className="mr-1" />}
+                            {busyId === d.id ? 'Подтверждаю…' : 'Подтвердить'}
                           </Button>
                         </>
                       ) : (
-                        <Button size="sm" className="h-7 text-xs" onClick={() => handleRestore(d.id)}>
+                        <Button size="sm" className="h-7 text-xs" disabled={busyId === d.id} onClick={() => handleRestore(d.id)}>
                           <RotateCcw size={13} className="mr-1" />Вернуть на проверку
                         </Button>
                       )}
@@ -249,7 +271,7 @@ export default function ApprovalsPage() {
           managerId={editDeal.manager_id}
           monthYear={editDeal.month_year}
           onClose={() => setEditDeal(null)}
-          onSaved={() => { setEditDeal(null); load(); }}
+          onSaved={() => { setEditDeal(null); load(true); }}
         />
       )}
     </AppLayout>
