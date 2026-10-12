@@ -279,7 +279,38 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
             ) : visibleDeals.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">Ничего не найдено по запросу «{search}»</p>
             ) : (
-              <div className="w-full overflow-x-auto rounded-md border border-border bg-card">
+              <>
+              {/* Телефон: сделки карточками одна под другой */}
+              <div className="md:hidden space-y-2">
+                {visibleDeals.map(d => {
+                  const rest = Math.max(0, d.total_amount - d.paid_amount);
+                  return (
+                    <div key={d.id} className="rounded-xl border border-border bg-card p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <button type="button" className="min-w-0 text-left" onClick={() => { setEditDeal(d); setFormOpen(true); }}>
+                          <div className="flex items-center gap-1.5">
+                            <DealCompleteness deal={d} />
+                            <span className="font-medium truncate">{d.client_name || '—'}</span>
+                          </div>
+                          <div className="text-[11px] text-muted-foreground truncate">
+                            {formatDate(d.deal_date)}{d.contract_number ? ` · №${d.contract_number}` : ''} · {d.payment_method}
+                          </div>
+                        </button>
+                        <Badge className={`text-[11px] font-normal shrink-0 ${STATUS_BADGE_VARIANT[d.status] || ''}`} variant="secondary">
+                          {DEAL_STATUS_LABELS[d.status] || d.status}
+                        </Badge>
+                      </div>
+                      {d.door_model && <div className="text-xs truncate">{d.door_model}</div>}
+                      <div className="flex items-baseline justify-between text-sm">
+                        <span className="font-semibold tabular-nums">{formatCurrency(d.total_amount)}</span>
+                        {rest > 0 && <span className="text-xs text-muted-foreground tabular-nums">остаток {formatCurrency(rest)}</span>}
+                      </div>
+                      <DealPayments deal={d} onChanged={onRefresh} />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="hidden md:block w-full overflow-x-auto rounded-md border border-border bg-card">
                 <Table className="table-fixed min-w-[760px]">
                   <colgroup>
                     <col className="w-9" />
@@ -402,6 +433,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                   </TableBody>
                 </Table>
               </div>
+              </>
             )}
           </div>
         </CardContent>

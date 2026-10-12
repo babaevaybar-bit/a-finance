@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Banknote, Factory, CheckCheck, Scale } from 'lucide-react';
+import { Banknote, Factory, CheckCheck, Scale, ClipboardList } from 'lucide-react';
 import { getNotifications, markNotificationRead, markAllNotificationsRead, getDealById, notifyCountersChanged } from '@/lib/api';
 import DealFormDialog from '@/components/sales/DealFormDialog';
 import { toast } from 'sonner';
@@ -44,6 +44,7 @@ export default function MessagesPage() {
       } catch { toast.error('Не удалось открыть сделку'); }
       return;
     }
+    if (n.type === 'incomplete_deals') { navigate('/sales'); return; }
     if (n.trello_card_id) navigate(`/production?card=${n.trello_card_id}`);
     else navigate('/production');
   }
@@ -80,8 +81,8 @@ export default function MessagesPage() {
         ) : (
           <div className="space-y-2">
             {items.map(n => {
-              const Icon = n.type === 'payment_due' ? Banknote : n.type === 'amount_mismatch' ? Scale : Factory;
-              const iconColor = n.type === 'payment_due' ? 'text-amber-600' : n.type === 'amount_mismatch' ? 'text-destructive' : 'text-primary';
+              const Icon = n.type === 'payment_due' ? Banknote : n.type === 'amount_mismatch' ? Scale : n.type === 'incomplete_deals' ? ClipboardList : Factory;
+              const iconColor = n.type === 'payment_due' || n.type === 'incomplete_deals' ? 'text-amber-600' : n.type === 'amount_mismatch' ? 'text-destructive' : 'text-primary';
               return (
                 <Card
                   key={n.id}
@@ -97,7 +98,7 @@ export default function MessagesPage() {
                         <p className={`text-sm ${!n.is_read ? 'font-semibold' : 'font-medium'}`}>{n.title}</p>
                         {!n.is_read && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{n.body}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-line">{n.body}</p>
                     </div>
                     <span className="text-xs text-muted-foreground shrink-0">{formatDate(n.created_at)}</span>
                   </CardContent>

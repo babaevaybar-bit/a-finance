@@ -22,6 +22,7 @@ export function dealCompleteness(d: Deal): { filled: number; total: number; miss
   ];
   if (paid > 0) checks.push(['способ оплаты', validMethod]);
   if (total > paid) checks.push(['дата доплаты', !!d.next_payment_date]);
+  if (d.amo_mismatch) checks.push([`совпадение с amoCRM (${d.amo_mismatch})`, false]);
 
   const missing = checks.filter(([, ok]) => !ok).map(([n]) => n);
   return { filled: checks.length - missing.length, total: checks.length, missing };

@@ -9,7 +9,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { createDeal, updateDeal } from '@/lib/api';
+import { createDeal, updateDeal, getContractIndex, contractDuplicates } from '@/lib/api';
+import type { ContractIndex } from '@/lib/api';
 import type { Deal } from '@/types/types';
 import DealFiles from './DealFiles';
 import { PAYMENT_METHODS, DEAL_STAGES, INSTALL_STAGE_LABELS, CHANNELS, SPLIT_PAYMENT_METHOD } from '@/types/types';
@@ -59,6 +60,8 @@ function emptyDeal(monthYear: string): Omit<Deal, 'id' | 'created_at' | 'updated
 export default function DealFormDialog({ open, onClose, onSaved, managerId, monthYear, deal }: Props) {
   const [form, setForm] = useState(emptyDeal(monthYear));
   const [saving, setSaving] = useState(false);
+  const [contractIdx, setContractIdx] = useState<ContractIndex | null>(null);
+  useEffect(() => { if (open) getContractIndex().then(setContractIdx).catch(() => {}); }, [open]);
 
   useEffect(() => {
     if (deal) {
@@ -191,6 +194,12 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
           <div className="space-y-1">
             <Label>Номер договора</Label>
             <Input placeholder="26.53" value={form.contract_number || ''} onChange={e => set('contract_number', e.target.value)} />
+            {(() => {
+              const dups = contractDuplicates(contractIdx, deal?.id, form.contract_number);
+              return dups.length > 0 ? (
+                <p className="text-[11px] text-destructive">Этот номер уже есть у: {dups.map(x => x.client_name || 'без имени').join(', ')}</p>
+              ) : null;
+            })()}
           </div>
           <div className="space-y-1 md:col-span-2">
             <Label>Адрес доставки</Label>

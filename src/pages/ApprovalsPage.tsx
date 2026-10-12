@@ -10,7 +10,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { CheckCircle, XCircle, Clock, ShieldOff, RotateCcw } from 'lucide-react';
-import { getPendingDeals, getRejectedDeals, approveDeal, rejectDeal, restoreDeal, getManagers, notifyCountersChanged } from '@/lib/api';
+import { getPendingDeals, getRejectedDeals, approveDeal, rejectDeal, restoreDeal, getManagers, notifyCountersChanged, updateDeal, getContractIndex, contractDuplicates } from '@/lib/api';
+import type { ContractIndex } from '@/lib/api';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, Manager } from '@/types/types';
@@ -29,6 +31,8 @@ export default function ApprovalsPage() {
   const [loading, setLoading]   = useState(true);
 
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [channelPick, setChannelPick] = useState<Record<string, string>>({});
+  const [contractIdx, setContractIdx] = useState<ContractIndex | null>(null);
 
   // Скелетон — только при первой загрузке/смене вкладки; дальше обновляем тихо
   const load = useCallback(async (silent = false) => {
@@ -41,6 +45,7 @@ export default function ApprovalsPage() {
       ]);
       setDeals(list);
       if (mgrs !== managers) setManagers(mgrs);
+      getContractIndex().then(setContractIdx).catch(() => {});
     } catch { if (!silent) toast.error('Ошибка загрузки'); }
     finally { if (!silent) setLoading(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -72,6 +77,17 @@ export default function ApprovalsPage() {
       dropLocally(id);
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
     finally { setBusyId(null); }
+  }
+
+  // Выбрать банк прямо на карточке и сразу подтвердить
+  async function handleSetChannelAndApprove(id: string) {
+    const ch = channelPick[id];
+    if (!ch || busyId) return;
+    setBusyId(id);
+    try { await updateDeal(id, { payment_method: ch, payment_split: null }); }
+    catch (err) { toast.error(err instanceof Error ? err.message : 'Не удалось сохранить способ оплаты'); setBusyId(null); return; }
+    setBusyId(null);
+    await handleApprove(id);
   }
 
   async function handleReject(id: string) {
@@ -247,13 +263,38 @@ export default function ApprovalsPage() {
                       </div>
                     )}
                     {Number(d.paid_amount) > 0 && !(CHANNELS as readonly string[]).includes(d.payment_method) && !(d.payment_method === SPLIT_PAYMENT_METHOD && (d.payment_split?.length ?? 0) > 1) && (
-                      <div className="md:col-span-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 flex items-center justify-between gap-3">
-                        <span>Не указан способ оплаты предоплаты {formatCurrency(d.paid_amount)} — без него деньги не попадут в «Финансы», подтвердить нельзя.</span>
-                        <button type="button" className="underline shrink-0" onClick={() => setEditDeal(d)}>
-                          Открыть сделку
-                        </button>
+                      <div className="md:col-span-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Не указан способ оплаты предоплаты {formatCurrency(d.paid_amount)} — выберите банк, и сделку можно подтвердить.</span>
+                          <button type="button" className="underline shrink-0" onClick={() => setEditDeal(d)}>
+                            Несколько способов…
+                          </button>
+                        </div>
+                        {tab === 'pending' && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Select value={channelPick[d.id] ?? ''} onValueChange={v => setChannelPick(p => ({ ...p, [d.id]: v }))}>
+                              <SelectTrigger className="h-8 w-48 bg-background text-xs"><SelectValue placeholder="Выберите способ оплаты" /></SelectTrigger>
+                              <SelectContent>
+                                {CHANNELS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                            <Button size="sm" className="h-8 text-xs" disabled={!channelPick[d.id] || busyId === d.id} onClick={() => handleSetChannelAndApprove(d.id)}>
+                              {busyId === d.id ? <Loader2 size={13} className="mr-1 animate-spin" /> : <CheckCircle size={13} className="mr-1" />}
+                              Сохранить и подтвердить
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
+                    {(() => {
+                      const dups = contractDuplicates(contractIdx, d.id, d.contract_number);
+                      if (!dups.length) return null;
+                      return (
+                        <div className="md:col-span-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                          Договор №{d.contract_number} уже указан у: {dups.map(x => x.client_name || 'без имени').join(', ')}. Проверьте номер — иначе сверка с Trello может перепутать клиентов.
+                        </div>
+                      );
+                    })()}
                     <div className="md:col-span-4 mt-1">
                       <TrelloLookup phone={d.client_phone} contractNumber={d.contract_number} />
                     </div>

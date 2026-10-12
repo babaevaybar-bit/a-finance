@@ -917,6 +917,37 @@ export async function deleteProductionChecklistItem(id: string): Promise<void> {
   if (error) throw error;
 }
 
+// ─── Номера договоров: поиск повторов ──────────────────────────────────────
+// «26-59», «26/59», «26.59», «26-00-59» → один и тот же ключ «26:59»; «57» → «:57»
+export function contractKey(raw: string | null | undefined): string | null {
+  const groups = (raw ?? '').match(/\d+/g);
+  if (!groups || groups.length === 0) return null;
+  const last = String(parseInt(groups[groups.length - 1], 10));
+  const first = groups.length > 1 ? String(parseInt(groups[0], 10)) : '';
+  return `${first}:${last}`;
+}
+export type ContractIndex = Map<string, { id: string; client_name: string | null }[]>;
+export async function getContractIndex(): Promise<ContractIndex> {
+  const { data, error } = await supabase.from('deals').select('id, client_name, contract_number')
+    .neq('status', 'rejected').not('contract_number', 'is', null);
+  if (error) throw error;
+  const idx: ContractIndex = new Map();
+  for (const d of data ?? []) {
+    const k = contractKey(d.contract_number);
+    if (!k) continue;
+    const arr = idx.get(k) ?? [];
+    arr.push({ id: d.id, client_name: d.client_name });
+    idx.set(k, arr);
+  }
+  return idx;
+}
+// Другие сделки с тем же номером договора (пусто — повтора нет)
+export function contractDuplicates(idx: ContractIndex | null, dealId: string | undefined, contract: string | null | undefined) {
+  const k = contractKey(contract);
+  if (!idx || !k) return [];
+  return (idx.get(k) ?? []).filter(x => x.id !== dealId);
+}
+
 // ─── Уведомления сотрудникам ──────────────────────────────────────────────
 // Лёгкие счётчики для бокового меню — только число, без загрузки строк
 export async function countPendingDeals(): Promise<number> {

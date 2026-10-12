@@ -1,13 +1,33 @@
-import * as Sentry from "@sentry/react";
+import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import { AppWrapper } from "./components/common/PageMeta.tsx";
 import "./index.css";
 
-Sentry.init({
-  dsn: import.meta.env['VITE_SENTRY_DSN'] as string | undefined,
-  environment: import.meta.env.MODE,
-});
+// Sentry (сбор ошибок) — грузится отдельно и только если задан ключ,
+// чтобы не утяжелять первую загрузку сайта
+const SENTRY_DSN = import.meta.env['VITE_SENTRY_DSN'] as string | undefined;
+if (SENTRY_DSN) {
+  import("@sentry/react").then(Sentry => Sentry.init({ dsn: SENTRY_DSN, environment: import.meta.env.MODE })).catch(() => {});
+}
+
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: unknown) {
+    if (isChunkLoadError((error as Error)?.message)) reloadOnceForStaleChunk();
+  }
+  render() {
+    if (this.state.failed) {
+      return (
+        <div style={{ padding: 24, fontFamily: 'sans-serif' }}>
+          <p>Произошла ошибка приложения. Пожалуйста, обновите страницу.</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // После каждого нового деплоя старые файлы разделов (chunks) пропадают с
 // сервера. Если вкладка была открыта ДО деплоя и пользователь кликает по
@@ -44,13 +64,9 @@ window.addEventListener('error', (event) => {
 });
 
 createRoot(document.getElementById("root")!).render(
-  <Sentry.ErrorBoundary fallback={
-    <div style={{ padding: 24, fontFamily: 'sans-serif' }}>
-      <p>Произошла ошибка приложения. Пожалуйста, обновите страницу.</p>
-    </div>
-  }>
+  <ErrorBoundary>
     <AppWrapper>
       <App />
     </AppWrapper>
-  </Sentry.ErrorBoundary>
+  </ErrorBoundary>
 );

@@ -9,7 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, LineChart, Line, LabelList,
 } from 'recharts';
-import { getAllDeals, getManagers, getSalesPlans, getRecentActivity } from '@/lib/api';
+import { getAllDeals, getManagers, getSalesPlans, getRecentActivity, contractKey } from '@/lib/api';
 import {
   formatCurrency, getDashboardMonths, monthYearToLabel, getCurrentMonthYear,
 } from '@/lib/utils';
@@ -282,8 +282,16 @@ export default function DashboardPage() {
 
         {/* Требует внимания: незаполненные данные, из-за которых не работают сверки и напоминания */}
         {!loading && (() => {
+          const keyCount = new Map<string, number>();
+          for (const x of deals) {
+            if (x.status === 'rejected') continue;
+            const k = contractKey(x.contract_number);
+            if (k) keyCount.set(k, (keyCount.get(k) ?? 0) + 1);
+          }
           const issuesOf = (d: Deal) => {
             const list: string[] = [];
+            const ck = contractKey(d.contract_number);
+            if (ck && (keyCount.get(ck) ?? 0) > 1) list.push('№ договора повторяется');
             if (!d.contract_number || !/\d/.test(d.contract_number)) list.push('нет № договора');
             if (!d.client_phone) list.push('нет телефона');
             if (!(CHANNELS as readonly string[]).includes(d.payment_method) && d.payment_method !== SPLIT_PAYMENT_METHOD) list.push('способ оплаты «' + d.payment_method + '»');

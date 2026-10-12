@@ -50,6 +50,7 @@ export interface Deal {
   vat_gross_amount: number | null; // сумма с НДС при оплате «Перечисление» (общая сумма вводится отдельно, вручную — процент бывает разный)
   contract_number: string | null; // номер договора — ключ для связки с карточкой в Trello
   next_payment_date: string | null; // примерная дата следующей доплаты — для напоминаний сотруднику
+  amo_mismatch?: string | null; // расхождение с amoCRM (заполняет синхронизация), null — совпадает
   payment_split: { channel: string; amount: number }[] | null; // предоплата несколькими способами (часть нал, часть Kaspi…)
   status: 'pending' | 'approved' | 'rejected'; // pending = awaiting director's approval
   stage: 'new' | 'in_progress' | 'installed' | 'closed' | 'canceled'; // жизненный цикл установки
@@ -203,6 +204,7 @@ export interface EmployeePermission {
 export const PERMISSION_PAGES = [
   { key: 'dashboard',     label: 'Дашборд' },
   { key: 'sales',         label: 'Продажи' },
+  { key: 'debtors',       label: 'Должники' },
   { key: 'approvals',     label: 'Подтверждения' },
   { key: 'finance',       label: 'Финансы' },
   { key: 'reports',       label: 'Отчёты' },
@@ -353,7 +355,7 @@ export const LEAD_SOURCE_LABELS: Record<string, string> = {
 export interface AppNotification {
   id: string;
   manager_id: string;
-  type: 'payment_due' | 'stage_changed' | 'amount_mismatch';
+  type: 'payment_due' | 'stage_changed' | 'amount_mismatch' | 'incomplete_deals';
   title: string;
   body: string;
   deal_id: string | null;

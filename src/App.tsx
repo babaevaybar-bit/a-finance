@@ -20,6 +20,7 @@ const SalaryPage       = lazy(() => import('@/pages/SalaryPage'));
 const ProfitPage       = lazy(() => import('@/pages/ProfitPage'));
 const DailyReportPage  = lazy(() => import('@/pages/DailyReportPage'));
 const SearchPage       = lazy(() => import('@/pages/SearchPage'));
+const DebtorsPage      = lazy(() => import('@/pages/DebtorsPage'));
 const ManagersPage     = lazy(() => import('@/pages/ManagersPage'));
 const PermissionsPage  = lazy(() => import('@/pages/PermissionsPage'));
 
@@ -98,6 +99,7 @@ function PageLoader() {
 const lazyRoutes = [
   { path: '/',             element: <DashboardPage />,   adminOnly: false, pageKey: 'dashboard'    },
   { path: '/sales',        element: <SalesPage />,        adminOnly: false, pageKey: 'sales'        },
+  { path: '/debtors',      element: <DebtorsPage />,      adminOnly: false, pageKey: 'debtors'      },
   { path: '/approvals',    element: <ApprovalsPage />,    adminOnly: false, pageKey: 'approvals'    },
   { path: '/finance',      element: <FinancePage />,      adminOnly: true,  pageKey: 'finance'      },
   { path: '/reports',      element: <ReportsPage />,      adminOnly: true,  pageKey: 'reports'      },
