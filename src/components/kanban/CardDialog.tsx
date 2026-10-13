@@ -218,7 +218,7 @@ export default function CardDialog({ card, board, lists, labels, managers, cards
 
   return (
     <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-[calc(100%-1.5rem)] md:max-w-3xl max-h-[92vh] overflow-y-auto p-0 gap-0">
+      <DialogContent className="max-w-[calc(100%-1.5rem)] md:max-w-3xl max-h-[92vh] overflow-y-auto p-0 gap-0 grid-cols-[minmax(0,1fr)]">
         {card.cover_color && <div className="h-24 rounded-t-lg" style={{ background: labelHex(card.cover_color) }} />}
         <div className="p-4 md:p-6 space-y-5">
           {/* Заголовок */}
@@ -234,7 +234,7 @@ export default function CardDialog({ card, board, lists, labels, managers, cards
             </div>
           </div>
 
-          <div className="grid md:grid-cols-[1fr_180px] gap-5">
+          <div className="grid grid-cols-[minmax(0,1fr)] md:grid-cols-[minmax(0,1fr)_180px] gap-5">
             <div className="space-y-6 min-w-0">
               {/* Участники, метки, срок */}
               {(cardMembers.length > 0 || cardLabels.length > 0 || card.due_at || card.start_at || card.deal_id) && (

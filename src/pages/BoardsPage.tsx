@@ -127,16 +127,16 @@ export default function BoardsPage() {
       </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md grid-cols-[minmax(0,1fr)]">
           <DialogHeader><DialogTitle>Новая доска</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="h-24 rounded-xl p-3 text-white font-semibold" style={{ background: BOARD_BACKGROUNDS[bg] }}>{title || 'Название доски'}</div>
+          <div className="space-y-4 min-w-0">
+            <div className="h-20 rounded-xl p-3 text-white font-semibold break-words line-clamp-2" style={{ background: BOARD_BACKGROUNDS[bg] }}>{title || 'Название доски'}</div>
             <div className="space-y-1.5">
               <Label>Фон</Label>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(BOARD_BACKGROUNDS).map(([k, v]) => (
                   <button key={k} type="button" onClick={() => setBg(k)} aria-label={k}
-                    className={`h-8 w-12 rounded-md ${bg === k ? 'ring-2 ring-offset-2 ring-primary' : ''}`} style={{ background: v }} />
+                    className={`h-8 w-10 rounded-md ${bg === k ? 'ring-2 ring-offset-2 ring-primary' : ''}`} style={{ background: v }} />
                 ))}
               </div>
             </div>
@@ -147,12 +147,12 @@ export default function BoardsPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Шаблон колонок</Label>
-              <div className="grid gap-1.5">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-1.5">
                 {BOARD_TEMPLATES.map(t => (
                   <button key={t.key} type="button" onClick={() => setTpl(t.key)}
-                    className={`text-left rounded-lg border px-3 py-2 text-sm ${tpl === t.key ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}>
+                    className={`min-w-0 text-left rounded-lg border px-3 py-2 text-sm ${tpl === t.key ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}>
                     <div className="font-medium">{t.name}</div>
-                    <div className="text-[11px] text-muted-foreground truncate">{t.lists.join(' → ')}</div>
+                    <div className="text-[11px] text-muted-foreground leading-snug break-words">{t.lists.join(' → ')}</div>
                   </button>
                 ))}
               </div>
