@@ -41,7 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Dev shortcut: disable real auth when VITE_DISABLE_AUTH=true
   // Also allow immediate bypass via URL query `?disable_auth=1` for testing without restarting dev server
   const DISABLE_AUTH_ENV = Boolean(import.meta.env.VITE_DISABLE_AUTH);
-  const [disableAuth, setDisableAuth] = useState<boolean>(DISABLE_AUTH_ENV);
+  const [disableAuth, setDisableAuth] = useState<boolean>(import.meta.env.DEV && DISABLE_AUTH_ENV);
 
   const isDirector = profile?.role === 'director';
   const isDirectorView = profile?.role === 'director_view'; // Директор — видит всё, но не управляет сотрудниками/правами
@@ -72,7 +72,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    const runtimeDisable = DISABLE_AUTH_ENV || new URLSearchParams(window.location.search).get('disable_auth') === '1';
+    // Обход входа — только при локальной разработке, на сайте он не работает
+    const runtimeDisable = import.meta.env.DEV && (DISABLE_AUTH_ENV || new URLSearchParams(window.location.search).get('disable_auth') === '1');
     setDisableAuth(runtimeDisable);
 
     if (runtimeDisable) {

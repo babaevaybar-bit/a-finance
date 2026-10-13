@@ -213,6 +213,7 @@ export const PERMISSION_PAGES = [
   { key: 'managers',      label: 'Сотрудники' },
   { key: 'permissions',   label: 'Доступ' },
   { key: 'daily-report',  label: 'Ежедневный отчёт' },
+  { key: 'boards',        label: 'Доски (в разработке)' },
 ] as const;
 
 // ─── Profit Row ────────────────────────────────────────────────────────────────

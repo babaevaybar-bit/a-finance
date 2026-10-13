@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   Menu, LayoutDashboard, TrendingUp, Wallet, BarChart2,
-  Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell, HandCoins,
+  Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell, HandCoins, KanbanSquare,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { countPendingDeals, countUnreadNotifications } from '@/lib/api';
@@ -23,6 +23,7 @@ const navItems = [
   { path: '/reports',      label: 'Отчёты',            icon: BarChart2,       adminOnly: true,  pageKey: 'reports'      },
   { path: '/amocrm',       label: 'amoCRM',            icon: Layers,          adminOnly: true,  pageKey: 'amocrm'       },
   { path: '/production',   label: 'Производство',      icon: Wrench,          adminOnly: true,  pageKey: 'production'   },
+  { path: '/boards',       label: 'Доски',             icon: KanbanSquare,    adminOnly: true,  pageKey: 'boards'       },
   { path: '/messages',     label: 'Сообщения',         icon: Bell,            adminOnly: false, pageKey: 'messages'     },
   { path: '/salary',       label: 'Зарплаты',          icon: Banknote,        adminOnly: true,  pageKey: 'salary'       },
   { path: '/profit',       label: 'Чистая прибыль',    icon: TrendingDown,    adminOnly: true,  pageKey: 'profit'       },
@@ -67,13 +68,16 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
           onClick={onClose}
           className={cn(
             'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
-            pathname === path
+            (pathname === path || (path === '/boards' && pathname.startsWith('/boards/')))
               ? 'bg-sidebar-accent text-sidebar-primary font-semibold'
               : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
           )}
         >
           <Icon size={16} className="shrink-0" />
           <span className="flex-1">{label}</span>
+          {path === '/boards' && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold shrink-0">бета</span>
+          )}
           {path === '/approvals' && pendingCount > 0 && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-semibold shrink-0">
               {pendingCount}

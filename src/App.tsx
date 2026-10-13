@@ -21,6 +21,8 @@ const ProfitPage       = lazy(() => import('@/pages/ProfitPage'));
 const DailyReportPage  = lazy(() => import('@/pages/DailyReportPage'));
 const SearchPage       = lazy(() => import('@/pages/SearchPage'));
 const DebtorsPage      = lazy(() => import('@/pages/DebtorsPage'));
+const BoardsPage       = lazy(() => import('@/pages/BoardsPage'));
+const BoardPage        = lazy(() => import('@/pages/BoardPage'));
 const ManagersPage     = lazy(() => import('@/pages/ManagersPage'));
 const PermissionsPage  = lazy(() => import('@/pages/PermissionsPage'));
 
@@ -105,6 +107,8 @@ const lazyRoutes = [
   { path: '/reports',      element: <ReportsPage />,      adminOnly: true,  pageKey: 'reports'      },
   { path: '/amocrm',       element: <AmoCrmPage />,       adminOnly: true,  pageKey: 'amocrm'       },
   { path: '/production',   element: <ProductionPage />,   adminOnly: true,  pageKey: 'production'   },
+  { path: '/boards',       element: <BoardsPage />,       adminOnly: true,  pageKey: 'boards'       },
+  { path: '/boards/:id',   element: <BoardPage />,        adminOnly: true,  pageKey: 'boards'       },
   { path: '/messages',     element: <MessagesPage />,     adminOnly: false, pageKey: 'messages'     },
   { path: '/salary',       element: <SalaryPage />,       adminOnly: true,  pageKey: 'salary'       },
   { path: '/profit',       element: <ProfitPage />,       adminOnly: true,  pageKey: 'profit'       },
