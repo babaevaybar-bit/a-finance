@@ -477,22 +477,29 @@ export async function getWorkspaceCards(): Promise<KWorkspaceCard[]> {
 
 // ── Карта: адрес → координаты (OpenStreetMap) ──
 export async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
-  const q = /казахстан|kazakhstan/i.test(address) ? address : `${address}, Казахстан`;
-  try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ru&q=${encodeURIComponent(q)}`);
-    if (!res.ok) return null;
-    const arr = await res.json();
-    if (!arr?.[0]) return null;
-    return { lat: Number(arr[0].lat), lng: Number(arr[0].lon) };
-  } catch { return null; }
+  const r = await searchAddresses(address);
+  const first = r.results[0];
+  return first ? { lat: first.lat, lng: first.lng } : null;
 }
 
-// Поиск адреса для карты: несколько вариантов, только Казахстан
-export async function searchAddresses(q: string): Promise<{ label: string; lat: number; lng: number }[]> {
+// Поиск адреса для карты — через сервер: 2ГИС (если подключён ключ), иначе OpenStreetMap
+export interface GeoResult { label: string; sub?: string; lat: number; lng: number }
+export async function searchAddresses(q: string): Promise<{ source: '2gis' | 'osm' | 'none'; results: GeoResult[]; warning?: string }> {
   try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=6&countrycodes=kz&accept-language=ru&q=${encodeURIComponent(q)}`);
-    if (!res.ok) return [];
-    const arr = await res.json();
-    return (arr ?? []).map((r: any) => ({ label: String(r.display_name).split(', Казахстан')[0], lat: Number(r.lat), lng: Number(r.lon) }));
-  } catch { return []; }
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await supabase.functions.invoke(`geo-search?q=${encodeURIComponent(q)}`, {
+      method: 'GET', headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+    });
+    if (res.error || res.data?.error) return { source: 'none', results: [] };
+    return res.data;
+  } catch { return { source: 'none', results: [] }; }
 }
+export async function dgisConfigured(): Promise<boolean> {
+  const { data } = await supabase.rpc('dgis_key_configured');
+  return !!data;
+}
+export async function setDgisKey(key: string) {
+  const { error } = await supabase.rpc('set_dgis_key', { p_key: key });
+  if (error) throw error;
+}
+export const dgisLink = (q: string) => `https://2gis.kz/shymkent/search/${encodeURIComponent(q)}`;
