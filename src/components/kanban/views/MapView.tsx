@@ -141,7 +141,7 @@ export default function MapView({ boardId, lists, cards, onOpen, onChanged, read
 
   return (
     <div className="h-full p-3 md:p-4 flex flex-col gap-3 md:flex-row">
-      <div className={`relative flex-1 min-h-[360px] rounded-xl overflow-hidden shadow-sm bg-card ${placing ? '[&_.leaflet-container]:cursor-crosshair' : ''}`}>
+      <div className={`relative isolate z-0 flex-1 min-h-[360px] rounded-xl overflow-hidden shadow-sm bg-card ${placing ? '[&_.leaflet-container]:cursor-crosshair' : ''}`}>
         <div ref={el} className="w-full h-full min-h-[360px]" />
 
         <div className="absolute left-14 right-3 top-3 z-[500] max-w-md space-y-1.5">
