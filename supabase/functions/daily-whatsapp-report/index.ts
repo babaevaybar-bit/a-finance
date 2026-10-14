@@ -102,19 +102,33 @@ Deno.serve(async (req) => {
     }
 
     const now = Math.floor(Date.now() / 1000);
+    // Режим «snapshot»: только записать отчёт за указанный день в историю (без отправки в WhatsApp).
+    // Используется для заполнения истории за прошлые дни.
+    let body: any = {};
+    try { body = await req.json(); } catch { body = {}; }
+    const snapshotDate: string | null = body?.mode === 'snapshot' && /^\d{4}-\d{2}-\d{2}$/.test(body?.date ?? '') ? body.date : null;
     // Окно: вчера 20:00 → сегодня 20:00. Берём рабочий день, в который попадает момент за 2 часа до запуска,
     // чтобы отчёт в 20:00 (и с небольшой задержкой) считал именно завершившийся рабочий день.
-    const leadRef = now - 2 * 60 * 60;
+    const leadRef = snapshotDate
+      ? Math.floor(Date.parse(`${snapshotDate}T12:00:00Z`) / 1000) - KZ_OFFSET_SEC   // полдень этого дня по Шымкенту
+      : now - 2 * 60 * 60;
     const leadDayStart = Math.floor((leadRef + KZ_OFFSET_SEC + LEAD_SHIFT_SEC) / 86400) * 86400 - KZ_OFFSET_SEC - LEAD_SHIFT_SEC;
     const leadDayEnd = leadDayStart + 86400;
+    const reportDate = new Date((leadDayEnd - 1 + KZ_OFFSET_SEC) * 1000).toISOString().slice(0, 10);
+    if (snapshotDate && leadDayEnd > now + 60) {
+      return new Response(JSON.stringify({ error: 'Этот день ещё не закончился' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const eventsTo = Math.min(now, leadDayEnd);
 
     const [pipelinesData, usersData, allLeadsUnfiltered, callEvents, chatEvents, statusEvents] = await Promise.all([
       amoGet('/api/v4/leads/pipelines'),
       amoGet('/api/v4/users?limit=250'),
       amoGetAllPages('/api/v4/leads?order[id]=desc', 20, 'leads'),
-      amoGetAllPages(`/api/v4/events?filter[type][]=incoming_call&filter[type][]=outgoing_call&filter[created_at][from]=${leadDayStart}&filter[created_at][to]=${now}`, 4, 'events'),
-      amoGetAllPages(`/api/v4/events?filter[type][]=outgoing_chat_message&filter[created_at][from]=${leadDayStart}&filter[created_at][to]=${now}`, 4, 'events'),
-      amoGetAllPages(`/api/v4/events?filter[type][]=lead_status_changed&filter[created_at][from]=${leadDayStart}&filter[created_at][to]=${now}`, 4, 'events'),
+      amoGetAllPages(`/api/v4/events?filter[type][]=incoming_call&filter[type][]=outgoing_call&filter[created_at][from]=${leadDayStart}&filter[created_at][to]=${eventsTo}`, 4, 'events'),
+      amoGetAllPages(`/api/v4/events?filter[type][]=outgoing_chat_message&filter[created_at][from]=${leadDayStart}&filter[created_at][to]=${eventsTo}`, 4, 'events'),
+      amoGetAllPages(`/api/v4/events?filter[type][]=lead_status_changed&filter[created_at][from]=${leadDayStart}&filter[created_at][to]=${eventsTo}`, 4, 'events'),
     ]);
 
     const statusMap: Record<string, { name: string; pipeline_id: string; sort: number }> = {};
@@ -201,7 +215,7 @@ Deno.serve(async (req) => {
       .eq('is_active', true);
 
     const lines: string[] = [];
-    lines.push(`*Ежедневный отчёт — ${kzDateLabel(now)}*`);
+    lines.push(`*Ежедневный отчёт — ${kzDateLabel(leadDayEnd - 1)}*`);
     lines.push(`_период: с ${kzShortLabel(leadDayStart)} до ${kzShortLabel(leadDayEnd)}_`);
     lines.push('');
     lines.push(`Новых лидов: *${leadsToday.length}* (на сумму ${leadsTodaySum.toLocaleString('ru-RU')} ₸)`);
@@ -215,13 +229,56 @@ Deno.serve(async (req) => {
       const s = byUser[String(m.amocrm_user_id)] ?? { leads: 0, callsIn: 0, callsOut: 0, chats: 0 };
       lines.push(`${m.name}: лидов ${s.leads}, звонков ${s.callsIn + s.callsOut}, чатов ${s.chats}`);
     }
-    lines.push('');
-    lines.push('*Воронка (Отдел продаж):*');
-    for (const stageName of funnelUnique) {
-      lines.push(`${stageName}: ${funnelCounts[stageName] ?? 0}`);
+    if (!snapshotDate) {   // воронка — это текущее состояние, для прошлых дней её не восстановить
+      lines.push('');
+      lines.push('*Воронка (Отдел продаж):*');
+      for (const stageName of funnelUnique) {
+        lines.push(`${stageName}: ${funnelCounts[stageName] ?? 0}`);
+      }
     }
 
     const text = lines.join('\n');
+
+    // Запись в историю отчётов (раздел «Ежедневный отчёт» → «Отчёты по дням»)
+    const managerRows = (coreManagers ?? []).map((m: any) => {
+      const s = byUser[String(m.amocrm_user_id)] ?? { leads: 0, callsIn: 0, callsOut: 0, chats: 0 };
+      return { name: m.name, amocrm_user_id: String(m.amocrm_user_id), ...s };
+    });
+    const coreSet = new Set(managerRows.map((r: any) => r.amocrm_user_id));
+    for (const [uid, s] of Object.entries(byUser)) {
+      if (coreSet.has(uid)) continue;
+      if (!(s.leads || s.callsIn || s.callsOut || s.chats)) continue;
+      managerRows.push({ name: userMap[uid] ?? `Пользователь ${uid}`, amocrm_user_id: uid, ...s });
+    }
+    async function saveHistory(sent: boolean | null) {
+      const { error } = await supabaseAdmin.from('amo_daily_reports').upsert({
+        report_date: reportDate,
+        period_from: new Date(leadDayStart * 1000).toISOString(),
+        period_to: new Date(leadDayEnd * 1000).toISOString(),
+        leads: leadsToday.length,
+        leads_sum: leadsTodaySum,
+        calls_in: callsIn,
+        calls_out: callsOut,
+        chats: chatsTotal,
+        transitions: transitionsToday,
+        won_count: wonTodayCount,
+        won_sum: wonTodaySum,
+        by_user: managerRows,
+        funnel: snapshotDate ? [] : funnelUnique.map(n => ({ stage: n, count: funnelCounts[n] ?? 0 })),
+        report_text: text,
+        sent,
+        source: snapshotDate ? 'backfill' : 'auto',
+        updated_at: new Date().toISOString(),
+      });
+      return error ? String(error.message) : null;
+    }
+
+    if (snapshotDate) {
+      const saveError = await saveHistory(null);
+      return new Response(JSON.stringify({ saved: !saveError, date: reportDate, error: saveError }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // До 3 попыток отправки, каждая не дольше 20 секунд
     let sendStatus = 0;
@@ -242,7 +299,10 @@ Deno.serve(async (req) => {
       }
     }
 
+    const saveError = await saveHistory(sendStatus >= 200 && sendStatus < 300);
+
     return new Response(JSON.stringify({
+      saved: !saveError,
       sent: sendStatus >= 200 && sendStatus < 300,
       greenApiStatus: sendStatus,
       greenApiResponse: sendResultText,

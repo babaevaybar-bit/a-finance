@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+import AmoDailyHistory from '@/components/reports/AmoDailyHistory';
 import {
   Plus, Pencil, Trash2, TrendingUp, Users, Target, Filter,
   Phone, MapPin, Flame, Thermometer, Snowflake, Search, Download,
@@ -1034,20 +1035,24 @@ function ClientsTab() {
 }
 // ─── Главный компонент страницы ───────────────────────────────────────────────
 export default function DailyReportPage() {
+  const { isDirector, isDirectorView, isRop } = useAuth();
+  const canSeeHistory = isDirector || isDirectorView || isRop;
   return (
     <AppLayout>
       <div className="space-y-4">
         <div>
           <h1 className="text-xl font-semibold">Ежедневный отчёт</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Учёт маркетинговых кампаний и карточек клиентов
+            Отчёты по дням, учёт маркетинговых кампаний и карточек клиентов
           </p>
         </div>
-        <Tabs defaultValue="clients">
+        <Tabs defaultValue={canSeeHistory ? 'days' : 'clients'}>
           <TabsList className="mb-4">
+            {canSeeHistory && <TabsTrigger value="days">Отчёты по дням</TabsTrigger>}
             <TabsTrigger value="clients">Клиенты</TabsTrigger>
             <TabsTrigger value="marketing">Маркетинг</TabsTrigger>
           </TabsList>
+          {canSeeHistory && <TabsContent value="days"><AmoDailyHistory /></TabsContent>}
           <TabsContent value="clients"><ClientsTab /></TabsContent>
           <TabsContent value="marketing"><MarketingTab /></TabsContent>
         </Tabs>
