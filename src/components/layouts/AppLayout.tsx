@@ -14,7 +14,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { countPendingDeals, countUnreadNotifications } from '@/lib/api';
 
-const navItems = [
+export const navItems = [
   { path: '/',             label: 'Дашборд',          icon: LayoutDashboard, adminOnly: false, pageKey: 'dashboard'    },
   { path: '/sales',        label: 'Продажи',           icon: TrendingUp,      adminOnly: false, pageKey: 'sales'        },
   { path: '/debtors',      label: 'Должники',          icon: HandCoins,       adminOnly: false, pageKey: 'debtors'      },
@@ -130,10 +130,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen w-full bg-background">
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex flex-col w-56 shrink-0 border-r border-sidebar-border bg-sidebar">
-        <div className="h-14 flex items-center gap-2 px-4 border-b border-sidebar-border">
+        <Link to="/welcome" title="Главная" className="h-14 flex items-center gap-2 px-4 border-b border-sidebar-border hover:bg-sidebar-accent/60 transition-colors">
           <span className="w-7 h-7 rounded-[8px] bg-black text-white flex items-center justify-center text-xs font-display font-bold shrink-0">A</span>
           <span className="font-semibold text-sm text-sidebar-foreground tracking-wide">A-Finance</span>
-        </div>
+        </Link>
         <div className="flex-1 overflow-y-auto">
           <NavLinks />
         </div>
@@ -172,10 +172,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="w-56 p-0 bg-sidebar flex flex-col">
-              <div className="h-14 flex items-center gap-2 px-4 border-b border-sidebar-border">
+              <Link to="/welcome" className="h-14 flex items-center gap-2 px-4 border-b border-sidebar-border hover:bg-sidebar-accent/60 transition-colors">
                 <span className="w-7 h-7 rounded-[8px] bg-black text-white flex items-center justify-center text-xs font-display font-bold shrink-0">A</span>
                 <span className="font-semibold text-sm text-sidebar-foreground tracking-wide">A-Finance</span>
-              </div>
+              </Link>
               <div className="flex-1 overflow-y-auto">
                 <NavLinks onClose={() => setOpen(false)} />
               </div>
@@ -196,8 +196,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
             </SheetContent>
           </Sheet>
-          <span className="w-7 h-7 rounded-[8px] bg-black text-white flex items-center justify-center text-xs font-display font-bold shrink-0">A</span>
-          <span className="font-semibold text-sm flex-1 min-w-0 truncate ml-2">A-Finance</span>
+          <Link to="/welcome" className="flex items-center flex-1 min-w-0">
+            <span className="w-7 h-7 rounded-[8px] bg-black text-white flex items-center justify-center text-xs font-display font-bold shrink-0">A</span>
+            <span className="font-semibold text-sm min-w-0 truncate ml-2">A-Finance</span>
+          </Link>
         </header>
 
         {/* Полоса поиска — видна на всех страницах и устройствах */}

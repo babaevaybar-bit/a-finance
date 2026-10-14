@@ -8,6 +8,7 @@ import LoginPage from '@/pages/LoginPage';
 import ResetPasswordPage from '@/pages/ResetPasswordPage';
 
 // Lazy-load all pages to reduce initial bundle size
+const WelcomePage = lazy(() => import('./pages/WelcomePage'));
 const DashboardPage    = lazy(() => import('@/pages/DashboardPage'));
 const SalesPage        = lazy(() => import('@/pages/SalesPage'));
 const ApprovalsPage    = lazy(() => import('@/pages/ApprovalsPage'));
@@ -100,6 +101,7 @@ function PageLoader() {
 
 const lazyRoutes = [
   { path: '/',             element: <DashboardPage />,   adminOnly: false, pageKey: 'dashboard'    },
+  { path: '/welcome',      element: <WelcomePage />,      adminOnly: false, pageKey: undefined as string | undefined },
   { path: '/sales',        element: <SalesPage />,        adminOnly: false, pageKey: 'sales'        },
   { path: '/debtors',      element: <DebtorsPage />,      adminOnly: false, pageKey: 'debtors'      },
   { path: '/approvals',    element: <ApprovalsPage />,    adminOnly: false, pageKey: 'approvals'    },
