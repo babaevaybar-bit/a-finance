@@ -33,7 +33,17 @@ interface Transition {
   lead_id: number; lead_name: string; from_status: string | null; to_status: string | null;
   changed_at: number; manager_name: string | null;
 }
-interface TodayStats { newLeads: number; calls: number; callsIn: number; callsOut: number; statusChanges: number; }
+interface TodayStats { newLeads: number; leadsFrom?: number; calls: number; callsIn: number; callsOut: number; statusChanges: number; }
+// Подпись окна лидов: «с 20:00 вчера» / «с 20:00 сегодня»
+function leadsWindowLabel(from?: number): string {
+  if (!from) return '';
+  const start = new Date(from * 1000);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const day = new Date(start); day.setHours(0, 0, 0, 0);
+  const which = day.getTime() === today.getTime() ? 'сегодня' : 'вчера';
+  return `с 20:00 ${which} до 20:00 ${which === 'вчера' ? 'сегодня' : 'завтра'}`;
+}
+
 interface UserDaily {
   user_id: string; user_name: string; newLeads: number;
   callsIn: number; callsOut: number; callsTotal: number; chats: number;
@@ -161,6 +171,7 @@ export default function AmoCrmPage() {
               <div className="rounded-lg border border-border p-3">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground"><UserPlus size={13} /> Новых лидов сегодня</div>
                 <p className="text-lg font-semibold mt-1">{today?.newLeads ?? (loading ? '…' : '—')}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{leadsWindowLabel(today?.leadsFrom)}</p>
               </div>
               <div className="rounded-lg border border-border p-3">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground"><PhoneIncoming size={13} /> Звонков сегодня</div>
@@ -193,7 +204,7 @@ export default function AmoCrmPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead className="whitespace-nowrap">Сотрудник</TableHead>
-                          <TableHead className="whitespace-nowrap text-right">Новых лидов</TableHead>
+                          <TableHead className="whitespace-nowrap text-right">Новых лидов <span className="font-normal">(с 20:00)</span></TableHead>
                           <TableHead className="whitespace-nowrap text-right">Звонков (вход/исход)</TableHead>
                           <TableHead className="whitespace-nowrap text-right">Чатов обработано</TableHead>
                         </TableRow>
@@ -220,7 +231,7 @@ export default function AmoCrmPage() {
             <div className="grid md:grid-cols-2 gap-4">
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Новые лиды по дням (30 дней)</CardTitle>
+                  <CardTitle className="text-sm font-medium">Новые лиды по дням (30 дней, день с 20:00 до 20:00)</CardTitle>
                 </CardHeader>
                 <CardContent className="pl-0">
                   <ResponsiveContainer width="100%" height={220}>
