@@ -29,8 +29,10 @@ export interface AmoDailyReport {
 }
 
 const money = (n: number) => `${Math.round(Number(n) || 0).toLocaleString('ru-RU')} ₸`;
-const dayLabel = (d: string) =>
-  new Date(`${d}T12:00:00`).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long' });
+const dayLabel = (d: string) => {
+  const t = new Date(`${d}T12:00:00`).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long' });
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
 const shortDay = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
 const periodLabel = (r: AmoDailyReport) => {
   const f = (iso: string) => new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -182,7 +184,7 @@ export default function AmoDailyHistory() {
                 <button key={r.report_date} type="button" onClick={() => setOpen(r)}
                   className="w-full text-left px-4 py-3 hover:bg-muted/40 flex items-center gap-3">
                   <div className="w-[150px] shrink-0">
-                    <div className="font-medium capitalize flex items-center gap-1.5"><CalendarDays size={14} className="text-muted-foreground" />{dayLabel(r.report_date)}</div>
+                    <div className="font-medium flex items-center gap-1.5"><CalendarDays size={14} className="text-muted-foreground" />{dayLabel(r.report_date)}</div>
                     <div className="text-[11px] text-muted-foreground mt-0.5">
                       {r.source === 'backfill' ? 'восстановлен из amoCRM' : r.sent ? 'отправлен в WhatsApp' : r.sent === false ? 'не отправлен в WhatsApp' : ''}
                     </div>
@@ -237,7 +239,7 @@ export default function AmoDailyHistory() {
           {open && (
             <>
               <DialogHeader>
-                <DialogTitle className="capitalize">Отчёт — {dayLabel(open.report_date)}</DialogTitle>
+                <DialogTitle>Отчёт — {dayLabel(open.report_date)}</DialogTitle>
                 <p className="text-xs text-muted-foreground">Период: {periodLabel(open)}</p>
               </DialogHeader>
               <div className="grid grid-cols-2 gap-2 text-sm">
