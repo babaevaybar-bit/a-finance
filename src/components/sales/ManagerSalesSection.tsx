@@ -30,6 +30,10 @@ interface Props {
   plan: SalesPlan | undefined;
   onPlanChange?: (managerId: string, field: 'plan_amount' | 'net_profit_plan' | 'dividends_plan', value: number) => void;
   onRefresh: () => void;
+  /** Всегда развёрнуто (режим «выбран один менеджер» на странице продаж) */
+  forceOpen?: boolean;
+  /** Сводный режим «Все»: показываем имя менеджера в строке, без плана и без кнопки «Добавить» */
+  managerNames?: Record<string, string>;
 }
 
 type SortKey = 'deal_date' | 'total_amount' | 'remainder';
@@ -40,9 +44,9 @@ const STATUS_BADGE_VARIANT: Record<string, string> = {
   rejected: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
 };
 
-export default React.memo(function ManagerSalesSection({ manager, monthYear, deals, plan, onPlanChange, onRefresh }: Props) {
+export default React.memo(function ManagerSalesSection({ manager, monthYear, deals, plan, onPlanChange, onRefresh, forceOpen, managerNames }: Props) {
   const collapseKey = `sales_collapsed_${manager.id}`;
-  const [collapsed, setCollapsed] = useState(() => {
+  const [collapsedState, setCollapsed] = useState(() => {
     try { return localStorage.getItem(collapseKey) === '1'; } catch { return false; }
   });
   const [formOpen, setFormOpen] = useState(false);
@@ -54,8 +58,11 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    try { localStorage.setItem(collapseKey, collapsed ? '1' : '0'); } catch { /* ignore */ }
-  }, [collapsed, collapseKey]);
+    if (forceOpen) return;
+    try { localStorage.setItem(collapseKey, collapsedState ? '1' : '0'); } catch { /* ignore */ }
+  }, [collapsedState, collapseKey, forceOpen]);
+  const collapsed = forceOpen ? false : collapsedState;
+  const isCombined = !!managerNames;
 
   // Сбрасываем выбор при смене месяца/менеджера, чтобы не удалить не то по ошибке
   useEffect(() => { setSelectedIds(new Set()); }, [monthYear, manager.id]);
@@ -138,14 +145,14 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
   return (
     <Card className="border border-border">
       {/* Header */}
-      <CardHeader className="pb-3 cursor-pointer select-none" onClick={() => setCollapsed(c => !c)}>
+      <CardHeader className={`pb-3 select-none ${forceOpen ? '' : 'cursor-pointer'}`} onClick={() => { if (!forceOpen) setCollapsed(c => !c); }}>
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-base flex items-center gap-2 flex-1 min-w-0">
             <span className="truncate">{manager.name}</span>
             <span className="text-xs font-normal text-muted-foreground shrink-0">
               {deals.length} сделок
             </span>
-            {collapsed ? <ChevronRight size={16} className="shrink-0 text-muted-foreground" /> : <ChevronDown size={16} className="shrink-0 text-muted-foreground" />}
+            {!forceOpen && (collapsed ? <ChevronRight size={16} className="shrink-0 text-muted-foreground" /> : <ChevronDown size={16} className="shrink-0 text-muted-foreground" />)}
           </CardTitle>
           <div className="flex items-center gap-4 shrink-0 text-sm" onClick={e => e.stopPropagation()}>
             <span className="text-muted-foreground hidden md:inline">Выручка:</span>
@@ -267,10 +274,12 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                     </AlertDialogContent>
                   </AlertDialog>
                 )}
+                {!isCombined && (
                 <Button size="sm" variant="outline" onClick={() => { setEditDeal(null); setFormOpen(true); }}>
                   <Plus size={14} className="mr-1" />
                   Добавить
                 </Button>
+                )}
               </div>
             </div>
 
@@ -293,7 +302,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                             <span className="font-medium truncate">{d.client_name || '—'}</span>
                           </div>
                           <div className="text-[11px] text-muted-foreground truncate">
-                            {formatDate(d.deal_date)}{d.contract_number ? ` · №${d.contract_number}` : ''} · {d.payment_method}
+                            {managerNames ? `${managerNames[d.manager_id] ?? '—'} · ` : ''}{formatDate(d.deal_date)}{d.contract_number ? ` · №${d.contract_number}` : ''} · {d.payment_method}
                           </div>
                         </button>
                         <Badge className={`text-[11px] font-normal shrink-0 ${STATUS_BADGE_VARIANT[d.status] || ''}`} variant="secondary">
@@ -367,6 +376,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                             <span className="font-medium truncate" title={d.client_name || undefined}>{d.client_name || '—'}</span>
                           </div>
                           <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+                            {managerNames && <span className="font-medium text-foreground/80">{managerNames[d.manager_id] ?? '—'} · </span>}
                             {formatDate(d.deal_date)}{d.contract_number ? ` · Договор №${d.contract_number}` : ''}
                           </div>
                           {d.door_model && <div className="text-xs truncate mt-0.5" title={d.door_model}>{d.door_model}</div>}
@@ -443,7 +453,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
         open={formOpen}
         onClose={() => setFormOpen(false)}
         onSaved={onRefresh}
-        managerId={manager.id}
+        managerId={editDeal?.manager_id ?? manager.id}
         monthYear={monthYear}
         deal={editDeal}
       />

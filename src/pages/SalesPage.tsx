@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import {
@@ -6,7 +6,8 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { getManagers, getDeals, getSalesPlans, upsertSalesPlan, getLastDealsMonth } from '@/lib/api';
-import { getCurrentMonthYear } from '@/lib/utils';
+import { getCurrentMonthYear, formatCurrency } from '@/lib/utils';
+import { Users } from 'lucide-react';
 import MonthYearPicker from '@/components/common/MonthYearPicker';
 import type { Manager, Deal, SalesPlan } from '@/types/types';
 import { ROLES, SALES_PAGE_ROLES } from '@/types/types';
@@ -26,7 +27,16 @@ export default function SalesPage() {
 
   // Filters
   const [roleFilter, setRoleFilter]         = useState<string>('all');
-  const [employeeFilter, setEmployeeFilter] = useState<string>(searchParams.get('manager') || 'all');
+  // Выбранный в сводке менеджер ('all' — сделки всех одной таблицей)
+  const [employeeFilter, setEmployeeFilterState] = useState<string>(() => {
+    const fromUrl = searchParams.get('manager');
+    if (fromUrl) return fromUrl;
+    try { return localStorage.getItem('sales_selected_manager') || 'all'; } catch { return 'all'; }
+  });
+  const setEmployeeFilter = (v: string) => {
+    setEmployeeFilterState(v);
+    try { localStorage.setItem('sales_selected_manager', v); } catch { /* ignore */ }
+  };
 
   // Ссылка с дашборда одноразовая — после применения фильтра убираем из URL,
   // чтобы обычная навигация/обновление страницы не «залипало» на ней
@@ -96,21 +106,41 @@ export default function SalesPage() {
     }, 800);
   }
 
-  // ── Filtering — show only SALES_PAGE_ROLES by default ──────────────────────
-  // Non-admin: see only own manager record
-  const visibleManagers = managers.filter(m => {
-    if (!canViewAllManagers) {
-      // обычный менеджер видит только свою собственную карточку
-      return m.user_id === profile?.id;
-    }
-    if (roleFilter !== 'all') {
-      if (m.role !== roleFilter) return false;
-    } else {
-      if (!SALES_PAGE_ROLES.includes(m.role)) return false;
-    }
-    if (employeeFilter !== 'all' && m.id !== employeeFilter) return false;
-    return true;
+  // ── Кого показываем: менеджер видит только себя; директор/РОП — по фильтру должности
+  const roleManagers = managers.filter(m => {
+    if (!canViewAllManagers) return m.user_id === profile?.id;
+    if (roleFilter !== 'all') return m.role === roleFilter;
+    return SALES_PAGE_ROLES.includes(m.role);
   });
+  const selectedManager = employeeFilter !== 'all' ? roleManagers.find(m => m.id === employeeFilter) ?? null : null;
+
+  // Сводка по каждому менеджеру для карточек сверху
+  const today = new Date().toISOString().slice(0, 10);
+  const stats = useMemo(() => {
+    const map: Record<string, { revenue: number; paid: number; debt: number; overdue: number; count: number; pending: number; plan: number }> = {};
+    for (const m of roleManagers) {
+      const list = deals[m.id] || [];
+      const revenue = list.reduce((s, d) => s + Number(d.total_amount), 0);
+      const paid = list.reduce((s, d) => s + Number(d.paid_amount), 0);
+      const debt = list.reduce((s, d) => s + Math.max(0, Number(d.total_amount) - Number(d.paid_amount)), 0);
+      const overdue = list.filter(d => Number(d.total_amount) > Number(d.paid_amount) && !!d.next_payment_date && d.next_payment_date < today).length;
+      const pending = list.filter(d => d.status === 'pending').length;
+      const plan = Number(plans.find(p => p.manager_id === m.id && p.month_year === monthYear)?.plan_amount || 0);
+      map[m.id] = { revenue, paid, debt, overdue, count: list.length, pending, plan };
+    }
+    return map;
+  }, [roleManagers, deals, plans, monthYear, today]);
+
+  const totals = useMemo(() => Object.values(stats).reduce((t, x) => ({
+    revenue: t.revenue + x.revenue, debt: t.debt + x.debt, count: t.count + x.count,
+    overdue: t.overdue + x.overdue, plan: t.plan + x.plan, pending: t.pending + x.pending,
+  }), { revenue: 0, debt: 0, count: 0, overdue: 0, plan: 0, pending: 0 }), [stats]);
+
+  const allDeals = useMemo(() => roleManagers.flatMap(m => deals[m.id] || []), [roleManagers, deals]);
+  const managerNames = useMemo(() => Object.fromEntries(managers.map(m => [m.id, m.name])), [managers]);
+
+  // Карточки: сначала с выручкой (по убыванию), потом без сделок
+  const tiles = [...roleManagers].sort((a, b) => (stats[b.id]?.revenue ?? 0) - (stats[a.id]?.revenue ?? 0));
 
   return (
     <AppLayout>
@@ -137,19 +167,7 @@ export default function SalesPage() {
             </SelectContent>
           </Select>
 
-          <Select value={employeeFilter} onValueChange={setEmployeeFilter}>
-            <SelectTrigger className="w-48 h-8 text-sm">
-              <SelectValue placeholder="Все сотрудники" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все сотрудники</SelectItem>
-              {managers
-                .filter(m => roleFilter === 'all' ? SALES_PAGE_ROLES.includes(m.role) : m.role === roleFilter)
-                .map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-
-          {(roleFilter !== 'all' || employeeFilter !== 'all') && (
+          {roleFilter !== 'all' && (
             <Button variant="ghost" size="sm" className="h-8 text-xs"
               onClick={() => { setRoleFilter('all'); setEmployeeFilter('all'); }}>
               Сбросить
@@ -160,29 +178,108 @@ export default function SalesPage() {
 
         {loading ? (
           <div className="space-y-4">
-            {[1, 2, 3].map(i => <div key={i} className="h-32 rounded-lg bg-muted animate-pulse" />)}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[1, 2, 3, 4].map(i => <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />)}</div>
+            <div className="h-64 rounded-lg bg-muted animate-pulse" />
           </div>
-        ) : visibleManagers.length === 0 ? (
+        ) : roleManagers.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
             <p>Нет сотрудников для отображения.</p>
             <p className="text-sm mt-1">Измените фильтр или добавьте сотрудников.</p>
           </div>
+        ) : !canViewAllManagers ? (
+          <div className="space-y-4">
+            {roleManagers.map(m => (
+              <ManagerSalesSection key={m.id} manager={m} monthYear={monthYear} deals={deals[m.id] || []}
+                plan={getPlan(m.id)} onRefresh={loadData} forceOpen />
+            ))}
+          </div>
         ) : (
           <div className="space-y-4">
-            {visibleManagers.map(m => (
+            {/* Сводка по менеджерам — все видно сразу */}
+            <div className="grid gap-2 md:gap-3 grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(210px,1fr))]">
+              <SummaryTile
+                active={employeeFilter === 'all' || !selectedManager}
+                onClick={() => setEmployeeFilter('all')}
+                title={<span className="inline-flex items-center gap-1.5"><Users size={14} />Все</span>}
+                revenue={totals.revenue} plan={totals.plan} count={totals.count} debt={totals.debt} overdue={totals.overdue} pending={totals.pending}
+              />
+              {tiles.map(m => {
+                const st = stats[m.id];
+                return (
+                  <SummaryTile key={m.id}
+                    active={selectedManager?.id === m.id}
+                    onClick={() => setEmployeeFilter(m.id)}
+                    title={m.name} muted={st.count === 0}
+                    revenue={st.revenue} plan={st.plan} count={st.count} debt={st.debt} overdue={st.overdue} pending={st.pending}
+                  />
+                );
+              })}
+            </div>
+
+            {/* Сделки выбранного менеджера — на всю ширину */}
+            {selectedManager ? (
               <ManagerSalesSection
-                key={m.id}
-                manager={m}
+                key={selectedManager.id}
+                manager={selectedManager}
                 monthYear={monthYear}
-                deals={deals[m.id] || []}
-                plan={getPlan(m.id)}
+                deals={deals[selectedManager.id] || []}
+                plan={getPlan(selectedManager.id)}
                 onPlanChange={isDirector ? handlePlanChange : undefined}
                 onRefresh={loadData}
+                forceOpen
               />
-            ))}
+            ) : (
+              <ManagerSalesSection
+                key="all"
+                manager={{ id: 'all', name: 'Все менеджеры' }}
+                monthYear={monthYear}
+                deals={allDeals}
+                plan={totals.plan > 0 ? ({ plan_amount: totals.plan } as SalesPlan) : undefined}
+                onRefresh={loadData}
+                forceOpen
+                managerNames={managerNames}
+              />
+            )}
           </div>
         )}
       </div>
     </AppLayout>
+  );
+}
+
+// Карточка менеджера в сводке: выручка, план, долги
+function SummaryTile({ title, active, muted, onClick, revenue, plan, count, debt, overdue, pending }: {
+  title: React.ReactNode; active: boolean; muted?: boolean; onClick: () => void;
+  revenue: number; plan: number; count: number; debt: number; overdue: number; pending: number;
+}) {
+  const pct = plan > 0 ? Math.min(100, (revenue / plan) * 100) : 0;
+  const missing = Math.max(0, plan - revenue);
+  return (
+    <button type="button" onClick={onClick}
+      className={`flex flex-col justify-start min-w-0 text-left rounded-xl border p-2.5 md:p-3 transition-all bg-card hover:shadow-sm ${active ? 'border-primary ring-2 ring-primary/25 shadow-sm' : 'border-border hover:border-primary/40'} ${muted && !active ? 'opacity-60' : ''}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium truncate">{title}</span>
+        <span className="text-[11px] text-muted-foreground shrink-0">{count} сд.</span>
+      </div>
+      <div className="text-base md:text-lg font-semibold tabular-nums mt-1 truncate">{formatCurrency(revenue)}</div>
+      {plan > 0 ? (
+        <div className="mt-1.5">
+          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+            <div className={`h-full rounded-full ${pct >= 100 ? 'bg-emerald-500' : 'bg-primary'}`} style={{ width: `${pct}%` }} />
+          </div>
+          <div className="flex justify-between text-[11px] text-muted-foreground mt-1 tabular-nums">
+            <span>{pct.toFixed(0)}% плана</span>
+            {missing > 0 ? <span className="truncate ml-1">−{formatCurrency(missing)}</span> : <span className="text-emerald-600">план выполнен</span>}
+          </div>
+        </div>
+      ) : (
+        <div className="text-[11px] text-muted-foreground mt-1.5">план не задан</div>
+      )}
+      <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 mt-1.5 text-[11px]">
+        {debt > 0 && <span className="text-muted-foreground">долг <b className="font-medium text-foreground tabular-nums">{formatCurrency(debt)}</b></span>}
+        {overdue > 0 && <span className="text-red-600 font-medium">просрочено {overdue}</span>}
+        {pending > 0 && <span className="text-amber-600">на проверке {pending}</span>}
+      </div>
+    </button>
   );
 }
