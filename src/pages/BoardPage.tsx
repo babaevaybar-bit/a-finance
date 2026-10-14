@@ -358,7 +358,7 @@ export default function BoardPage() {
           <div className="ml-auto flex items-center gap-1.5 flex-wrap">
             <div className="relative">
               <Search size={13} className={`absolute left-2 top-1/2 -translate-y-1/2 ${light ? "text-black/50" : "text-white/70"}`} />
-              <input ref={searchRef} value={q} onChange={e => setQ(e.target.value)} placeholder="Поиск   /"
+              <input ref={searchRef} type="search" name="board-card-search" autoComplete="off" data-lpignore="true" data-1p-ignore value={q} onChange={e => setQ(e.target.value)} placeholder="Поиск   /"
                 className={`h-8 w-40 md:w-52 rounded-md text-sm pl-7 pr-2 outline-none focus:bg-white focus:text-foreground focus:placeholder:text-muted-foreground ${light ? 'bg-white/70 placeholder:text-black/45 text-foreground' : 'bg-white/20 placeholder:text-white/70 text-white'}`} />
             </div>
             <Popover>

@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { MapPin, Loader2, Search, X, Plus, Crosshair, ExternalLink, KeyRound, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -42,6 +43,9 @@ export default function MapView({ boardId, lists, cards, onOpen, onChanged, read
   const placingRef = useRef(false);
   const [has2gis, setHas2gis] = useState<boolean | null>(null);
   const [keyInput, setKeyInput] = useState('');
+  // Ползунок «Ключ API»: блок с ключом скрыт, пока его не откроют (положение запоминается)
+  const [showKey, setShowKeyState] = useState(() => { try { return localStorage.getItem('afin-dgis-key-open') === '1'; } catch { return false; } });
+  const setShowKey = (v: boolean) => { setShowKeyState(v); if (!v) setKeyInput(''); try { localStorage.setItem('afin-dgis-key-open', v ? '1' : '0'); } catch { /* ignore */ } };
 
   const located = cards.filter(c => c.lat != null && c.lng != null);
   const pending = cards.filter(c => c.address && (c.lat == null || c.lng == null));
@@ -249,18 +253,31 @@ export default function MapView({ boardId, lists, cards, onOpen, onChanged, read
 
         {/* 2ГИС */}
         <div className="border-t border-border pt-3 space-y-2">
-          <div className="text-xs font-semibold flex items-center gap-1.5"><KeyRound size={12} />2ГИС</div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold flex items-center gap-1.5"><KeyRound size={12} />2ГИС</div>
+            {isDirector && has2gis && (
+              <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none">
+                Ключ API
+                <Switch checked={showKey} onCheckedChange={setShowKey} aria-label="Показать настройки ключа 2ГИС" />
+              </label>
+            )}
+          </div>
           {has2gis ? (
             <div className="text-xs text-green-700">Подключён: поиск идёт по базе 2ГИС (ЖК, организации, адреса).</div>
           ) : (
             <div className="text-xs text-muted-foreground">Сейчас поиск идёт по OpenStreetMap — там нет многих ЖК. С ключом 2ГИС поиск будет как в приложении 2ГИС.</div>
           )}
-          {isDirector && (
+          {isDirector && (!has2gis || showKey) && (
             <div className="space-y-1.5">
-              <Input className="h-8 text-xs" type="password" value={keyInput} onChange={e => setKeyInput(e.target.value)} placeholder={has2gis ? 'Новый ключ 2ГИС' : 'Вставьте ключ 2ГИС'} autoComplete="off" />
+              {/* type="text" + маскировка: браузер не подставляет сюда сохранённый пароль от сайта */}
+              <Input className="h-8 text-xs [-webkit-text-security:disc]" type="text" name="dgis-api-key" inputMode="text"
+                autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} data-lpignore="true" data-1p-ignore
+                value={keyInput} onChange={e => setKeyInput(e.target.value)} placeholder={has2gis ? 'Новый ключ 2ГИС' : 'Вставьте ключ 2ГИС'} />
               <div className="flex gap-1.5">
                 <Button size="sm" className="h-7 text-xs flex-1" disabled={!keyInput.trim()} onClick={async () => {
-                  try { await setDgisKey(keyInput.trim()); setKeyInput(''); setHas2gis(true); toast.success('Ключ 2ГИС сохранён'); }
+                  const key = keyInput.trim();
+                  if (key.length < 20 || /\s/.test(key)) { toast.error('Это не похоже на ключ 2ГИС — скопируйте ключ из Platform Manager'); return; }
+                  try { await setDgisKey(key); setKeyInput(''); setHas2gis(true); setShowKey(false); toast.success('Ключ 2ГИС сохранён'); }
                   catch (e) { toast.error(e instanceof Error ? e.message : 'Не удалось сохранить'); }
                 }}>Сохранить ключ</Button>
                 {has2gis && <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={async () => { await setDgisKey(''); setHas2gis(false); toast('Ключ 2ГИС удалён'); }}>Отключить</Button>}
