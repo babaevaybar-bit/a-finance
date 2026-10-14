@@ -4,7 +4,7 @@ import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Banknote, Factory, CheckCheck, Scale, ClipboardList, KanbanSquare } from 'lucide-react';
-import { getNotifications, markNotificationRead, markAllNotificationsRead, getDealById, notifyCountersChanged } from '@/lib/api';
+import { getNotifications, markNotificationRead, markNotificationsRead, getDealById, notifyCountersChanged } from '@/lib/api';
 import DealFormDialog from '@/components/sales/DealFormDialog';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/utils';
@@ -51,9 +51,17 @@ export default function MessagesPage() {
   }
 
   async function handleMarkAllRead() {
-    if (!profile?.manager_id) return;
+    const ids = items.filter(i => !i.is_read).map(i => i.id);
+    if (!ids.length) return;
+    const before = items;
     setItems(prev => prev.map(i => ({ ...i, is_read: true })));
-    try { await markAllNotificationsRead(profile.manager_id); notifyCountersChanged(); } catch { /* silent */ }
+    try {
+      await markNotificationsRead(ids);
+      notifyCountersChanged();
+    } catch {
+      setItems(before);
+      toast.error('Не удалось отметить сообщения прочитанными');
+    }
   }
 
   const unreadCount = items.filter(i => !i.is_read).length;

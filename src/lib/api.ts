@@ -984,6 +984,13 @@ export async function markAllNotificationsRead(managerId: string): Promise<void>
   const { error } = await supabase.from('notifications').update({ is_read: true }).eq('manager_id', managerId).eq('is_read', false);
   if (error) throw error;
 }
+// Отметить прочитанными конкретные сообщения (то, что видно на экране — у директора это сообщения всех сотрудников)
+export async function markNotificationsRead(ids: string[]): Promise<void> {
+  for (let i = 0; i < ids.length; i += 100) {
+    const { error } = await supabase.from('notifications').update({ is_read: true }).in('id', ids.slice(i, i + 100));
+    if (error) throw error;
+  }
+}
 
 // ─── Шаблоны повторяющихся расходов (аренда, оклад и т.п.) ────────────────
 export async function getRecurringExpenseTemplates(): Promise<RecurringExpenseTemplate[]> {
