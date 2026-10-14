@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Banknote, Factory, CheckCheck, Scale, ClipboardList } from 'lucide-react';
+import { Banknote, Factory, CheckCheck, Scale, ClipboardList, KanbanSquare } from 'lucide-react';
 import { getNotifications, markNotificationRead, markAllNotificationsRead, getDealById, notifyCountersChanged } from '@/lib/api';
 import DealFormDialog from '@/components/sales/DealFormDialog';
 import { toast } from 'sonner';
@@ -45,6 +45,7 @@ export default function MessagesPage() {
       return;
     }
     if (n.type === 'incomplete_deals') { navigate('/sales'); return; }
+    if (n.link) { navigate(n.link); return; }
     if (n.trello_card_id) navigate(`/production?card=${n.trello_card_id}`);
     else navigate('/production');
   }
@@ -81,8 +82,8 @@ export default function MessagesPage() {
         ) : (
           <div className="space-y-2">
             {items.map(n => {
-              const Icon = n.type === 'payment_due' ? Banknote : n.type === 'amount_mismatch' ? Scale : n.type === 'incomplete_deals' ? ClipboardList : Factory;
-              const iconColor = n.type === 'payment_due' || n.type === 'incomplete_deals' ? 'text-amber-600' : n.type === 'amount_mismatch' ? 'text-destructive' : 'text-primary';
+              const Icon = n.type === 'payment_due' ? Banknote : n.type === 'amount_mismatch' ? Scale : n.type === 'incomplete_deals' ? ClipboardList : n.type === 'card_due' ? KanbanSquare : Factory;
+              const iconColor = n.type === 'payment_due' || n.type === 'incomplete_deals' || n.type === 'card_due' ? 'text-amber-600' : n.type === 'amount_mismatch' ? 'text-destructive' : 'text-primary';
               return (
                 <Card
                   key={n.id}

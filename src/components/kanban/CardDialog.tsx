@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import {
   CreditCard, AlignLeft, CheckSquare, Paperclip, MessageSquare, Users, Tag, Clock, Image as ImageIcon,
   ArrowRight, Copy, Archive, Trash2, Activity, Link2, Plus, Check, X, FileText, Download,
+  SlidersHorizontal, MapPin, LayoutTemplate, UserRound, CalendarClock,
 } from 'lucide-react';
 import { getRecentDealsForLinking } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -17,7 +18,8 @@ import {
   updateCard, deleteCard, copyCard, toggleCardLabel, toggleCardMember, createLabel,
   getCardDetails, addChecklist, renameChecklist, deleteChecklist, addChecklistItem, updateChecklistItem, deleteChecklistItem,
   addComment, deleteComment, uploadAttachment, attachmentUrl, deleteAttachment, logActivity, positionBetween,
-  LABEL_COLORS, labelHex, lastOf,
+  LABEL_COLORS, labelHex, lastOf, setFieldValue, geocodeAddress,
+  type KCustomField, type KTrigger,
   type KBoard, type KCard, type KList, type KLabel, type KChecklist, type KComment, type KAttachment, type KActivity,
 } from '@/lib/kanban';
 import { Avatar, dueState, DUE_STYLE, formatDue } from './KanbanBits';
@@ -30,11 +32,28 @@ function toLocalInput(iso: string | null): string {
 }
 
 /** Открытая карточка — как в Trello: слева содержимое, справа действия. */
-export default function CardDialog({ card, board, lists, labels, managers, cardsOfList, onLabelsChanged, onClose, onChanged }: {
+export default function CardDialog({ card, board, lists, labels, managers, cardsOfList, onLabelsChanged, onClose, onChanged, fields = [], readOnly = false, onAutomation }: {
   card: KCard; board: KBoard; lists: KList[]; labels: KLabel[]; managers: Manager[];
   cardsOfList: (listId: string) => KCard[];
   onLabelsChanged: (l: KLabel[]) => void; onClose: () => void; onChanged: () => void;
+  fields?: KCustomField[]; readOnly?: boolean; onAutomation?: (event: KTrigger, cardId: string) => void;
 }) {
+  const [address, setAddress] = useState(card.address ?? '');
+  useEffect(() => { setAddress(card.address ?? ''); }, [card.address]);
+  async function saveAddress() {
+    const a = address.trim();
+    if (a === (card.address ?? '')) return;
+    await updateCard(card.id, { address: a || null, lat: null, lng: null });
+    onChanged();
+    if (a) {
+      const p = await geocodeAddress(a);
+      if (p) { await updateCard(card.id, { lat: p.lat, lng: p.lng }); onChanged(); }
+    }
+  }
+  async function saveField(f: KCustomField, value: string | null) {
+    await setFieldValue(card.id, f.id, value);
+    onChanged();
+  }
   const [title, setTitle] = useState(card.title);
   const [desc, setDesc] = useState(card.description ?? '');
   const [editingDesc, setEditingDesc] = useState(false);
@@ -76,10 +95,13 @@ export default function CardDialog({ card, board, lists, labels, managers, cards
     await loadDetails(); onChanged();
   }
   async function toggleItem(itemId: string, done: boolean, text: string) {
-    setChecklists(prev => prev.map(c => ({ ...c, items: c.items.map(i => i.id === itemId ? { ...i, done } : i) })));
+    const next = checklists.map(c => ({ ...c, items: c.items.map(i => i.id === itemId ? { ...i, done } : i) }));
+    setChecklists(next);
     await updateChecklistItem(itemId, { done });
     if (done) logActivity(board.id, `отметил(а) «${text}» выполненным в «${card.title}»`, card.id);
     onChanged();
+    const cl = next.find(c => c.items.some(i => i.id === itemId));
+    if (done && cl && cl.items.length > 0 && cl.items.every(i => i.done)) onAutomation?.({ type: 'checklist_done' }, card.id);
   }
 
   // ── Файлы ──
@@ -125,7 +147,7 @@ export default function CardDialog({ card, board, lists, labels, managers, cards
           const on = card.member_ids.includes(m.id);
           return (
             <button key={m.id} type="button" className="w-full flex items-center gap-2 rounded px-1.5 py-1 hover:bg-muted text-sm"
-              onClick={async () => { await toggleCardMember(card.id, m.id, !on); if (!on) logActivity(board.id, `добавил(а) ${m.name} в «${card.title}»`, card.id); onChanged(); }}>
+              onClick={async () => { await toggleCardMember(card.id, m.id, !on); if (!on) { logActivity(board.id, `добавил(а) ${m.name} в «${card.title}»`, card.id); onAutomation?.({ type: 'member_added', manager_id: m.id }, card.id); } onChanged(); }}>
               <Avatar m={m} size={22} /><span className="flex-1 text-left">{m.name}</span>{on && <Check size={14} />}
             </button>
           );
@@ -137,7 +159,7 @@ export default function CardDialog({ card, board, lists, labels, managers, cards
   const labelsPicker = (
     <Popover>
       <PopoverTrigger asChild><div><SideBtn icon={Tag}>Метки</SideBtn></div></PopoverTrigger>
-      <PopoverContent className="w-64 p-2 space-y-1.5" align="start"><LabelsPicker card={card} board={board} labels={labels} onLabelsChanged={onLabelsChanged} onChanged={onChanged} /></PopoverContent>
+      <PopoverContent className="w-64 p-2 space-y-1.5" align="start"><LabelsPicker card={card} board={board} labels={labels} onLabelsChanged={onLabelsChanged} onChanged={onChanged} onAutomation={onAutomation} /></PopoverContent>
     </Popover>
   );
 
@@ -187,7 +209,7 @@ export default function CardDialog({ card, board, lists, labels, managers, cards
             onClick={async () => {
               const prevLast = lastOf(cardsOfList(l.id).filter(c => c.id !== card.id));
               const pos = positionBetween(prevLast?.position, undefined);
-              if (mode === 'move') await save({ list_id: l.id, position: pos }, `переместил(а) «${card.title}»: ${list?.title} → ${l.title}`);
+              if (mode === 'move') { await save({ list_id: l.id, position: pos }, `переместил(а) «${card.title}»: ${list?.title} → ${l.title}`); onAutomation?.({ type: 'moved_to_list', list_id: l.id }, card.id); }
               else { await copyCard(card, l.id, pos); logActivity(board.id, `скопировал(а) «${card.title}» в «${l.title}»`); onChanged(); toast.success('Карточка скопирована'); }
             }}>
             {l.title}{l.id === card.list_id ? ' (текущая)' : ''}
@@ -257,7 +279,7 @@ export default function CardDialog({ card, board, lists, labels, managers, cards
                     <div className="space-y-1">
                       <div className="text-xs font-semibold text-muted-foreground">{card.start_at && card.due_at ? 'Даты' : card.due_at ? 'Срок' : 'Начало'}</div>
                       <div className="flex items-center gap-2 h-8">
-                        {card.due_at && <Checkbox checked={card.due_done} onCheckedChange={v => save({ due_done: !!v }, v ? `отметил(а) «${card.title}» выполненной` : undefined)} aria-label="Выполнено" />}
+                        {card.due_at && <Checkbox disabled={readOnly} checked={card.due_done} onCheckedChange={async v => { await save({ due_done: !!v }, v ? `отметил(а) «${card.title}» выполненной` : undefined); if (v) onAutomation?.({ type: 'due_done' }, card.id); }} aria-label="Выполнено" />}
                         <span className="text-sm rounded bg-muted px-2 py-1">
                           {card.start_at ? new Date(card.start_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : ''}
                           {card.start_at && card.due_at ? ' — ' : ''}
@@ -276,6 +298,46 @@ export default function CardDialog({ card, board, lists, labels, managers, cards
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* Свои поля и адрес */}
+              {(
+                true) && (
+                <section className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <SlidersHorizontal size={18} className="text-muted-foreground" />
+                    <h3 className="font-semibold text-sm flex-1">Поля</h3>
+                  </div>
+                  <div className="pl-7 grid sm:grid-cols-2 gap-x-4 gap-y-2.5">
+                    <div className="sm:col-span-2 space-y-1">
+                      <div className="text-xs text-muted-foreground flex items-center gap-1"><MapPin size={11} />Адрес (для вида «Карта»)</div>
+                      <Input className="h-8" value={address} disabled={readOnly} placeholder="г. Шымкент, ул. …, дом" onChange={e => setAddress(e.target.value)}
+                        onBlur={saveAddress} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
+                      {card.address && card.lat == null && <div className="text-[11px] text-amber-700">Точка на карте не найдена — уточните адрес (город, улица, дом)</div>}
+                    </div>
+                    {fields.map(f => {
+                      const v = card.field_values?.[f.id] ?? '';
+                      return (
+                        <div key={f.id} className="space-y-1 min-w-0">
+                          <div className="text-xs text-muted-foreground truncate">{f.name}</div>
+                          {f.type === 'checkbox' ? (
+                            <div className="h-8 flex items-center"><Checkbox disabled={readOnly} checked={v === 'true'} onCheckedChange={c => saveField(f, c ? 'true' : null)} /></div>
+                          ) : f.type === 'select' ? (
+                            <select disabled={readOnly} className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm" value={v} onChange={e => saveField(f, e.target.value || null)}>
+                              <option value="">—</option>
+                              {f.options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                            </select>
+                          ) : (
+                            <Input className="h-8" disabled={readOnly} key={`${card.id}-${f.id}-${v}`} defaultValue={f.type === 'date' ? v.slice(0, 10) : v}
+                              type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                              onBlur={e => { if (e.target.value !== (f.type === 'date' ? v.slice(0, 10) : v)) saveField(f, e.target.value || null); }}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
               )}
 
               {/* Описание */}
@@ -361,6 +423,30 @@ export default function CardDialog({ card, board, lists, labels, managers, cards
                         <div key={i.id} className="group flex items-start gap-2 rounded px-1 py-1 hover:bg-muted/60">
                           <Checkbox className="mt-0.5" checked={i.done} onCheckedChange={v => toggleItem(i.id, !!v, i.text)} />
                           <span className={`flex-1 text-sm break-words ${i.done ? 'line-through text-muted-foreground' : ''}`}>{i.text}</span>
+                          {i.due_at && (
+                            <span className={`text-[10px] rounded px-1.5 py-0.5 shrink-0 ${!i.done && new Date(i.due_at) < new Date() ? 'bg-red-600 text-white' : 'bg-muted'}`}>
+                              {new Date(i.due_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                            </span>
+                          )}
+                          {i.manager_id && managers.find(m => m.id === i.manager_id) && <Avatar m={managers.find(m => m.id === i.manager_id)!} size={20} />}
+                          {!readOnly && (
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button type="button" className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground" aria-label="Ответственный и срок пункта"><UserRound size={14} /></button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-60 p-2 space-y-2" align="end">
+                                <div className="text-xs font-semibold text-muted-foreground">Ответственный</div>
+                                <select className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm" value={i.manager_id ?? ''}
+                                  onChange={async e => { await updateChecklistItem(i.id, { manager_id: e.target.value || null }); await loadDetails(); }}>
+                                  <option value="">—</option>
+                                  {managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                </select>
+                                <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1"><CalendarClock size={11} />Срок пункта</div>
+                                <Input type="date" className="h-8" defaultValue={i.due_at ? i.due_at.slice(0, 10) : ''}
+                                  onChange={async e => { await updateChecklistItem(i.id, { due_at: e.target.value ? new Date(e.target.value + 'T18:00:00').toISOString() : null }); await loadDetails(); }} />
+                              </PopoverContent>
+                            </Popover>
+                          )}
                           <button type="button" className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive" aria-label="Удалить пункт"
                             onClick={async () => { await deleteChecklistItem(i.id); await loadDetails(); onChanged(); }}><X size={14} /></button>
                         </div>
@@ -412,7 +498,9 @@ export default function CardDialog({ card, board, lists, labels, managers, cards
             </div>
 
             {/* Действия */}
-            <aside className="space-y-4">
+            {readOnly ? (
+              <aside className="text-xs text-muted-foreground rounded-lg bg-muted/50 p-3 h-fit">Только просмотр: менять эту доску вам не разрешено.</aside>
+            ) : <aside className="space-y-4">
               <div className="space-y-1.5">
                 <div className="text-[11px] font-semibold text-muted-foreground">Добавить на карточку</div>
                 {membersPicker}
@@ -428,6 +516,9 @@ export default function CardDialog({ card, board, lists, labels, managers, cards
                 <div className="text-[11px] font-semibold text-muted-foreground">Действия</div>
                 {movePicker('move')}
                 {movePicker('copy')}
+                <SideBtn icon={LayoutTemplate} onClick={() => save({ is_template: !card.is_template }, card.is_template ? undefined : `сделал(а) «${card.title}» шаблоном`)}>
+                  {card.is_template ? 'Убрать из шаблонов' : 'Сделать шаблоном'}
+                </SideBtn>
                 <SideBtn icon={Archive} onClick={async () => { await save({ archived: true }, `архивировал(а) «${card.title}»`); onClose(); }}>Архивировать</SideBtn>
                 <SideBtn icon={Trash2} onClick={async () => {
                   if (!window.confirm(`Удалить карточку «${card.title}» навсегда? Комментарии и файлы тоже удалятся.`)) return;
@@ -435,7 +526,7 @@ export default function CardDialog({ card, board, lists, labels, managers, cards
                   await deleteCard(card.id); logActivity(board.id, `удалил(а) карточку «${card.title}»`); onClose(); onChanged();
                 }}>Удалить</SideBtn>
               </div>
-            </aside>
+            </aside>}
           </div>
         </div>
       </DialogContent>
@@ -443,8 +534,9 @@ export default function CardDialog({ card, board, lists, labels, managers, cards
   );
 }
 
-function LabelsPicker({ card, board, labels, onLabelsChanged, onChanged }: {
+function LabelsPicker({ card, board, labels, onLabelsChanged, onChanged, onAutomation }: {
   card: KCard; board: KBoard; labels: KLabel[]; onLabelsChanged: (l: KLabel[]) => void; onChanged: () => void;
+  onAutomation?: (event: KTrigger, cardId: string) => void;
 }) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
@@ -478,7 +570,7 @@ function LabelsPicker({ card, board, labels, onLabelsChanged, onChanged }: {
         const on = card.label_ids.includes(l.id);
         return (
           <button key={l.id} type="button" className="w-full flex items-center gap-2"
-            onClick={async () => { await toggleCardLabel(card.id, l.id, !on); onChanged(); }}>
+            onClick={async () => { await toggleCardLabel(card.id, l.id, !on); onChanged(); if (!on) onAutomation?.({ type: 'label_added', label_id: l.id }, card.id); }}>
             <span className={`h-4 w-4 rounded border flex items-center justify-center ${on ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>{on && <Check size={11} />}</span>
             <span className="flex-1 h-8 rounded px-2 text-sm leading-8 font-semibold text-black/75 text-left truncate" style={{ background: labelHex(l.color) }}>{l.name}</span>
           </button>

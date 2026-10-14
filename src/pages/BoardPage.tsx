@@ -12,20 +12,39 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { toast } from 'sonner';
 import {
   ArrowLeft, Star, Plus, X, MoreHorizontal, Filter, Archive, Activity, Tag, Palette, Search, RotateCcw, Trash2,
+  Columns3, Table2, CalendarDays, GanttChart, BarChart3, Map as MapIcon, Zap, SlidersHorizontal, Eye, Bookmark, LayoutTemplate,
+  ChevronsLeftRight, ChevronsRightLeft,
 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import TableView from '@/components/kanban/views/TableView';
+import CalendarView from '@/components/kanban/views/CalendarView';
+import TimelineView from '@/components/kanban/views/TimelineView';
+import DashboardView from '@/components/kanban/views/DashboardView';
+import MapView from '@/components/kanban/views/MapView';
+import { AutomationPanel, FieldsPanel, ObserversPanel } from '@/components/kanban/BoardPanels';
 import { supabase } from '@/db/supabase';
 import { getManagers } from '@/lib/api';
 import type { Manager } from '@/types/types';
 import {
   getBoard, getBoardContent, updateBoard, createList, updateList, createCard, updateCard, deleteCard,
   getBoardActivity, createLabel, updateLabel, deleteLabel, logActivity, positionBetween,
-  BOARD_BACKGROUNDS, LABEL_COLORS, labelHex, lastOf,
-  type KBoard, type KList, type KCard, type KLabel, type KActivity,
+  BOARD_BACKGROUNDS, LABEL_COLORS, LIST_COLORS, labelHex, lastOf, runAutomations, copyCard, fieldDisplay,
+  getObservers, getSavedFilters, saveFilter, deleteSavedFilter,
+  type KBoard, type KList, type KCard, type KLabel, type KActivity, type KCustomField, type KSavedFilter, type KTrigger,
 } from '@/lib/kanban';
 import { CardTile, Avatar, dueState } from '@/components/kanban/KanbanBits';
 import CardDialog from '@/components/kanban/CardDialog';
 
 type DueFilter = 'all' | 'overdue' | 'soon' | 'none' | 'done';
+type ViewMode = 'board' | 'table' | 'calendar' | 'timeline' | 'dashboard' | 'map';
+const VIEWS: { key: ViewMode; label: string; icon: React.ElementType }[] = [
+  { key: 'board', label: 'Доска', icon: Columns3 },
+  { key: 'table', label: 'Таблица', icon: Table2 },
+  { key: 'calendar', label: 'Календарь', icon: CalendarDays },
+  { key: 'timeline', label: 'Таймлайн', icon: GanttChart },
+  { key: 'dashboard', label: 'Дашборд', icon: BarChart3 },
+  { key: 'map', label: 'Карта', icon: MapIcon },
+];
 
 export default function BoardPage() {
   const { id = '' } = useParams();
@@ -38,7 +57,14 @@ export default function BoardPage() {
   const [cards, setCards] = useState<KCard[]>([]);
   const [labels, setLabels] = useState<KLabel[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
+  const [fields, setFields] = useState<KCustomField[]>([]);
   const [loading, setLoading] = useState(true);
+  const { user, isDirector } = useAuth();
+  const [readOnly, setReadOnly] = useState(false);
+  const [savedFilters, setSavedFilters] = useState<KSavedFilter[]>([]);
+  const viewKey = `afin-board-view-${id}`;
+  const [view, setViewState] = useState<ViewMode>(() => { try { return (localStorage.getItem(viewKey) as ViewMode) || 'board'; } catch { return 'board'; } });
+  const setView = (v: ViewMode) => { setViewState(v); try { localStorage.setItem(viewKey, v); } catch { /* ignore */ } };
 
   // фильтры
   const [q, setQ] = useState('');
@@ -61,19 +87,29 @@ export default function BoardPage() {
   const [editingTitle, setEditingTitle] = useState(false);
 
   // меню доски
-  const [menuOpen, setMenuOpen] = useState<null | 'activity' | 'archive' | 'labels'>(null);
+  const [menuOpen, setMenuOpen] = useState<null | 'activity' | 'archive' | 'labels' | 'automation' | 'fields' | 'observers'>(null);
   const [activity, setActivity] = useState<KActivity[]>([]);
 
   const load = useCallback(async () => {
     try {
       const [b, content] = await Promise.all([getBoard(id), getBoardContent(id)]);
       if (!b) { toast.error('Доска не найдена'); navigate('/boards'); return; }
-      setBoard(b); setLists(content.lists); setCards(content.cards); setLabels(content.labels);
+      setBoard(b); setLists(content.lists); setCards(content.cards); setLabels(content.labels); setFields(content.fields);
     } catch { toast.error('Не удалось загрузить доску'); }
     finally { setLoading(false); }
   }, [id, navigate]);
 
   useEffect(() => { load(); getManagers().then(m => setManagers(m.filter(x => x.is_active))).catch(() => {}); }, [load]);
+  useEffect(() => {
+    getSavedFilters(id).then(setSavedFilters).catch(() => {});
+    if (user && !isDirector) getObservers(id).then(o => setReadOnly(o.includes(user.id))).catch(() => {});
+  }, [id, user, isDirector]);
+
+  // Запуск правил автоматизации после действия; если что-то сработало — обновляем доску
+  async function automate(event: KTrigger, cardId: string) {
+    const n = await runAutomations(id, event, cardId);
+    if (n > 0) { toast.message(`Автоматизация: сработало правил — ${n}`); load(); }
+  }
 
   // Живое обновление: изменения других сотрудников подтягиваются сами
   const reloadTimer = useRef<number | null>(null);
@@ -90,6 +126,7 @@ export default function BoardPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_card_members' }, schedule)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_checklist_items' }, schedule)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_comments' }, schedule)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_card_field_values' }, schedule)
       .subscribe();
     return () => { supabase.removeChannel(ch); if (reloadTimer.current) window.clearTimeout(reloadTimer.current); };
   }, [id, load]);
@@ -111,6 +148,12 @@ export default function BoardPage() {
   }, [q, fLabels, fMembers, fDue]);
   const cardsOf = useCallback((listId: string) =>
     cards.filter(c => c.list_id === listId && !c.archived).sort((a, b) => a.position - b.position), [cards]);
+  const templates = useMemo(() => cards.filter(c => c.is_template && !c.archived), [cards]);
+  // Для видов (таблица, календарь…) — рабочие карточки без шаблонов, с учётом фильтра
+  const viewCards = useMemo(() => {
+    const listIds = new Set(lists.filter(l => !l.archived).map(l => l.id));
+    return cards.filter(c => !c.archived && !c.is_template && listIds.has(c.list_id) && (!filtering || matches(c)));
+  }, [cards, lists, filtering, matches]);
 
   // ── Карточки: перетаскивание ──
   function onCardDragOver(e: React.DragEvent, listId: string, index: number) {
@@ -148,6 +191,7 @@ export default function BoardPage() {
         const from = lists.find(l => l.id === moving.list_id)?.title;
         const to = lists.find(l => l.id === hint.listId)?.title;
         logActivity(id, `переместил(а) «${moving.title}»: ${from} → ${to}`, cardId);
+        automate({ type: 'moved_to_list', list_id: hint.listId }, cardId);
       }
     } catch { toast.error('Не удалось переместить'); load(); }
   }
@@ -175,8 +219,22 @@ export default function BoardPage() {
     if (!title) { setAddingIn(null); return; }
     const tail = lastOf(cardsOf(listId));
     setNewCardTitle('');
-    try { await createCard(id, listId, title, positionBetween(tail?.position, undefined)); await load(); }
+    try {
+      const newId = await createCard(id, listId, title, positionBetween(tail?.position, undefined));
+      await load();
+      if (newId) automate({ type: 'card_created', list_id: listId }, newId);
+    }
     catch { toast.error('Не удалось добавить карточку'); }
+  }
+  async function addFromTemplate(listId: string, t: KCard) {
+    const tail = lastOf(cardsOf(listId));
+    try {
+      const newId = await copyCard(t, listId, positionBetween(tail?.position, undefined), t.title);
+      logActivity(id, `создал(а) карточку из шаблона «${t.title}»`, newId);
+      await load();
+      setSearchParams({ card: newId });
+      automate({ type: 'card_created', list_id: listId }, newId);
+    } catch { toast.error('Не удалось создать из шаблона'); }
   }
   async function addList() {
     const title = newListTitle.trim();
@@ -212,7 +270,7 @@ export default function BoardPage() {
     load();
   }
 
-  async function openMenu(kind: 'activity' | 'archive' | 'labels') {
+  async function openMenu(kind: 'activity' | 'archive' | 'labels' | 'automation' | 'fields' | 'observers') {
     setMenuOpen(kind);
     if (kind === 'activity') setActivity(await getBoardActivity(id));
   }
@@ -245,6 +303,7 @@ export default function BoardPage() {
             <Star size={16} className={board.starred ? 'fill-yellow-300 text-yellow-300' : ''} />
           </Button>
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-300 text-amber-950 font-medium">в разработке</span>
+          {readOnly && <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/25 font-medium inline-flex items-center gap-1"><Eye size={11} />только просмотр</span>}
 
           <div className="ml-auto flex items-center gap-1.5 flex-wrap">
             <div className="relative">
@@ -286,7 +345,32 @@ export default function BoardPage() {
                     ))}
                   </div>
                 </div>
-                {filtering && <Button size="sm" variant="outline" className="w-full" onClick={() => { setQ(''); setFLabels([]); setFMembers([]); setFDue('all'); }}>Сбросить фильтр</Button>}
+                {filtering && (
+                  <div className="flex gap-1.5">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => { setQ(''); setFLabels([]); setFMembers([]); setFDue('all'); }}>Сбросить</Button>
+                    <Button size="sm" variant="secondary" className="flex-1" onClick={async () => {
+                      const name = window.prompt('Название фильтра, например «Мои просроченные»');
+                      if (!name?.trim()) return;
+                      await saveFilter(id, name.trim(), { q, labels: fLabels, members: fMembers, due: fDue });
+                      setSavedFilters(await getSavedFilters(id));
+                    }}><Bookmark size={12} className="mr-1" />Сохранить</Button>
+                  </div>
+                )}
+                {savedFilters.length > 0 && (
+                  <div className="space-y-1 border-t border-border pt-2">
+                    <div className="text-xs font-semibold text-muted-foreground">Сохранённые фильтры</div>
+                    {savedFilters.map(sf => (
+                      <div key={sf.id} className="flex items-center gap-1">
+                        <button type="button" className="flex-1 text-left text-sm rounded px-2 py-1 hover:bg-muted truncate"
+                          onClick={() => { setQ(sf.filter.q ?? ''); setFLabels(sf.filter.labels ?? []); setFMembers(sf.filter.members ?? []); setFDue((sf.filter.due as DueFilter) ?? 'all'); }}>
+                          <Bookmark size={12} className="inline mr-1.5" />{sf.name}
+                        </button>
+                        <button type="button" aria-label="Удалить фильтр" className="text-muted-foreground hover:text-destructive"
+                          onClick={async () => { await deleteSavedFilter(sf.id); setSavedFilters(p => p.filter(x => x.id !== sf.id)); }}><X size={13} /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </PopoverContent>
             </Popover>
             <div className="hidden md:flex -space-x-1.5 mx-1">{managers.slice(0, 5).map(m => <Avatar key={m.id} m={m} size={26} />)}</div>
@@ -295,6 +379,10 @@ export default function BoardPage() {
                 <Button size="icon" variant="ghost" className="h-8 w-8 text-white hover:bg-white/20" aria-label="Меню доски"><MoreHorizontal size={16} /></Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => openMenu('automation')}><Zap size={14} className="mr-2" />Автоматизация</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openMenu('fields')}><SlidersHorizontal size={14} className="mr-2" />Свои поля</DropdownMenuItem>
+                {isDirector && <DropdownMenuItem onClick={() => openMenu('observers')}><Eye size={14} className="mr-2" />Наблюдатели</DropdownMenuItem>}
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => openMenu('activity')}><Activity size={14} className="mr-2" />История действий</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => openMenu('labels')}><Tag size={14} className="mr-2" />Метки</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => openMenu('archive')}><Archive size={14} className="mr-2" />Архив ({archivedCards.length + archivedLists.length})</DropdownMenuItem>
@@ -318,20 +406,54 @@ export default function BoardPage() {
           </div>
         </div>
 
+        {/* Виды доски */}
+        <div className="flex items-center gap-1 px-3 md:px-4 py-1.5 bg-black/10 overflow-x-auto">
+          {VIEWS.map(v => (
+            <button key={v.key} type="button" onClick={() => setView(v.key)}
+              className={`shrink-0 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm transition-colors ${view === v.key ? 'bg-white text-foreground font-medium shadow-sm' : 'text-white/90 hover:bg-white/20'}`}>
+              <v.icon size={14} />{v.label}
+            </button>
+          ))}
+          {filtering && view !== 'board' && <span className="ml-2 text-xs text-white/90 shrink-0">фильтр включён · {viewCards.length} карт.</span>}
+        </div>
+
+        {view === 'table' && <div className="flex-1 min-h-0"><TableView boardTitle={board.title} lists={activeLists} cards={viewCards} labels={labels} managers={managers} fields={fields} onOpen={cid => setSearchParams({ card: cid })} /></div>}
+        {view === 'calendar' && <div className="flex-1 min-h-0 overflow-auto"><CalendarView lists={activeLists} cards={viewCards} readOnly={readOnly} onOpen={cid => setSearchParams({ card: cid })}
+          onMove={async (cid, due) => { setCards(p => p.map(c => c.id === cid ? { ...c, due_at: due } : c)); await updateCard(cid, { due_at: due }).catch(() => load()); logActivity(id, 'перенёс(ла) срок в календаре', cid); }} /></div>}
+        {view === 'timeline' && <div className="flex-1 min-h-0"><TimelineView lists={activeLists} cards={viewCards} readOnly={readOnly} onOpen={cid => setSearchParams({ card: cid })}
+          onShift={async (cid, start, due) => { setCards(p => p.map(c => c.id === cid ? { ...c, start_at: start, due_at: due } : c)); await updateCard(cid, { start_at: start, due_at: due }).catch(() => load()); logActivity(id, 'сдвинул(а) даты на таймлайне', cid); }} /></div>}
+        {view === 'dashboard' && <div className="flex-1 min-h-0"><DashboardView lists={activeLists} cards={viewCards} labels={labels} managers={managers} /></div>}
+        {view === 'map' && <div className="flex-1 min-h-0"><MapView lists={activeLists} cards={viewCards} readOnly={readOnly} onOpen={cid => setSearchParams({ card: cid })} onChanged={load} /></div>}
+
         {/* Колонки */}
-        <div className="flex-1 overflow-x-auto overflow-y-hidden kanban-scroll">
+        {view === 'board' && <div className="flex-1 overflow-x-auto overflow-y-hidden kanban-scroll">
           <div className="flex items-start gap-3 p-3 md:p-4 h-full">
             {activeLists.map(list => {
               const all = cardsOf(list.id);
               const visible = filtering ? all.filter(matches) : all;
+              if (list.collapsed) {
+                return (
+                  <button key={list.id} type="button" title="Развернуть колонку"
+                    onClick={async () => { setLists(p => p.map(x => x.id === list.id ? { ...x, collapsed: false } : x)); await updateList(list.id, { collapsed: false }); }}
+                    onDragOver={e => { if (dragCard.current) { e.preventDefault(); onListBodyDragOver(e, list.id); } }}
+                    onDrop={e => onCardDrop(e)}
+                    className="shrink-0 w-10 max-h-full rounded-xl bg-[#f1f2f4] dark:bg-zinc-800 shadow-sm flex flex-col items-center gap-2 py-3 hover:brightness-95"
+                    style={list.color ? { borderTop: `4px solid ${labelHex(list.color)}` } : undefined}>
+                    <ChevronsLeftRight size={14} className="text-muted-foreground" />
+                    <span className="text-[11px] text-muted-foreground tabular-nums">{all.length}</span>
+                    <span className="text-sm font-semibold [writing-mode:vertical-rl] rotate-180 truncate max-h-[60vh]">{list.title}</span>
+                  </button>
+                );
+              }
               return (
                 <div key={list.id}
-                  className="shrink-0 w-[272px] max-h-full flex flex-col rounded-xl bg-[#f1f2f4] dark:bg-zinc-800 shadow-sm"
+                  className="shrink-0 w-[272px] max-h-full flex flex-col rounded-xl bg-[#f1f2f4] dark:bg-zinc-800 shadow-sm overflow-hidden"
+                  style={list.color ? { borderTop: `4px solid ${labelHex(list.color)}`, background: `color-mix(in srgb, ${labelHex(list.color)} 14%, #f1f2f4)` } : undefined}
                   onDragOver={e => { if (dragList.current) e.preventDefault(); else onListBodyDragOver(e, list.id); }}
                   onDrop={e => { if (dragList.current) { e.preventDefault(); onListDrop(list.id); } else onCardDrop(e); }}>
                   {/* заголовок колонки — за него можно перетаскивать колонку */}
                   <div className="flex items-center gap-1 px-2 pt-2 pb-1 cursor-grab active:cursor-grabbing"
-                    draggable={editingListId !== list.id}
+                    draggable={!readOnly && editingListId !== list.id}
                     onDragStart={e => { dragList.current = list.id; e.dataTransfer.effectAllowed = 'move'; }}
                     onDragEnd={() => { dragList.current = null; }}>
                     {editingListId === list.id ? (
@@ -339,7 +461,7 @@ export default function BoardPage() {
                         onBlur={e => renameList(list, e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setEditingListId(null); }} />
                     ) : (
-                      <button type="button" className="flex-1 text-left text-sm font-semibold px-1.5 py-1 rounded hover:bg-black/5 truncate" onClick={() => setEditingListId(list.id)}>
+                      <button type="button" className="flex-1 text-left text-sm font-semibold px-1.5 py-1 rounded hover:bg-black/5 truncate" onClick={() => { if (!readOnly) setEditingListId(list.id); }}>
                         {list.title}
                       </button>
                     )}
@@ -349,7 +471,23 @@ export default function BoardPage() {
                         <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Меню колонки"><MoreHorizontal size={14} /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-56">
-                        <DropdownMenuItem onClick={() => { setAddingIn(list.id); setNewCardTitle(''); }}><Plus size={14} className="mr-2" />Добавить карточку</DropdownMenuItem>
+                        <DropdownMenuItem disabled={readOnly} onClick={() => { setAddingIn(list.id); setNewCardTitle(''); }}><Plus size={14} className="mr-2" />Добавить карточку</DropdownMenuItem>
+                        <DropdownMenuItem onClick={async () => { setLists(p => p.map(x => x.id === list.id ? { ...x, collapsed: true } : x)); await updateList(list.id, { collapsed: true }); }}>
+                          <ChevronsRightLeft size={14} className="mr-2" />Свернуть колонку
+                        </DropdownMenuItem>
+                        {!readOnly && (
+                          <div className="px-2 py-1.5">
+                            <div className="text-xs text-muted-foreground mb-1.5">Цвет колонки</div>
+                            <div className="grid grid-cols-6 gap-1">
+                              {LIST_COLORS.map(c => (
+                                <button key={c} type="button" aria-label={c} onClick={async () => { setLists(p => p.map(x => x.id === list.id ? { ...x, color: c } : x)); await updateList(list.id, { color: c }); }}
+                                  className={`h-6 rounded ${list.color === c ? 'ring-2 ring-offset-1 ring-primary' : ''}`} style={{ background: labelHex(c) }} />
+                              ))}
+                              <button type="button" aria-label="Без цвета" onClick={async () => { setLists(p => p.map(x => x.id === list.id ? { ...x, color: null } : x)); await updateList(list.id, { color: null }); }}
+                                className="h-6 rounded border border-border text-[10px]">✕</button>
+                            </div>
+                          </div>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={() => sortList(list, 'due')}>Сортировать по сроку</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => sortList(list, 'created')}>Сортировать по дате создания</DropdownMenuItem>
@@ -366,11 +504,11 @@ export default function BoardPage() {
                     {visible.map((c, i) => (
                       <React.Fragment key={c.id}>
                         {dropHint?.listId === list.id && dropHint.index === i && draggingId && <div className="h-1.5 rounded bg-primary/60" />}
-                        <div draggable
+                        <div draggable={!readOnly}
                           onDragStart={e => { dragCard.current = c.id; setDraggingId(c.id); e.dataTransfer.effectAllowed = 'move'; }}
                           onDragEnd={() => { dragCard.current = null; setDraggingId(null); setDropHint(null); }}
                           onDragOver={e => onCardDragOver(e, list.id, i)}>
-                          <CardTile card={c} labels={labels} members={managers} dragging={draggingId === c.id}
+                          <CardTile card={c} labels={labels} members={managers} fields={fields} dragging={draggingId === c.id}
                             onOpen={() => setSearchParams({ card: c.id })} />
                         </div>
                       </React.Fragment>
@@ -385,11 +523,25 @@ export default function BoardPage() {
                         <div className="flex items-center gap-1">
                           <Button size="sm" className="h-8" onClick={() => addCard(list.id)}>Добавить карточку</Button>
                           <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setAddingIn(null)}><X size={16} /></Button>
+                          {templates.length > 0 && (
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button size="icon" variant="ghost" className="h-8 w-8 ml-auto" aria-label="Из шаблона" title="Создать из шаблона"><LayoutTemplate size={15} /></Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-60 p-2 space-y-1" align="end">
+                                <div className="text-xs font-semibold text-muted-foreground px-1 pb-1">Создать из шаблона</div>
+                                {templates.map(t => (
+                                  <button key={t.id} type="button" className="w-full text-left rounded px-2 py-1.5 text-sm hover:bg-muted truncate"
+                                    onClick={() => { setAddingIn(null); addFromTemplate(list.id, t); }}>{t.title}</button>
+                                ))}
+                              </PopoverContent>
+                            </Popover>
+                          )}
                         </div>
                       </div>
                     )}
                   </div>
-                  {addingIn !== list.id && (
+                  {addingIn !== list.id && !readOnly && (
                     <button type="button" onClick={() => { setAddingIn(list.id); setNewCardTitle(''); }}
                       className="m-2 mt-1 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-black/5 text-left">
                       <Plus size={15} />Добавить карточку
@@ -400,7 +552,7 @@ export default function BoardPage() {
             })}
 
             {/* новая колонка */}
-            <div className="shrink-0 w-[272px]">
+            {!readOnly && <div className="shrink-0 w-[272px]">
               {addingList ? (
                 <div className="rounded-xl bg-[#f1f2f4] dark:bg-zinc-800 p-2 space-y-1.5">
                   <Input autoFocus value={newListTitle} placeholder="Название колонки" onChange={e => setNewListTitle(e.target.value)}
@@ -416,9 +568,9 @@ export default function BoardPage() {
                   <Plus size={15} />Добавить ещё одну колонку
                 </button>
               )}
-            </div>
+            </div>}
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Карточка */}
@@ -431,6 +583,9 @@ export default function BoardPage() {
           managers={managers}
           cardsOfList={cardsOf}
           onLabelsChanged={setLabels}
+          fields={fields}
+          readOnly={readOnly}
+          onAutomation={automate}
           onClose={() => setSearchParams({})}
           onChanged={load}
         />
@@ -440,7 +595,7 @@ export default function BoardPage() {
       <Sheet open={menuOpen !== null} onOpenChange={o => { if (!o) setMenuOpen(null); }}>
         <SheetContent className="w-[360px] sm:w-[400px] overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>{menuOpen === 'activity' ? 'История действий' : menuOpen === 'archive' ? 'Архив' : 'Метки доски'}</SheetTitle>
+            <SheetTitle>{({ activity: 'История действий', archive: 'Архив', labels: 'Метки доски', automation: 'Автоматизация', fields: 'Свои поля', observers: 'Наблюдатели' } as Record<string, string>)[menuOpen ?? 'activity']}</SheetTitle>
           </SheetHeader>
           {menuOpen === 'activity' && (
             <div className="mt-4 space-y-3">
@@ -483,6 +638,9 @@ export default function BoardPage() {
               </div>
             </div>
           )}
+          {menuOpen === 'automation' && <AutomationPanel boardId={id} lists={activeLists} labels={labels} managers={managers} />}
+          {menuOpen === 'fields' && <FieldsPanel boardId={id} fields={fields} onChange={load} />}
+          {menuOpen === 'observers' && <ObserversPanel boardId={id} />}
           {menuOpen === 'labels' && (
             <LabelsEditor boardId={id} labels={labels} onChange={setLabels} />
           )}

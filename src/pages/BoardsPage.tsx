@@ -6,10 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Star, Archive, RotateCcw, Trash2, KanbanSquare } from 'lucide-react';
+import { Plus, Star, Archive, RotateCcw, Trash2, KanbanSquare, FolderOpen, Table2, CalendarDays, Download, MoreHorizontal } from 'lucide-react';
+import { getManagers } from '@/lib/api';
+import type { Manager } from '@/types/types';
+import { MonthCalendar } from '@/components/kanban/views/CalendarView';
+import { Avatar, dueState, DUE_STYLE, formatDue } from '@/components/kanban/KanbanBits';
 import {
-  getBoards, getArchivedBoards, createBoard, updateBoard, deleteBoard,
-  BOARD_BACKGROUNDS, BOARD_TEMPLATES, type KBoard,
+  getBoards, getArchivedBoards, createBoard, updateBoard, deleteBoard, getWorkspaceCards, updateCard, labelHex,
+  BOARD_BACKGROUNDS, BOARD_TEMPLATES, type KBoard, type KWorkspaceCard,
 } from '@/lib/kanban';
 
 /** «Доски» — список досок в стиле Trello: избранные сверху, создание из шаблона, архив. */
@@ -24,6 +28,14 @@ export default function BoardsPage() {
   const [bg, setBg] = useState('emerald');
   const [tpl, setTpl] = useState('production');
   const [creating, setCreating] = useState(false);
+  const [tab, setTab] = useState<'boards' | 'table' | 'calendar'>('boards');
+  const [wsCards, setWsCards] = useState<KWorkspaceCard[] | null>(null);
+  const [managers, setManagers] = useState<Manager[]>([]);
+  const [collection, setCollection] = useState<string>('all');
+  useEffect(() => {
+    if (tab === 'boards' || wsCards) return;
+    Promise.all([getWorkspaceCards(), getManagers()]).then(([c, m]) => { setWsCards(c); setManagers(m); }).catch(() => toast.error('Не удалось загрузить карточки'));
+  }, [tab, wsCards]);
 
   async function load() {
     try {
@@ -51,12 +63,35 @@ export default function BoardsPage() {
     await updateBoard(b.id, { starred: !b.starred }).catch(() => {});
   }
 
-  const starred = boards.filter(b => b.starred);
+  const collections = [...new Set(boards.map(b => b.collection).filter(Boolean))] as string[];
+  const shownBoards = collection === 'all' ? boards : boards.filter(b => (b.collection ?? '') === collection);
+  const starred = shownBoards.filter(b => b.starred);
+  async function setBoardCollection(b: KBoard, e: React.MouseEvent) {
+    e.stopPropagation();
+    const name = window.prompt('Коллекция для доски (например «Производство», «Офис»). Оставьте пустым, чтобы убрать.', b.collection ?? '');
+    if (name === null) return;
+    await updateBoard(b.id, { collection: name.trim() || null });
+    load();
+  }
+  async function exportWs() {
+    if (!wsCards) return;
+    const XLSX = await import('xlsx');
+    const ws = XLSX.utils.json_to_sheet(wsCards.map(c => ({
+      'Карточка': c.title, 'Доска': c.board_title, 'Колонка': c.list_title,
+      'Участники': managers.filter(m => c.member_ids.includes(m.id)).map(m => m.name).join(', '),
+      'Метки': c.label_names.map(l => l.name).join(', '),
+      'Срок': c.due_at ? new Date(c.due_at).toLocaleString('ru-RU') : '', 'Выполнено': c.due_done ? 'да' : '',
+    })));
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Все карточки'); XLSX.writeFile(wb, 'Все доски.xlsx');
+  }
   const tile = (b: KBoard) => (
     <button key={b.id} type="button" onClick={() => navigate(`/boards/${b.id}`)}
       className="group relative h-24 rounded-xl p-3 text-left text-white font-semibold shadow-sm hover:brightness-110 transition"
       style={{ background: BOARD_BACKGROUNDS[b.background] ?? BOARD_BACKGROUNDS.emerald }}>
       <span className="line-clamp-2 drop-shadow-sm">{b.title}</span>
+      <span onClick={e => setBoardCollection(b, e)} role="button" aria-label="Коллекция" title="Коллекция"
+        className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity"><MoreHorizontal size={16} /></span>
+      {b.collection && <span className="absolute left-3 bottom-2 text-[10px] font-medium bg-black/25 rounded px-1.5 py-0.5">{b.collection}</span>}
       <span onClick={e => toggleStar(b, e)} role="button" aria-label="В избранное"
         className={`absolute right-2 bottom-2 transition-opacity ${b.starred ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
         <Star size={16} className={b.starred ? 'fill-yellow-300 text-yellow-300' : 'text-white'} />
@@ -77,8 +112,65 @@ export default function BoardsPage() {
           <Button onClick={() => setCreateOpen(true)}><Plus size={15} className="mr-1.5" />Создать доску</Button>
         </div>
 
-        {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[1, 2, 3, 4].map(i => <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />)}</div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {([['boards', 'Доски', KanbanSquare], ['table', 'Все карточки — таблица', Table2], ['calendar', 'Календарь всех досок', CalendarDays]] as const).map(([k, t, I]) => (
+            <Button key={k} size="sm" variant={tab === k ? 'default' : 'outline'} className="h-8" onClick={() => setTab(k)}><I size={13} className="mr-1.5" />{t}</Button>
+          ))}
+          {tab === 'boards' && collections.length > 0 && (
+            <div className="flex flex-wrap gap-1 ml-auto">
+              <Button size="sm" variant={collection === 'all' ? 'secondary' : 'ghost'} className="h-8" onClick={() => setCollection('all')}>Все коллекции</Button>
+              {collections.map(c => <Button key={c} size="sm" variant={collection === c ? 'secondary' : 'ghost'} className="h-8" onClick={() => setCollection(c)}><FolderOpen size={13} className="mr-1" />{c}</Button>)}
+            </div>
+          )}
+        </div>
+
+        {tab === 'table' && (
+          !wsCards ? <div className="h-40 rounded-xl bg-muted animate-pulse" /> : (
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+                <span className="text-sm text-muted-foreground">{wsCards.length} карточек на всех досках</span>
+                <Button size="sm" variant="outline" className="h-8" onClick={exportWs}><Download size={13} className="mr-1.5" />Выгрузить в Excel</Button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/40"><tr>
+                    {['Карточка', 'Доска', 'Колонка', 'Метки', 'Участники', 'Срок'].map(h => <th key={h} className="px-3 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {[...wsCards].sort((a, b) => (a.due_at ?? '9999').localeCompare(b.due_at ?? '9999')).map(c => {
+                      const ds = dueState(c);
+                      return (
+                        <tr key={c.id} className="border-t border-border hover:bg-muted/30 cursor-pointer" onClick={() => navigate(`/boards/${c.board_id}?card=${c.id}`)}>
+                          <td className="px-3 py-2 font-medium">{c.title}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{c.board_title}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{c.list_title}</td>
+                          <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{c.label_names.map((l, i) => <span key={i} className="text-[10px] font-semibold rounded px-1.5 py-0.5 text-black/75" style={{ background: labelHex(l.color) }}>{l.name}</span>)}</div></td>
+                          <td className="px-3 py-2"><div className="flex -space-x-1.5">{managers.filter(m => c.member_ids.includes(m.id)).map(m => <Avatar key={m.id} m={m} size={22} />)}</div></td>
+                          <td className="px-3 py-2 whitespace-nowrap">{c.due_at && <span className={`text-xs rounded px-1.5 py-0.5 ${ds && ds !== 'normal' ? DUE_STYLE[ds] : ''}`}>{formatDue(c.due_at)}</span>}</td>
+                        </tr>
+                      );
+                    })}
+                    {wsCards.length === 0 && <tr><td colSpan={6} className="px-3 py-10 text-center text-muted-foreground">Пока нет карточек</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        )}
+        {tab === 'calendar' && (
+          !wsCards ? <div className="h-40 rounded-xl bg-muted animate-pulse" /> : (
+            <div className="h-[calc(100dvh-260px)] min-h-[560px]">
+              <MonthCalendar
+                items={wsCards.map(c => ({ id: c.id, title: c.title, due_at: c.due_at, due_done: c.due_done, color: c.cover_color, sub: c.board_title }))}
+                onOpen={cid => { const c = wsCards.find(x => x.id === cid); if (c) navigate(`/boards/${c.board_id}?card=${c.id}`); }}
+                onMove={async (cid, due) => { setWsCards(p => p?.map(c => c.id === cid ? { ...c, due_at: due } : c) ?? null); await updateCard(cid, { due_at: due }).catch(() => toast.error('Не удалось перенести срок')); }} />
+            </div>
+          )
+        )}
+
+        {tab === 'boards' && (loading ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+{[1, 2, 3, 4].map(i => <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />)}</div>
         ) : (
           <>
             {starred.length > 0 && (
@@ -90,7 +182,7 @@ export default function BoardsPage() {
             <section className="space-y-2">
               <h2 className="text-sm font-semibold flex items-center gap-1.5"><KanbanSquare size={14} />Все доски</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {boards.map(tile)}
+                {shownBoards.map(tile)}
                 <button type="button" onClick={() => setCreateOpen(true)}
                   className="h-24 rounded-xl border-2 border-dashed border-border text-sm text-muted-foreground hover:bg-muted/50 transition">
                   + Новая доска
@@ -123,7 +215,7 @@ export default function BoardsPage() {
               </section>
             )}
           </>
-        )}
+        ))}
       </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

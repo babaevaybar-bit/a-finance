@@ -4,20 +4,22 @@ import { supabase } from '@/db/supabase';
 
 export interface KBoard {
   id: string; title: string; background: string; starred: boolean; archived: boolean;
-  created_at: string; updated_at: string;
+  collection: string | null; created_at: string; updated_at: string;
 }
-export interface KList { id: string; board_id: string; title: string; position: number; archived: boolean; }
+export interface KList { id: string; board_id: string; title: string; position: number; archived: boolean; color: string | null; collapsed: boolean; }
 export interface KLabel { id: string; board_id: string; name: string; color: string; }
 export interface KCard {
   id: string; board_id: string; list_id: string; title: string; description: string | null;
   position: number; start_at: string | null; due_at: string | null; due_done: boolean;
   cover_color: string | null; archived: boolean; deal_id: string | null; created_at: string; updated_at: string;
+  is_template: boolean; address: string | null; lat: number | null; lng: number | null;
+  field_values: Record<string, string>;
   // собранное для мини-карточки
   label_ids: string[]; member_ids: string[];
   checklist_total: number; checklist_done: number; comments: number; attachments: number;
 }
 export interface KChecklist { id: string; card_id: string; title: string; position: number; items: KChecklistItem[]; }
-export interface KChecklistItem { id: string; checklist_id: string; text: string; done: boolean; position: number; }
+export interface KChecklistItem { id: string; checklist_id: string; text: string; done: boolean; position: number; manager_id: string | null; due_at: string | null; }
 export interface KComment { id: string; card_id: string; author_name: string | null; text: string; created_at: string; }
 export interface KAttachment { id: string; card_id: string; path: string; name: string; size: number | null; mime: string | null; uploaded_by_name: string | null; created_at: string; }
 export interface KActivity { id: string; board_id: string; card_id: string | null; actor_name: string | null; action: string; created_at: string; }
@@ -105,7 +107,7 @@ export async function createBoard(title: string, background: string, templateKey
   await logActivity(data.id, `создал(а) доску «${title}»`);
   return data.id;
 }
-export async function updateBoard(id: string, patch: Partial<Pick<KBoard, 'title' | 'background' | 'starred' | 'archived'>>) {
+export async function updateBoard(id: string, patch: Partial<Pick<KBoard, 'title' | 'background' | 'starred' | 'archived' | 'collection'>>) {
   const { error } = await supabase.from('kanban_boards').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;
 }
@@ -115,13 +117,14 @@ export async function deleteBoard(id: string) {
 }
 
 // ── Содержимое доски ──
-export async function getBoardContent(boardId: string): Promise<{ lists: KList[]; cards: KCard[]; labels: KLabel[] }> {
-  const [l, c, lb] = await Promise.all([
+export async function getBoardContent(boardId: string): Promise<{ lists: KList[]; cards: KCard[]; labels: KLabel[]; fields: KCustomField[] }> {
+  const [l, c, lb, cf] = await Promise.all([
     supabase.from('kanban_lists').select('*').eq('board_id', boardId).order('position'),
     supabase.from('kanban_cards')
-      .select('*, kanban_card_labels(label_id), kanban_card_members(manager_id), kanban_checklists(kanban_checklist_items(done)), kanban_comments(count), kanban_attachments(count)')
+      .select('*, kanban_card_labels(label_id), kanban_card_members(manager_id), kanban_checklists(kanban_checklist_items(done)), kanban_comments(count), kanban_attachments(count), kanban_card_field_values(field_id, value)')
       .eq('board_id', boardId).order('position'),
     supabase.from('kanban_labels').select('*').eq('board_id', boardId),
+    supabase.from('kanban_custom_fields').select('*').eq('board_id', boardId).order('position'),
   ]);
   if (l.error) throw l.error;
   if (c.error) throw c.error;
@@ -135,9 +138,10 @@ export async function getBoardContent(boardId: string): Promise<{ lists: KList[]
       checklist_done: items.filter((i: any) => i.done).length,
       comments: r.kanban_comments?.[0]?.count ?? 0,
       attachments: r.kanban_attachments?.[0]?.count ?? 0,
+      field_values: Object.fromEntries((r.kanban_card_field_values ?? []).map((v: any) => [v.field_id, v.value ?? ''])),
     };
   });
-  return { lists: (l.data ?? []) as KList[], cards, labels: (lb.data ?? []) as KLabel[] };
+  return { lists: (l.data ?? []) as KList[], cards, labels: (lb.data ?? []) as KLabel[], fields: (cf.data ?? []) as KCustomField[] };
 }
 
 // ── Колонки ──
@@ -146,7 +150,7 @@ export async function createList(boardId: string, title: string, position: numbe
   if (error) throw error;
   await logActivity(boardId, `добавил(а) колонку «${title}»`);
 }
-export async function updateList(id: string, patch: Partial<Pick<KList, 'title' | 'position' | 'archived'>>) {
+export async function updateList(id: string, patch: Partial<Pick<KList, 'title' | 'position' | 'archived' | 'color' | 'collapsed'>>) {
   const { error } = await supabase.from('kanban_lists').update(patch).eq('id', id);
   if (error) throw error;
 }
@@ -160,7 +164,7 @@ export async function createCard(boardId: string, listId: string, title: string,
   await logActivity(boardId, `добавил(а) карточку «${title}»`, data?.id);
   return data?.id as string;
 }
-export async function updateCard(id: string, patch: Partial<Pick<KCard, 'title' | 'description' | 'list_id' | 'position' | 'start_at' | 'due_at' | 'due_done' | 'cover_color' | 'archived' | 'deal_id'>>) {
+export async function updateCard(id: string, patch: Partial<Pick<KCard, 'title' | 'description' | 'list_id' | 'position' | 'start_at' | 'due_at' | 'due_done' | 'cover_color' | 'archived' | 'deal_id' | 'is_template' | 'address' | 'lat' | 'lng'>>) {
   const { error } = await supabase.from('kanban_cards').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;
 }
@@ -168,20 +172,23 @@ export async function deleteCard(id: string) {
   const { error } = await supabase.from('kanban_cards').delete().eq('id', id);
   if (error) throw error;
 }
-export async function copyCard(card: KCard, toListId: string, position: number) {
+export async function copyCard(card: KCard, toListId: string, position: number, title?: string) {
   const { data: { user } } = await supabase.auth.getUser();
   const { data, error } = await supabase.from('kanban_cards').insert({
-    board_id: card.board_id, list_id: toListId, title: card.title + ' (копия)', description: card.description,
+    board_id: card.board_id, list_id: toListId, title: title ?? card.title + ' (копия)', description: card.description,
     position, start_at: card.start_at, due_at: card.due_at, cover_color: card.cover_color, created_by: user?.id ?? null,
+    address: card.address, lat: card.lat, lng: card.lng,
   }).select('id').single();
   if (error || !data) throw error;
   if (card.label_ids.length) await supabase.from('kanban_card_labels').insert(card.label_ids.map(l => ({ card_id: data.id, label_id: l })));
   if (card.member_ids.length) await supabase.from('kanban_card_members').insert(card.member_ids.map(m => ({ card_id: data.id, manager_id: m })));
-  const { data: cls } = await supabase.from('kanban_checklists').select('title, position, kanban_checklist_items(text, done, position)').eq('card_id', card.id);
+  const fv = Object.entries(card.field_values ?? {}).filter(([, v]) => v !== '');
+  if (fv.length) await supabase.from('kanban_card_field_values').insert(fv.map(([field_id, value]) => ({ card_id: data.id, field_id, value })));
+  const { data: cls } = await supabase.from('kanban_checklists').select('title, position, kanban_checklist_items(text, done, position, manager_id)').eq('card_id', card.id);
   for (const cl of cls ?? []) {
     const { data: nc } = await supabase.from('kanban_checklists').insert({ card_id: data.id, title: cl.title, position: cl.position }).select('id').single();
     const items = (cl as any).kanban_checklist_items ?? [];
-    if (nc && items.length) await supabase.from('kanban_checklist_items').insert(items.map((i: any) => ({ ...i, checklist_id: nc.id })));
+    if (nc && items.length) await supabase.from('kanban_checklist_items').insert(items.map((i: any) => ({ text: i.text, done: false, position: i.position, manager_id: i.manager_id ?? null, checklist_id: nc.id })));
   }
   return data.id as string;
 }
@@ -238,7 +245,7 @@ export async function addChecklistItem(checklistId: string, text: string, positi
   const { error } = await supabase.from('kanban_checklist_items').insert({ checklist_id: checklistId, text, position });
   if (error) throw error;
 }
-export async function updateChecklistItem(id: string, patch: Partial<Pick<KChecklistItem, 'text' | 'done'>>) {
+export async function updateChecklistItem(id: string, patch: Partial<Pick<KChecklistItem, 'text' | 'done' | 'manager_id' | 'due_at'>>) {
   await supabase.from('kanban_checklist_items').update(patch).eq('id', id);
 }
 export async function deleteChecklistItem(id: string) { await supabase.from('kanban_checklist_items').delete().eq('id', id); }
@@ -268,4 +275,189 @@ export async function deleteAttachment(a: KAttachment) {
 export async function getBoardActivity(boardId: string): Promise<KActivity[]> {
   const { data } = await supabase.from('kanban_activity').select('*').eq('board_id', boardId).order('created_at', { ascending: false }).limit(80);
   return (data ?? []) as KActivity[];
+}
+
+// ═══ Премиум-функции ═══════════════════════════════════════════════════════
+
+// ── Свои поля ──
+export type KFieldType = 'text' | 'number' | 'date' | 'select' | 'checkbox';
+export interface KCustomField {
+  id: string; board_id: string; name: string; type: KFieldType;
+  options: { id: string; name: string; color: string }[]; show_on_card: boolean; position: number;
+}
+export const FIELD_TYPE_LABELS: Record<KFieldType, string> = {
+  text: 'Текст', number: 'Число', date: 'Дата', select: 'Список вариантов', checkbox: 'Галочка',
+};
+export async function createField(boardId: string, f: Pick<KCustomField, 'name' | 'type' | 'options' | 'show_on_card'>, position: number) {
+  const { data, error } = await supabase.from('kanban_custom_fields').insert({ ...f, board_id: boardId, position }).select('*').single();
+  if (error) throw error;
+  return data as KCustomField;
+}
+export async function updateField(id: string, patch: Partial<Pick<KCustomField, 'name' | 'options' | 'show_on_card' | 'position'>>) {
+  const { error } = await supabase.from('kanban_custom_fields').update(patch).eq('id', id);
+  if (error) throw error;
+}
+export async function deleteField(id: string) { await supabase.from('kanban_custom_fields').delete().eq('id', id); }
+export async function setFieldValue(cardId: string, fieldId: string, value: string | null) {
+  if (value == null || value === '') await supabase.from('kanban_card_field_values').delete().eq('card_id', cardId).eq('field_id', fieldId);
+  else await supabase.from('kanban_card_field_values').upsert({ card_id: cardId, field_id: fieldId, value });
+}
+// Текст значения поля для показа (мини-карточка, таблица, выгрузка)
+export function fieldDisplay(f: KCustomField, raw: string | undefined): string {
+  if (raw == null || raw === '') return '';
+  if (f.type === 'checkbox') return raw === 'true' ? '✓' : '';
+  if (f.type === 'select') return f.options.find(o => o.id === raw)?.name ?? '';
+  if (f.type === 'date') return new Date(raw).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+  if (f.type === 'number') { const n = Number(raw); return Number.isFinite(n) ? n.toLocaleString('ru-RU') : raw; }
+  return raw;
+}
+
+// ── Колонки и шаблоны карточек ──
+export const LIST_COLORS = ['green', 'yellow', 'orange', 'red', 'purple', 'blue', 'sky', 'lime', 'pink', 'black'];
+
+// ── Автоматизация ──
+export type KTrigger =
+  | { type: 'moved_to_list'; list_id: string }
+  | { type: 'card_created'; list_id?: string | null }
+  | { type: 'checklist_done' }
+  | { type: 'due_done' }
+  | { type: 'label_added'; label_id: string }
+  | { type: 'member_added'; manager_id: string };
+export type KAction =
+  | { type: 'add_member'; manager_id: string }
+  | { type: 'remove_members' }
+  | { type: 'add_label'; label_id: string }
+  | { type: 'remove_label'; label_id: string }
+  | { type: 'set_due'; days: number }
+  | { type: 'clear_due' }
+  | { type: 'mark_due_done' }
+  | { type: 'move_to_list'; list_id: string }
+  | { type: 'set_cover'; color: string | null }
+  | { type: 'add_checklist'; title: string; items: string[] }
+  | { type: 'comment'; text: string }
+  | { type: 'archive' };
+export interface KAutomation { id: string; board_id: string; name: string; trigger: KTrigger; actions: KAction[]; enabled: boolean; runs: number; created_at: string; }
+
+export async function getAutomations(boardId: string): Promise<KAutomation[]> {
+  const { data } = await supabase.from('kanban_automations').select('*').eq('board_id', boardId).order('created_at');
+  return (data ?? []) as KAutomation[];
+}
+export async function saveAutomation(a: Partial<KAutomation> & { board_id: string; trigger: KTrigger; actions: KAction[] }) {
+  if (a.id) {
+    const { error } = await supabase.from('kanban_automations').update({ name: a.name, trigger: a.trigger, actions: a.actions, enabled: a.enabled }).eq('id', a.id);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from('kanban_automations').insert({ board_id: a.board_id, name: a.name ?? '', trigger: a.trigger, actions: a.actions, enabled: a.enabled ?? true });
+    if (error) throw error;
+  }
+}
+export async function deleteAutomation(id: string) { await supabase.from('kanban_automations').delete().eq('id', id); }
+
+function triggerMatches(t: KTrigger, e: KTrigger): boolean {
+  if (t.type !== e.type) return false;
+  if (t.type === 'moved_to_list') return t.list_id === (e as any).list_id;
+  if (t.type === 'card_created') return !t.list_id || t.list_id === (e as any).list_id;
+  if (t.type === 'label_added') return t.label_id === (e as any).label_id;
+  if (t.type === 'member_added') return t.manager_id === (e as any).manager_id;
+  return true;
+}
+
+/**
+ * Движок правил: вызывается после действия пользователя (перенос, создание, чек-лист…).
+ * Выполняет подходящие правила по очереди. Перенос карточки правилом не запускает
+ * правила повторно — так не бывает бесконечных циклов.
+ */
+export async function runAutomations(boardId: string, event: KTrigger, cardId: string): Promise<number> {
+  let rules: KAutomation[] = [];
+  try { rules = (await getAutomations(boardId)).filter(r => r.enabled && triggerMatches(r.trigger, event)); }
+  catch { return 0; }
+  for (const r of rules) {
+    try {
+      for (const a of r.actions) {
+        switch (a.type) {
+          case 'add_member': await supabase.from('kanban_card_members').upsert({ card_id: cardId, manager_id: a.manager_id }); break;
+          case 'remove_members': await supabase.from('kanban_card_members').delete().eq('card_id', cardId); break;
+          case 'add_label': await supabase.from('kanban_card_labels').upsert({ card_id: cardId, label_id: a.label_id }); break;
+          case 'remove_label': await supabase.from('kanban_card_labels').delete().eq('card_id', cardId).eq('label_id', a.label_id); break;
+          case 'set_due': {
+            const d = new Date(); d.setDate(d.getDate() + Number(a.days || 0)); d.setHours(18, 0, 0, 0);
+            await updateCard(cardId, { due_at: d.toISOString(), due_done: false }); break;
+          }
+          case 'clear_due': await updateCard(cardId, { due_at: null, due_done: false }); break;
+          case 'mark_due_done': await updateCard(cardId, { due_done: true }); break;
+          case 'move_to_list': {
+            const { data: last } = await supabase.from('kanban_cards').select('position').eq('list_id', a.list_id).order('position', { ascending: false }).limit(1).maybeSingle();
+            await updateCard(cardId, { list_id: a.list_id, position: positionBetween(last?.position, undefined) }); break;
+          }
+          case 'set_cover': await updateCard(cardId, { cover_color: a.color }); break;
+          case 'add_checklist': {
+            const { data: cl } = await supabase.from('kanban_checklists').insert({ card_id: cardId, title: a.title || 'Чек-лист', position: Date.now() }).select('id').single();
+            if (cl && a.items.length) await supabase.from('kanban_checklist_items').insert(a.items.filter(Boolean).map((text, i) => ({ checklist_id: cl.id, text, position: (i + 1) * 1024 })));
+            break;
+          }
+          case 'comment': await supabase.from('kanban_comments').insert({ card_id: cardId, text: a.text, author_name: 'Автоматизация' }); break;
+          case 'archive': await updateCard(cardId, { archived: true }); break;
+        }
+      }
+      await supabase.from('kanban_automations').update({ runs: (r.runs ?? 0) + 1 }).eq('id', r.id);
+      await supabase.from('kanban_activity').insert({ board_id: boardId, card_id: cardId, actor_name: 'Автоматизация', action: `сработало правило «${r.name || 'без названия'}»` });
+    } catch { /* одно правило не должно ломать остальные */ }
+  }
+  return rules.length;
+}
+
+// ── Наблюдатели (только просмотр) ──
+export async function getObservers(boardId: string): Promise<string[]> {
+  const { data } = await supabase.from('kanban_board_observers').select('user_id').eq('board_id', boardId);
+  return (data ?? []).map((r: any) => r.user_id);
+}
+export async function setObserver(boardId: string, userId: string, on: boolean) {
+  if (on) await supabase.from('kanban_board_observers').upsert({ board_id: boardId, user_id: userId });
+  else await supabase.from('kanban_board_observers').delete().eq('board_id', boardId).eq('user_id', userId);
+}
+export async function getProfiles(): Promise<{ id: string; name: string; role: string }[]> {
+  const { data } = await supabase.from('profiles').select('id, name, role').order('name');
+  return (data ?? []) as any;
+}
+
+// ── Сохранённые фильтры ──
+export interface KFilterState { q: string; labels: string[]; members: string[]; due: string }
+export interface KSavedFilter { id: string; board_id: string; name: string; filter: KFilterState }
+export async function getSavedFilters(boardId: string): Promise<KSavedFilter[]> {
+  const { data } = await supabase.from('kanban_saved_filters').select('*').eq('board_id', boardId).order('created_at');
+  return (data ?? []) as KSavedFilter[];
+}
+export async function saveFilter(boardId: string, name: string, filter: KFilterState) {
+  await supabase.from('kanban_saved_filters').insert({ board_id: boardId, name, filter });
+}
+export async function deleteSavedFilter(id: string) { await supabase.from('kanban_saved_filters').delete().eq('id', id); }
+
+// ── Карточки всех досок (общие Таблица и Календарь) ──
+export interface KWorkspaceCard extends Pick<KCard, 'id' | 'board_id' | 'list_id' | 'title' | 'due_at' | 'due_done' | 'start_at' | 'cover_color'> {
+  board_title: string; list_title: string; member_ids: string[]; label_names: { name: string; color: string }[];
+}
+export async function getWorkspaceCards(): Promise<KWorkspaceCard[]> {
+  const { data, error } = await supabase.from('kanban_cards')
+    .select('id, board_id, list_id, title, due_at, due_done, start_at, cover_color, kanban_boards!inner(title, archived), kanban_lists!inner(title, archived), kanban_card_members(manager_id), kanban_card_labels(kanban_labels(name, color))')
+    .eq('archived', false).eq('is_template', false).eq('kanban_boards.archived', false).eq('kanban_lists.archived', false)
+    .limit(2000);
+  if (error) throw error;
+  return (data ?? []).map((r: any) => ({
+    id: r.id, board_id: r.board_id, list_id: r.list_id, title: r.title, due_at: r.due_at, due_done: r.due_done, start_at: r.start_at, cover_color: r.cover_color,
+    board_title: r.kanban_boards?.title ?? '', list_title: r.kanban_lists?.title ?? '',
+    member_ids: (r.kanban_card_members ?? []).map((m: any) => m.manager_id),
+    label_names: (r.kanban_card_labels ?? []).map((l: any) => l.kanban_labels).filter(Boolean),
+  }));
+}
+
+// ── Карта: адрес → координаты (OpenStreetMap) ──
+export async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+  const q = /казахстан|kazakhstan/i.test(address) ? address : `${address}, Казахстан`;
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ru&q=${encodeURIComponent(q)}`);
+    if (!res.ok) return null;
+    const arr = await res.json();
+    if (!arr?.[0]) return null;
+    return { lat: Number(arr[0].lat), lng: Number(arr[0].lon) };
+  } catch { return null; }
 }

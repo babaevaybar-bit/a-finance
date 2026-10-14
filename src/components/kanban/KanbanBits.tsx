@@ -1,7 +1,7 @@
 import React from 'react';
-import { AlignLeft, MessageSquare, Paperclip, CheckSquare, Clock } from 'lucide-react';
-import type { KCard, KLabel } from '@/lib/kanban';
-import { labelHex } from '@/lib/kanban';
+import { AlignLeft, MessageSquare, Paperclip, CheckSquare, Clock, MapPin, LayoutTemplate } from 'lucide-react';
+import type { KCard, KLabel, KCustomField } from '@/lib/kanban';
+import { labelHex, fieldDisplay } from '@/lib/kanban';
 import type { Manager } from '@/types/types';
 
 // Инициалы и цвет кружка участника
@@ -48,14 +48,15 @@ export const DUE_STYLE: Record<string, string> = {
 };
 
 /** Мини-карточка на доске — как в Trello: обложка, метки, название, значки, участники. */
-export function CardTile({ card, labels, members, onOpen, dragging }: {
-  card: KCard; labels: KLabel[]; members: Manager[]; onOpen: () => void; dragging?: boolean;
+export function CardTile({ card, labels, members, fields = [], onOpen, dragging }: {
+  card: KCard; labels: KLabel[]; members: Manager[]; fields?: KCustomField[]; onOpen: () => void; dragging?: boolean;
 }) {
+  const shownFields = fields.filter(f => f.show_on_card && fieldDisplay(f, card.field_values?.[f.id]));
   const cardLabels = labels.filter(l => card.label_ids.includes(l.id));
   const cardMembers = members.filter(m => card.member_ids.includes(m.id));
   const ds = dueState(card);
   const checklistDone = card.checklist_total > 0 && card.checklist_done === card.checklist_total;
-  const hasBadges = ds || card.description || card.comments || card.attachments || card.checklist_total || cardMembers.length;
+  const hasBadges = ds || card.description || card.address || card.comments || card.attachments || card.checklist_total || cardMembers.length;
   return (
     <div onClick={onOpen}
       className={`rounded-lg bg-card shadow-[0_1px_1px_rgba(9,30,66,.25)] hover:ring-2 hover:ring-primary/50 cursor-pointer overflow-hidden transition ${dragging ? 'opacity-40' : ''}`}>
@@ -69,7 +70,21 @@ export function CardTile({ card, labels, members, onOpen, dragging }: {
             ))}
           </div>
         )}
+        {card.is_template && <div className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-primary"><LayoutTemplate size={11} />Шаблон</div>}
         <div className="text-sm leading-snug break-words">{card.title}</div>
+        {shownFields.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {shownFields.map(f => {
+              const opt = f.type === 'select' ? f.options.find(o => o.id === card.field_values[f.id]) : null;
+              return (
+                <span key={f.id} className="text-[10px] rounded px-1.5 py-0.5 bg-muted text-foreground/80 max-w-full truncate"
+                  style={opt ? { background: labelHex(opt.color), color: 'rgba(0,0,0,.75)' } : undefined}>
+                  {f.type === 'checkbox' ? `✓ ${f.name}` : `${f.name}: ${fieldDisplay(f, card.field_values[f.id])}`}
+                </span>
+              );
+            })}
+          </div>
+        )}
         {hasBadges ? (
           <div className="flex items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
@@ -79,6 +94,7 @@ export function CardTile({ card, labels, members, onOpen, dragging }: {
                 </span>
               )}
               {card.description && <AlignLeft size={12} aria-label="Есть описание" />}
+              {card.address && <MapPin size={12} aria-label="Есть адрес" />}
               {card.comments > 0 && <span className="inline-flex items-center gap-0.5"><MessageSquare size={11} />{card.comments}</span>}
               {card.attachments > 0 && <span className="inline-flex items-center gap-0.5"><Paperclip size={11} />{card.attachments}</span>}
               {card.checklist_total > 0 && (

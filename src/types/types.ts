@@ -356,7 +356,8 @@ export const LEAD_SOURCE_LABELS: Record<string, string> = {
 export interface AppNotification {
   id: string;
   manager_id: string;
-  type: 'payment_due' | 'stage_changed' | 'amount_mismatch' | 'incomplete_deals';
+  type: 'payment_due' | 'stage_changed' | 'amount_mismatch' | 'incomplete_deals' | 'card_due';
+  link?: string | null;
   title: string;
   body: string;
   deal_id: string | null;
