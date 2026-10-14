@@ -491,7 +491,7 @@ export default function BoardPage() {
         {view === 'timeline' && <div className="flex-1 min-h-0"><TimelineView lists={activeLists} cards={viewCards} readOnly={readOnly} onOpen={cid => setSearchParams({ card: cid })}
           onShift={async (cid, start, due) => { setCards(p => p.map(c => c.id === cid ? { ...c, start_at: start, due_at: due } : c)); await updateCard(cid, { start_at: start, due_at: due }).catch(() => load()); logActivity(id, 'сдвинул(а) даты на таймлайне', cid); }} /></div>}
         {view === 'dashboard' && <div className="flex-1 min-h-0"><DashboardView lists={activeLists} cards={viewCards} labels={labels} managers={managers} /></div>}
-        {view === 'map' && <div className="flex-1 min-h-0"><MapView lists={activeLists} cards={viewCards} readOnly={readOnly} onOpen={cid => setSearchParams({ card: cid })} onChanged={load} /></div>}
+        {view === 'map' && <div className="flex-1 min-h-0"><MapView boardId={id} lists={activeLists} cards={viewCards} readOnly={readOnly} onOpen={cid => setSearchParams({ card: cid })} onChanged={load} /></div>}
 
         {/* Колонки */}
         {view === 'board' && <div className="flex-1 overflow-x-auto overflow-y-hidden kanban-scroll snap-x snap-mandatory sm:snap-none"

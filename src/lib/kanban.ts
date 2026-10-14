@@ -486,3 +486,13 @@ export async function geocodeAddress(address: string): Promise<{ lat: number; ln
     return { lat: Number(arr[0].lat), lng: Number(arr[0].lon) };
   } catch { return null; }
 }
+
+// Поиск адреса для карты: несколько вариантов, только Казахстан
+export async function searchAddresses(q: string): Promise<{ label: string; lat: number; lng: number }[]> {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=6&countrycodes=kz&accept-language=ru&q=${encodeURIComponent(q)}`);
+    if (!res.ok) return [];
+    const arr = await res.json();
+    return (arr ?? []).map((r: any) => ({ label: String(r.display_name).split(', Казахстан')[0], lat: Number(r.lat), lng: Number(r.lon) }));
+  } catch { return []; }
+}
