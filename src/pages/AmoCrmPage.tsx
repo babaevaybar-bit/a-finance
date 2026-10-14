@@ -34,7 +34,7 @@ interface Transition {
   changed_at: number; manager_name: string | null;
 }
 interface TodayStats { newLeads: number; leadsFrom?: number; calls: number; callsIn: number; callsOut: number; statusChanges: number; }
-// Подпись окна лидов: «с 20:00 вчера» / «с 20:00 сегодня»
+// Подпись рабочего дня (20:00–20:00): «с 20:00 вчера до 20:00 сегодня»
 function leadsWindowLabel(from?: number): string {
   if (!from) return '';
   const start = new Date(from * 1000);
@@ -193,7 +193,7 @@ export default function AmoCrmPage() {
             {/* Ежедневный отчёт по сотрудникам */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Ежедневный отчёт по сотрудникам — сегодня</CardTitle>
+                <CardTitle className="text-sm font-medium">Ежедневный отчёт по сотрудникам — сегодня{today?.leadsFrom ? <span className="text-muted-foreground font-normal"> ({leadsWindowLabel(today.leadsFrom)})</span> : null}</CardTitle>
               </CardHeader>
               <CardContent className="px-0">
                 {dailyByUser.length === 0 ? (
@@ -204,7 +204,7 @@ export default function AmoCrmPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead className="whitespace-nowrap">Сотрудник</TableHead>
-                          <TableHead className="whitespace-nowrap text-right">Новых лидов <span className="font-normal">(с 20:00)</span></TableHead>
+                          <TableHead className="whitespace-nowrap text-right">Новых лидов</TableHead>
                           <TableHead className="whitespace-nowrap text-right">Звонков (вход/исход)</TableHead>
                           <TableHead className="whitespace-nowrap text-right">Чатов обработано</TableHead>
                         </TableRow>
@@ -231,7 +231,7 @@ export default function AmoCrmPage() {
             <div className="grid md:grid-cols-2 gap-4">
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Новые лиды по дням (30 дней, день с 20:00 до 20:00)</CardTitle>
+                  <CardTitle className="text-sm font-medium">Новые лиды по дням (30 дней, день 20:00–20:00)</CardTitle>
                 </CardHeader>
                 <CardContent className="pl-0">
                   <ResponsiveContainer width="100%" height={220}>
@@ -248,7 +248,7 @@ export default function AmoCrmPage() {
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Звонки по дням (30 дней)</CardTitle>
+                  <CardTitle className="text-sm font-medium">Звонки по дням (30 дней, день 20:00–20:00)</CardTitle>
                 </CardHeader>
                 <CardContent className="pl-0">
                   <ResponsiveContainer width="100%" height={220}>

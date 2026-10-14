@@ -8,7 +8,7 @@ const corsHeaders = {
 const ALLOWED_PIPELINE_NAMES = ['Отдел продаж', 'Квалификация'];
 
 const KZ_OFFSET_SEC = 5 * 60 * 60;
-// Рабочий день для лидов: с 20:00 до 20:00 следующего дня (лид после 20:00 идёт на следующий день)
+// Рабочий день: с 20:00 до 20:00 следующего дня (всё после 20:00 идёт на следующий день) — лиды, звонки, чаты, переходы
 const LEAD_SHIFT_SEC = 4 * 60 * 60;
 
 function dayKey(unixSeconds: number): string {
@@ -113,8 +113,7 @@ Deno.serve(async (req) => {
 
     const now = Math.floor(Date.now() / 1000);
     const from30 = now - 31 * 24 * 60 * 60;
-    const todayStart = Math.floor((now + KZ_OFFSET_SEC) / 86400) * 86400 - KZ_OFFSET_SEC;
-    // Начало текущего «дня лидов» — последнее 20:00
+    // Начало текущего рабочего дня — последнее 20:00
     const leadDayStart = Math.floor((now + KZ_OFFSET_SEC + LEAD_SHIFT_SEC) / 86400) * 86400 - KZ_OFFSET_SEC - LEAD_SHIFT_SEC;
 
     const [
@@ -222,24 +221,22 @@ Deno.serve(async (req) => {
     const callsByDayMap: Record<string, { incoming: number; outgoing: number }> = {};
     let callsToday = 0, callsInToday = 0, callsOutToday = 0;
     for (const ev of callEvents) {
-      const k = dayKey(ev.created_at);
+      const k = leadDayKey(ev.created_at);
       if (!callsByDayMap[k]) callsByDayMap[k] = { incoming: 0, outgoing: 0 };
       if (ev.type === 'incoming_call') callsByDayMap[k].incoming += 1;
       else callsByDayMap[k].outgoing += 1;
-      if (ev.created_at >= todayStart) {
+      if (ev.created_at >= leadDayStart) {
         callsToday += 1;
         if (ev.type === 'incoming_call') callsInToday += 1; else callsOutToday += 1;
       }
     }
 
-    const days: string[] = [];
     const leadDays: string[] = [];
     for (let i = 29; i >= 0; i--) {
-      days.push(dayKey(todayStart - i * 24 * 60 * 60));
       leadDays.push(leadDayKey(leadDayStart - i * 24 * 60 * 60));
     }
     const leadsByDay = leadDays.map(d => ({ date: d, count: leadsByDayMap[d] ?? 0 }));
-    const callsByDay = days.map(d => ({
+    const callsByDay = leadDays.map(d => ({
       date: d,
       incoming: callsByDayMap[d]?.incoming ?? 0,
       outgoing: callsByDayMap[d]?.outgoing ?? 0,
@@ -260,16 +257,16 @@ Deno.serve(async (req) => {
       }))
       .sort((a, b) => b.count - a.count);
 
-    let statusChangesToday = 0;
-    const recentTransitions = statusEvents
+    const allowedTransitions = statusEvents
       .filter((ev: any) => {
         const toId = ev.value_after?.[0]?.lead_status?.id;
         return toId ? leadAllowed(toId) : false;
       })
-      .sort((a: any, b: any) => b.created_at - a.created_at)
+      .sort((a: any, b: any) => b.created_at - a.created_at);
+    const statusChangesToday = allowedTransitions.filter((ev: any) => ev.created_at >= leadDayStart).length;
+    const recentTransitions = allowedTransitions
       .slice(0, 30)
       .map((ev: any) => {
-        if (ev.created_at >= todayStart) statusChangesToday += 1;
         const fromId = ev.value_before?.[0]?.lead_status?.id;
         const toId = ev.value_after?.[0]?.lead_status?.id;
         const leadName = ev._embedded?.lead_name?.name ?? ev._embedded?.lead?.name ?? null;
@@ -298,12 +295,12 @@ Deno.serve(async (req) => {
       }
     }
     for (const ev of callEvents) {
-      if (ev.created_at < todayStart) continue;
+      if (ev.created_at < leadDayStart) continue;
       const u = ensureUser(ev.created_by);
       if (ev.type === 'incoming_call') u.callsIn += 1; else u.callsOut += 1;
     }
     for (const ev of chatEvents) {
-      if (ev.created_at < todayStart) continue;
+      if (ev.created_at < leadDayStart) continue;
       if (ev.type !== 'outgoing_chat_message') continue;
       ensureUser(ev.created_by).chats += 1;
     }

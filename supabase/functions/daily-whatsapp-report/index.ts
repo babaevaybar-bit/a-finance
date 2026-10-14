@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 const KZ_OFFSET_SEC = 5 * 60 * 60;
-// Рабочий день для лидов: с 20:00 до 20:00 следующего дня
+// Рабочий день: с 20:00 до 20:00 следующего дня (лиды, звонки, чаты, переходы)
 const LEAD_SHIFT_SEC = 4 * 60 * 60;
 const ALLOWED_PIPELINE_NAMES = ['Отдел продаж', 'Квалификация'];
 
@@ -102,9 +102,7 @@ Deno.serve(async (req) => {
     }
 
     const now = Math.floor(Date.now() / 1000);
-    const from30 = now - 30 * 24 * 60 * 60;
-    const todayStart = Math.floor((now + KZ_OFFSET_SEC) / 86400) * 86400 - KZ_OFFSET_SEC;
-    // Окно лидов: вчера 20:00 → сегодня 20:00. Берём «день лидов», в который попадает момент за 2 часа до запуска,
+    // Окно: вчера 20:00 → сегодня 20:00. Берём рабочий день, в который попадает момент за 2 часа до запуска,
     // чтобы отчёт в 20:00 (и с небольшой задержкой) считал именно завершившийся рабочий день.
     const leadRef = now - 2 * 60 * 60;
     const leadDayStart = Math.floor((leadRef + KZ_OFFSET_SEC + LEAD_SHIFT_SEC) / 86400) * 86400 - KZ_OFFSET_SEC - LEAD_SHIFT_SEC;
@@ -114,9 +112,9 @@ Deno.serve(async (req) => {
       amoGet('/api/v4/leads/pipelines'),
       amoGet('/api/v4/users?limit=250'),
       amoGetAllPages('/api/v4/leads?order[id]=desc', 20, 'leads'),
-      amoGetAllPages(`/api/v4/events?filter[type][]=incoming_call&filter[type][]=outgoing_call&filter[created_at][from]=${from30}&filter[created_at][to]=${now}`, 2, 'events'),
-      amoGetAllPages(`/api/v4/events?filter[type][]=outgoing_chat_message&filter[created_at][from]=${from30}&filter[created_at][to]=${now}`, 2, 'events'),
-      amoGetAllPages(`/api/v4/events?filter[type][]=lead_status_changed&filter[created_at][from]=${from30}&filter[created_at][to]=${now}`, 2, 'events'),
+      amoGetAllPages(`/api/v4/events?filter[type][]=incoming_call&filter[type][]=outgoing_call&filter[created_at][from]=${leadDayStart}&filter[created_at][to]=${now}`, 4, 'events'),
+      amoGetAllPages(`/api/v4/events?filter[type][]=outgoing_chat_message&filter[created_at][from]=${leadDayStart}&filter[created_at][to]=${now}`, 4, 'events'),
+      amoGetAllPages(`/api/v4/events?filter[type][]=lead_status_changed&filter[created_at][from]=${leadDayStart}&filter[created_at][to]=${now}`, 4, 'events'),
     ]);
 
     const statusMap: Record<string, { name: string; pipeline_id: string; sort: number }> = {};
@@ -137,9 +135,11 @@ Deno.serve(async (req) => {
     const userMap: Record<string, string> = { '0': 'Бот' };
     for (const u of usersData?._embedded?.users ?? []) userMap[u.id] = u.name;
 
+    const inWindow = (t: number) => t >= leadDayStart && t < leadDayEnd;
+
     const leadsToday = allLeadsUnfiltered.filter((l: any) =>
       leadAllowed(l.status_id) &&
-      l.created_at >= leadDayStart && l.created_at < leadDayEnd &&
+      inWindow(l.created_at) &&
       statusMap[l.status_id]?.name !== 'Закрыто и не реализовано'
     );
     const leadsTodaySum = leadsToday.reduce((s: number, l: any) => s + Number(l.price || 0), 0);
@@ -154,13 +154,13 @@ Deno.serve(async (req) => {
 
     for (const l of leadsToday) ensure(l.responsible_user_id).leads += 1;
     for (const ev of callEvents) {
-      if (ev.created_at < todayStart) continue;
+      if (!inWindow(ev.created_at)) continue;
       if (ev.type === 'incoming_call') { callsIn += 1; ensure(ev.created_by).callsIn += 1; }
       else { callsOut += 1; ensure(ev.created_by).callsOut += 1; }
     }
     let chatsTotal = 0;
     for (const ev of chatEvents) {
-      if (ev.created_at < todayStart) continue;
+      if (!inWindow(ev.created_at)) continue;
       chatsTotal += 1;
       ensure(ev.created_by).chats += 1;
     }
@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
     let wonTodaySum = 0;
     const leadById = new Map(allLeadsUnfiltered.map((l: any) => [l.id, l]));
     for (const ev of statusEvents) {
-      if (ev.created_at < todayStart) continue;
+      if (!inWindow(ev.created_at)) continue;
       const toId = ev.value_after?.[0]?.lead_status?.id;
       if (!toId || !leadAllowed(toId)) continue;
       transitionsToday += 1;
@@ -202,13 +202,13 @@ Deno.serve(async (req) => {
 
     const lines: string[] = [];
     lines.push(`*Ежедневный отчёт — ${kzDateLabel(now)}*`);
+    lines.push(`_период: с ${kzShortLabel(leadDayStart)} до ${kzShortLabel(leadDayEnd)}_`);
     lines.push('');
     lines.push(`Новых лидов: *${leadsToday.length}* (на сумму ${leadsTodaySum.toLocaleString('ru-RU')} ₸)`);
-    lines.push(`_лиды с ${kzShortLabel(leadDayStart)} до ${kzShortLabel(leadDayEnd)}_`);
     lines.push(`Звонков: *${callsIn + callsOut}* (вход ${callsIn} / исход ${callsOut})`);
     lines.push(`Чатов обработано: *${chatsTotal}*`);
     lines.push(`Переходов по этапам: *${transitionsToday}*`);
-    lines.push(`Успешно реализовано сегодня: *${wonTodayCount}* сделок на ${wonTodaySum.toLocaleString('ru-RU')} ₸`);
+    lines.push(`Успешно реализовано: *${wonTodayCount}* сделок на ${wonTodaySum.toLocaleString('ru-RU')} ₸`);
     lines.push('');
     lines.push('*По сотрудникам:*');
     for (const m of coreManagers ?? []) {
