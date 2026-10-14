@@ -13,7 +13,7 @@ import { MonthCalendar } from '@/components/kanban/views/CalendarView';
 import { Avatar, dueState, DUE_STYLE, formatDue } from '@/components/kanban/KanbanBits';
 import {
   getBoards, getArchivedBoards, createBoard, updateBoard, deleteBoard, getWorkspaceCards, updateCard, labelHex,
-  BOARD_BACKGROUNDS, BOARD_TEMPLATES, type KBoard, type KWorkspaceCard,
+  BOARD_BACKGROUNDS, BOARD_MATERIALS, BOARD_TEMPLATES, isLightBoard, type KBoard, type KWorkspaceCard,
 } from '@/lib/kanban';
 
 /** «Доски» — список досок в стиле Trello: избранные сверху, создание из шаблона, архив. */
@@ -25,7 +25,7 @@ export default function BoardsPage() {
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [title, setTitle] = useState('');
-  const [bg, setBg] = useState('emerald');
+  const [bg, setBg] = useState('oak');
   const [tpl, setTpl] = useState('production');
   const [creating, setCreating] = useState(false);
   const [tab, setTab] = useState<'boards' | 'table' | 'calendar'>('boards');
@@ -84,30 +84,56 @@ export default function BoardsPage() {
     })));
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Все карточки'); XLSX.writeFile(wb, 'Все доски.xlsx');
   }
-  const tile = (b: KBoard) => (
-    <button key={b.id} type="button" onClick={() => navigate(`/boards/${b.id}`)}
-      className="group relative h-24 rounded-xl p-3 text-left text-white font-semibold shadow-sm hover:brightness-110 transition"
-      style={{ background: BOARD_BACKGROUNDS[b.background] ?? BOARD_BACKGROUNDS.emerald }}>
-      <span className="line-clamp-2 drop-shadow-sm">{b.title}</span>
-      <span onClick={e => setBoardCollection(b, e)} role="button" aria-label="Коллекция" title="Коллекция"
-        className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity"><MoreHorizontal size={16} /></span>
-      {b.collection && <span className="absolute left-3 bottom-2 text-[10px] font-medium bg-black/25 rounded px-1.5 py-0.5">{b.collection}</span>}
-      <span onClick={e => toggleStar(b, e)} role="button" aria-label="В избранное"
-        className={`absolute right-2 bottom-2 transition-opacity ${b.starred ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-        <Star size={16} className={b.starred ? 'fill-yellow-300 text-yellow-300' : 'text-white'} />
-      </span>
-    </button>
-  );
+  // Плитка доски: фон-отделка, мини-превью колонок (высота полоски = число карточек), счётчики
+  const tile = (b: KBoard) => {
+    const light = isLightBoard(b.background);
+    const pv = (b.preview ?? []).slice(0, 8);
+    const max = Math.max(1, ...pv.map(p => p.count));
+    const ago = (() => {
+      const m = Math.round((Date.now() - new Date(b.updated_at).getTime()) / 60000);
+      if (m < 60) return m <= 1 ? 'только что' : `${m} мин назад`;
+      const h = Math.round(m / 60); if (h < 24) return `${h} ч назад`;
+      const d = Math.round(h / 24); return d === 1 ? 'вчера' : `${d} дн. назад`;
+    })();
+    return (
+      <button key={b.id} type="button" onClick={() => navigate(`/boards/${b.id}`)}
+        className={`group relative h-36 rounded-2xl p-3.5 text-left shadow-[0_1px_2px_rgba(0,0,0,.15),0_10px_24px_-14px_rgba(0,0,0,.5)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${light ? 'text-[#22272b]' : 'text-white'}`}
+        style={{ background: BOARD_BACKGROUNDS[b.background] ?? BOARD_BACKGROUNDS.emerald }}>
+        <div className="font-display font-bold text-[15px] leading-tight line-clamp-2 pr-12">{b.starred && <Star size={12} className="inline -mt-0.5 mr-1 fill-yellow-300 text-yellow-300" />}{b.title}</div>
+        <div className={`mt-1 text-[11px] flex flex-wrap gap-x-2 gap-y-0.5 ${light ? 'text-black/55' : 'text-white/75'}`}>
+          <span>{b.card_count ?? 0} карточек</span>
+          {!!b.overdue_count && <span className="font-semibold text-white bg-red-600 rounded-full px-1.5">просрочено {b.overdue_count}</span>}
+          {b.collection && <span className={`rounded px-1.5 ${light ? 'bg-black/10' : 'bg-black/25'}`}>{b.collection}</span>}
+        </div>
+        <div className={`text-[10.5px] ${light ? 'text-black/45' : 'text-white/60'}`}>обновлено {ago}</div>
+        {/* мини-превью колонок */}
+        <div className="absolute left-3.5 right-3.5 bottom-3 flex items-end gap-1 h-9">
+          {pv.length === 0 ? <span className={`text-[11px] ${light ? 'text-black/45' : 'text-white/60'}`}>нет колонок</span> : pv.map((p, i) => (
+            <div key={i} title={`${p.title}: ${p.count}`} className="flex-1 rounded-[3px]"
+              style={{ height: `${18 + (p.count / max) * 82}%`, background: p.color ? 'rgba(255,255,255,.9)' : light ? 'rgba(0,0,0,.14)' : 'rgba(255,255,255,.32)', boxShadow: p.color ? 'inset 0 3px 0 ' + ({ green: '#4bce97', yellow: '#e2b203', orange: '#fea362', red: '#f87168', purple: '#9f8fef', blue: '#579dff', sky: '#6cc3e0', lime: '#94c748', pink: '#e774bb', black: '#8590a2' } as Record<string, string>)[p.color] : undefined }} />
+          ))}
+        </div>
+        <span className="absolute right-2.5 top-2.5 flex gap-1 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity">
+          <span onClick={e => setBoardCollection(b, e)} role="button" aria-label="Коллекция" title="Добавить в коллекцию"
+            className={`h-7 w-7 rounded-md flex items-center justify-center ${light ? 'bg-white/70' : 'bg-black/30'}`}><MoreHorizontal size={15} /></span>
+          <span onClick={e => toggleStar(b, e)} role="button" aria-label="В избранное" title="В избранное"
+            className={`h-7 w-7 rounded-md flex items-center justify-center ${light ? 'bg-white/70' : 'bg-black/30'}`}>
+            <Star size={15} className={b.starred ? 'fill-yellow-300 text-yellow-300' : ''} />
+          </span>
+        </span>
+      </button>
+    );
+  };
 
   return (
     <AppLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h1 className="text-xl font-semibold flex items-center gap-2">
-              Доски <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">в разработке</span>
+            <h1 className="font-display text-2xl font-bold tracking-tight flex items-center gap-2">
+              Доски <span className="text-[11px] font-sans font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">в разработке</span>
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Свои доски вместо Trello: колонки, карточки, метки, сроки, чек-листы, комментарии и файлы.</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Замеры, производство, монтаж и задачи офиса — каждая работа видна от начала до конца.</p>
           </div>
           <Button onClick={() => setCreateOpen(true)}><Plus size={15} className="mr-1.5" />Создать доску</Button>
         </div>
@@ -176,15 +202,29 @@ export default function BoardsPage() {
             {starred.length > 0 && (
               <section className="space-y-2">
                 <h2 className="text-sm font-semibold flex items-center gap-1.5"><Star size={14} />Избранные</h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{starred.map(tile)}</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">{starred.map(tile)}</div>
+              </section>
+            )}
+            {boards.length === 0 && (
+              <section className="rounded-2xl p-6 md:p-8 text-white space-y-4" style={{ background: BOARD_BACKGROUNDS.walnut }}>
+                <div className="font-display text-2xl font-bold max-w-lg">Начните с доски производства</div>
+                <p className="text-white/80 max-w-lg text-sm">Колонки — этапы: замер, заказ, производство, склад, монтаж. Каждый заказ — карточка, которую двигают по этапам. Всё создастся за секунду, потом можно поменять.</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button className="bg-white text-[#3a2217] hover:bg-white/90" disabled={creating} onClick={async () => {
+                    setCreating(true);
+                    try { const id = await createBoard('Производство дверей', 'oak', 'production'); navigate(`/boards/${id}`); }
+                    catch { toast.error('Не удалось создать доску'); } finally { setCreating(false); }
+                  }}>Создать «Производство дверей»</Button>
+                  <Button variant="outline" className="bg-transparent text-white border-white/40 hover:bg-white/10" onClick={() => setCreateOpen(true)}>Своя доска</Button>
+                </div>
               </section>
             )}
             <section className="space-y-2">
               <h2 className="text-sm font-semibold flex items-center gap-1.5"><KanbanSquare size={14} />Все доски</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {shownBoards.map(tile)}
                 <button type="button" onClick={() => setCreateOpen(true)}
-                  className="h-24 rounded-xl border-2 border-dashed border-border text-sm text-muted-foreground hover:bg-muted/50 transition">
+                  className="h-36 rounded-2xl border-2 border-dashed border-border text-sm text-muted-foreground hover:bg-muted/50 hover:border-primary/40 transition">
                   + Новая доска
                 </button>
               </div>
@@ -222,13 +262,13 @@ export default function BoardsPage() {
         <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md grid-cols-[minmax(0,1fr)]">
           <DialogHeader><DialogTitle>Новая доска</DialogTitle></DialogHeader>
           <div className="space-y-4 min-w-0">
-            <div className="h-20 rounded-xl p-3 text-white font-semibold break-words line-clamp-2" style={{ background: BOARD_BACKGROUNDS[bg] }}>{title || 'Название доски'}</div>
+            <div className={`h-20 rounded-xl p-3 font-display font-bold break-words line-clamp-2 ${isLightBoard(bg) ? 'text-[#22272b]' : 'text-white'}`} style={{ background: BOARD_BACKGROUNDS[bg] }}>{title || 'Название доски'}</div>
             <div className="space-y-1.5">
-              <Label>Фон</Label>
-              <div className="flex flex-wrap gap-2">
-                {Object.entries(BOARD_BACKGROUNDS).map(([k, v]) => (
-                  <button key={k} type="button" onClick={() => setBg(k)} aria-label={k}
-                    className={`h-8 w-10 rounded-md ${bg === k ? 'ring-2 ring-offset-2 ring-primary' : ''}`} style={{ background: v }} />
+              <Label>Отделка доски</Label>
+              <div className="grid grid-cols-5 gap-1.5">
+                {BOARD_MATERIALS.slice(0, 10).map(m => (
+                  <button key={m.key} type="button" onClick={() => setBg(m.key)} aria-label={m.name} title={m.name}
+                    className={`h-9 rounded-md text-[10px] font-medium flex items-end justify-center pb-0.5 ${m.light ? 'text-black/60' : 'text-white/90'} ${bg === m.key ? 'ring-2 ring-offset-2 ring-primary' : ''}`} style={{ background: m.css }}>{m.name}</button>
                 ))}
               </div>
             </div>

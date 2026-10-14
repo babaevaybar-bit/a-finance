@@ -249,10 +249,12 @@ export default function CardDialog({ card, board, lists, labels, managers, cards
             <div className="flex-1 min-w-0">
               <DialogTitle className="sr-only">{card.title}</DialogTitle>
               <Textarea value={title} rows={1} onChange={e => setTitle(e.target.value)}
-                className="text-lg font-semibold border-transparent shadow-none px-1 min-h-0 resize-none focus-visible:border-input"
+                className="font-display text-xl font-bold tracking-tight border-transparent shadow-none px-1 min-h-0 resize-none focus-visible:border-input"
                 onBlur={() => { if (title.trim() && title.trim() !== card.title) save({ title: title.trim() }); }}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); } }} />
-              <div className="text-xs text-muted-foreground px-1">в колонке <span className="underline">{list?.title}</span></div>
+              <div className="text-xs text-muted-foreground px-1 flex items-center gap-1.5">в колонке
+                <span className="rounded-full px-2 py-0.5 font-medium text-foreground/80" style={{ background: list?.color ? labelHex(list.color) + '40' : 'hsl(var(--muted))' }}>{list?.title}</span>
+              </div>
             </div>
           </div>
 

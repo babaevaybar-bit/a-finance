@@ -5,6 +5,8 @@ import { supabase } from '@/db/supabase';
 export interface KBoard {
   id: string; title: string; background: string; starred: boolean; archived: boolean;
   collection: string | null; created_at: string; updated_at: string;
+  // для плиток на странице «Доски»
+  preview?: { title: string; color: string | null; count: number }[]; card_count?: number; overdue_count?: number;
 }
 export interface KList { id: string; board_id: string; title: string; position: number; archived: boolean; color: string | null; collapsed: boolean; }
 export interface KLabel { id: string; board_id: string; name: string; color: string; }
@@ -25,16 +27,26 @@ export interface KAttachment { id: string; card_id: string; path: string; name: 
 export interface KActivity { id: string; board_id: string; card_id: string | null; actor_name: string | null; action: string; created_at: string; }
 
 // Цвета фона досок и меток — как в Trello
-export const BOARD_BACKGROUNDS: Record<string, string> = {
-  emerald: 'linear-gradient(135deg, #1f6f5c 0%, #2f8f6f 100%)',
-  ocean: 'linear-gradient(135deg, #0c66e4 0%, #1d7afc 100%)',
-  sunset: 'linear-gradient(135deg, #e2483d 0%, #f87462 100%)',
-  violet: 'linear-gradient(135deg, #5e4db2 0%, #8f7ee7 100%)',
-  amber: 'linear-gradient(135deg, #b65c02 0%, #e2b203 100%)',
-  slate: 'linear-gradient(135deg, #2c3e5d 0%, #44546f 100%)',
-  pink: 'linear-gradient(135deg, #ae4787 0%, #e774bb 100%)',
-  sand: 'linear-gradient(135deg, #8c6a3d 0%, #c9a26b 100%)',
-};
+// Фоны досок — отделки дверей (дуб, орех, алюминий…) плюс старые цвета, чтобы уже созданные доски не поменялись
+const GRAIN = 'radial-gradient(120% 90% at 15% 0%, rgba(255,255,255,.16), transparent 55%), repeating-linear-gradient(92deg, rgba(255,255,255,.035) 0 1px, transparent 1px 6px, rgba(0,0,0,.03) 6px 7px, transparent 7px 19px)';
+const BRUSH = 'radial-gradient(130% 90% at 20% 0%, rgba(255,255,255,.28), transparent 60%), repeating-linear-gradient(90deg, rgba(255,255,255,.07) 0 1px, transparent 1px 4px)';
+export const BOARD_MATERIALS: { key: string; name: string; light: boolean; css: string }[] = [
+  { key: 'oak', name: 'Дуб', light: false, css: `${GRAIN}, linear-gradient(135deg, #c99d66 0%, #a97a45 55%, #8d6234 100%)` },
+  { key: 'walnut', name: 'Орех', light: false, css: `${GRAIN}, linear-gradient(135deg, #6e4632 0%, #50301f 55%, #3a2217 100%)` },
+  { key: 'aluminum', name: 'Алюминий', light: true, css: `${BRUSH}, linear-gradient(160deg, #e3e6e9 0%, #bcc3c9 45%, #d3d8dc 70%, #a9b0b7 100%)` },
+  { key: 'graphite', name: 'Графит', light: false, css: `${BRUSH}, linear-gradient(150deg, #3b4044 0%, #2a2e31 60%, #1f2224 100%)` },
+  { key: 'matte', name: 'Белая эмаль', light: true, css: 'linear-gradient(160deg, #f3f1ec 0%, #e2ded5 100%)' },
+  { key: 'emerald', name: 'Изумруд', light: false, css: `${GRAIN}, linear-gradient(135deg, #1f6f5c 0%, #2f8f6f 100%)` },
+  { key: 'ocean', name: 'Синий', light: false, css: 'linear-gradient(135deg, #0c66e4 0%, #1d7afc 100%)' },
+  { key: 'sunset', name: 'Красный', light: false, css: 'linear-gradient(135deg, #c9372c 0%, #f87462 100%)' },
+  { key: 'violet', name: 'Фиолетовый', light: false, css: 'linear-gradient(135deg, #5e4db2 0%, #8f7ee7 100%)' },
+  { key: 'amber', name: 'Янтарь', light: false, css: 'linear-gradient(135deg, #b65c02 0%, #e2b203 100%)' },
+  { key: 'slate', name: 'Сланец', light: false, css: 'linear-gradient(135deg, #2c3e5d 0%, #44546f 100%)' },
+  { key: 'pink', name: 'Розовый', light: false, css: 'linear-gradient(135deg, #ae4787 0%, #e774bb 100%)' },
+  { key: 'sand', name: 'Песок', light: false, css: 'linear-gradient(135deg, #8c6a3d 0%, #c9a26b 100%)' },
+];
+export const BOARD_BACKGROUNDS: Record<string, string> = Object.fromEntries(BOARD_MATERIALS.map(m => [m.key, m.css]));
+export const isLightBoard = (key: string) => !!BOARD_MATERIALS.find(m => m.key === key)?.light;
 export const LABEL_COLORS: { key: string; hex: string; name: string }[] = [
   { key: 'green', hex: '#4bce97', name: 'Зелёный' },
   { key: 'yellow', hex: '#e2b203', name: 'Жёлтый' },
@@ -85,9 +97,22 @@ export async function logActivity(boardId: string, action: string, cardId?: stri
 
 // ── Доски ──
 export async function getBoards(): Promise<KBoard[]> {
-  const { data, error } = await supabase.from('kanban_boards').select('*').eq('archived', false).order('updated_at', { ascending: false });
+  const { data, error } = await supabase.from('kanban_boards')
+    .select('*, kanban_lists(id, title, color, archived, position), kanban_cards(list_id, archived, is_template, due_at, due_done)')
+    .eq('archived', false).order('updated_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as KBoard[];
+  const now = Date.now();
+  return (data ?? []).map((b: any) => {
+    const cards = (b.kanban_cards ?? []).filter((c: any) => !c.archived && !c.is_template);
+    const lists = (b.kanban_lists ?? []).filter((l: any) => !l.archived).sort((x: any, y: any) => x.position - y.position);
+    const { kanban_lists: _l, kanban_cards: _c, ...rest } = b;
+    return {
+      ...rest,
+      preview: lists.map((l: any) => ({ title: l.title, color: l.color, count: cards.filter((c: any) => c.list_id === l.id).length })),
+      card_count: cards.length,
+      overdue_count: cards.filter((c: any) => c.due_at && !c.due_done && new Date(c.due_at).getTime() < now).length,
+    } as KBoard;
+  });
 }
 export async function getArchivedBoards(): Promise<KBoard[]> {
   const { data } = await supabase.from('kanban_boards').select('*').eq('archived', true).order('updated_at', { ascending: false });

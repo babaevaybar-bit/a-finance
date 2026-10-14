@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import {
   ArrowLeft, Star, Plus, X, MoreHorizontal, Filter, Archive, Activity, Tag, Palette, Search, RotateCcw, Trash2,
   Columns3, Table2, CalendarDays, GanttChart, BarChart3, Map as MapIcon, Zap, SlidersHorizontal, Eye, Bookmark, LayoutTemplate,
-  ChevronsLeftRight, ChevronsRightLeft,
+  ChevronsLeftRight, ChevronsRightLeft, Keyboard, AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import TableView from '@/components/kanban/views/TableView';
@@ -28,7 +28,7 @@ import type { Manager } from '@/types/types';
 import {
   getBoard, getBoardContent, updateBoard, createList, updateList, createCard, updateCard, deleteCard,
   getBoardActivity, createLabel, updateLabel, deleteLabel, logActivity, positionBetween,
-  BOARD_BACKGROUNDS, LABEL_COLORS, LIST_COLORS, labelHex, lastOf, runAutomations, copyCard, fieldDisplay,
+  BOARD_BACKGROUNDS, BOARD_MATERIALS, isLightBoard, LABEL_COLORS, LIST_COLORS, labelHex, lastOf, runAutomations, copyCard, fieldDisplay,
   getObservers, getSavedFilters, saveFilter, deleteSavedFilter,
   type KBoard, type KList, type KCard, type KLabel, type KActivity, type KCustomField, type KSavedFilter, type KTrigger,
 } from '@/lib/kanban';
@@ -61,6 +61,7 @@ export default function BoardPage() {
   const [loading, setLoading] = useState(true);
   const { user, isDirector } = useAuth();
   const [readOnly, setReadOnly] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
   const [savedFilters, setSavedFilters] = useState<KSavedFilter[]>([]);
   const viewKey = `afin-board-view-${id}`;
   const [view, setViewState] = useState<ViewMode>(() => { try { return (localStorage.getItem(viewKey) as ViewMode) || 'board'; } catch { return 'board'; } });
@@ -104,6 +105,25 @@ export default function BoardPage() {
     getSavedFilters(id).then(setSavedFilters).catch(() => {});
     if (user && !isDirector) getObservers(id).then(o => setReadOnly(o.includes(user.id))).catch(() => {});
   }, [id, user, isDirector]);
+
+  // Горячие клавиши: / — поиск, N — новая карточка, 1–6 — вид
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || searchParams.get('card')) return;
+      if (e.key === '/') { e.preventDefault(); searchRef.current?.focus(); return; }
+      if ((e.key === 'n' || e.key === 'т' || e.key === 'N') && !readOnly) {
+        const first = lists.filter(l => !l.archived && !l.collapsed).sort((a, b) => a.position - b.position)[0];
+        if (first) { e.preventDefault(); setView('board'); setAddingIn(first.id); setNewCardTitle(''); }
+        return;
+      }
+      const n = Number(e.key);
+      if (n >= 1 && n <= VIEWS.length) setView(VIEWS[n - 1].key);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   // Запуск правил автоматизации после действия; если что-то сработало — обновляем доску
   async function automate(event: KTrigger, cardId: string) {
@@ -280,6 +300,23 @@ export default function BoardPage() {
   }
 
   const bg = BOARD_BACKGROUNDS[board.background] ?? BOARD_BACKGROUNDS.emerald;
+  const light = isLightBoard(board.background);
+  const ink = light ? 'text-[#22272b]' : 'text-white';
+  const hov = light ? 'hover:bg-black/10' : 'hover:bg-white/20';
+  const overdueCount = viewCards.filter(c => dueState(c) === 'overdue').length;
+  const soonCount = viewCards.filter(c => dueState(c) === 'soon').length;
+  const toggleMember = (mid: string) => setFMembers(p => p.includes(mid) ? p.filter(x => x !== mid) : [...p, mid]);
+  async function quickToggleDue(c: KCard) {
+    setCards(p => p.map(x => x.id === c.id ? { ...x, due_done: !c.due_done } : x));
+    await updateCard(c.id, { due_done: !c.due_done }).catch(() => load());
+    if (!c.due_done) { logActivity(id, `отметил(а) «${c.title}» выполненной`, c.id); automate({ type: 'due_done' }, c.id); }
+  }
+  async function quickArchive(c: KCard) {
+    setCards(p => p.map(x => x.id === c.id ? { ...x, archived: true } : x));
+    await updateCard(c.id, { archived: true }).catch(() => load());
+    logActivity(id, `архивировал(а) «${c.title}»`, c.id);
+    toast('Карточка в архиве', { action: { label: 'Вернуть', onClick: async () => { await updateCard(c.id, { archived: false }); load(); } } });
+  }
   const archivedCards = cards.filter(c => c.archived);
   const archivedLists = lists.filter(l => l.archived);
 
@@ -287,8 +324,8 @@ export default function BoardPage() {
     <AppLayout>
       <div className="-m-4 md:-m-6 flex flex-col h-[calc(100dvh-104px)] lg:h-[calc(100dvh-48px)]" style={{ background: bg }}>
         {/* Шапка доски */}
-        <div className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-black/20 backdrop-blur-sm text-white flex-wrap">
-          <Button size="icon" variant="ghost" className="h-8 w-8 text-white hover:bg-white/20" onClick={() => navigate('/boards')} aria-label="Все доски">
+        <div className={`flex items-center gap-2 px-3 md:px-4 py-2.5 backdrop-blur-sm flex-wrap ${light ? "bg-white/45" : "bg-black/25"} ${ink}`}>
+          <Button size="icon" variant="ghost" className={`h-8 w-8 ${ink} ${hov}`} onClick={() => navigate('/boards')} aria-label="Все доски">
             <ArrowLeft size={16} />
           </Button>
           {editingTitle ? (
@@ -296,24 +333,37 @@ export default function BoardPage() {
               onBlur={async e => { setEditingTitle(false); const t = e.target.value.trim(); if (t && t !== board.title) { setBoard({ ...board, title: t }); await updateBoard(id, { title: t }); } }}
               onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setEditingTitle(false); }} />
           ) : (
-            <button type="button" className="text-lg font-bold px-2 py-0.5 rounded hover:bg-white/20" onClick={() => setEditingTitle(true)}>{board.title}</button>
+            <button type="button" className={`font-display text-xl font-bold tracking-tight px-2 py-0.5 rounded ${hov}`} onClick={() => setEditingTitle(true)}>{board.title}</button>
           )}
-          <Button size="icon" variant="ghost" className="h-8 w-8 text-white hover:bg-white/20" aria-label="Избранное"
+          <Button size="icon" variant="ghost" className={`h-8 w-8 ${ink} ${hov}`} aria-label="Избранное"
             onClick={async () => { setBoard({ ...board, starred: !board.starred }); await updateBoard(id, { starred: !board.starred }); }}>
             <Star size={16} className={board.starred ? 'fill-yellow-300 text-yellow-300' : ''} />
           </Button>
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-300 text-amber-950 font-medium">в разработке</span>
           {readOnly && <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/25 font-medium inline-flex items-center gap-1"><Eye size={11} />только просмотр</span>}
+          <span className={`hidden sm:inline text-xs ${light ? 'text-black/55' : 'text-white/75'}`}>{viewCards.length} карточек</span>
+          {overdueCount > 0 && (
+            <button type="button" onClick={() => setFDue(fDue === 'overdue' ? 'all' : 'overdue')} title="Показать только просроченные"
+              className={`text-xs rounded-full px-2 py-0.5 inline-flex items-center gap-1 font-medium ${fDue === 'overdue' ? 'bg-white text-red-700' : 'bg-red-600 text-white'}`}>
+              <AlertTriangle size={11} />просрочено {overdueCount}
+            </button>
+          )}
+          {soonCount > 0 && (
+            <button type="button" onClick={() => setFDue(fDue === 'soon' ? 'all' : 'soon')} title="Срок в ближайшие сутки"
+              className={`text-xs rounded-full px-2 py-0.5 font-medium ${fDue === 'soon' ? 'bg-white text-amber-800' : 'bg-amber-400 text-amber-950'}`}>
+              скоро срок {soonCount}
+            </button>
+          )}
 
           <div className="ml-auto flex items-center gap-1.5 flex-wrap">
             <div className="relative">
-              <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-white/70" />
-              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Поиск карточек"
-                className="h-8 w-40 md:w-52 rounded-md bg-white/20 placeholder:text-white/70 text-white text-sm pl-7 pr-2 outline-none focus:bg-white focus:text-foreground focus:placeholder:text-muted-foreground" />
+              <Search size={13} className={`absolute left-2 top-1/2 -translate-y-1/2 ${light ? "text-black/50" : "text-white/70"}`} />
+              <input ref={searchRef} value={q} onChange={e => setQ(e.target.value)} placeholder="Поиск   /"
+                className={`h-8 w-40 md:w-52 rounded-md text-sm pl-7 pr-2 outline-none focus:bg-white focus:text-foreground focus:placeholder:text-muted-foreground ${light ? 'bg-white/70 placeholder:text-black/45 text-foreground' : 'bg-white/20 placeholder:text-white/70 text-white'}`} />
             </div>
             <Popover>
               <PopoverTrigger asChild>
-                <Button size="sm" variant="ghost" className={`h-8 text-white hover:bg-white/20 ${filtering ? 'bg-white/25' : ''}`}>
+                <Button size="sm" variant="ghost" className={`h-8 ${ink} ${hov} ${filtering ? (light ? 'bg-black/10' : 'bg-white/25') : ''}`}>
                   <Filter size={14} className="mr-1" />Фильтр{filtering ? ' •' : ''}
                 </Button>
               </PopoverTrigger>
@@ -373,10 +423,28 @@ export default function BoardPage() {
                 )}
               </PopoverContent>
             </Popover>
-            <div className="hidden md:flex -space-x-1.5 mx-1">{managers.slice(0, 5).map(m => <Avatar key={m.id} m={m} size={26} />)}</div>
+            <div className="hidden md:flex -space-x-1.5 mx-1">
+              {managers.slice(0, 6).map(m => (
+                <button key={m.id} type="button" onClick={() => toggleMember(m.id)} title={`${m.name}: показать только его карточки`}
+                  className={`rounded-full transition-transform hover:-translate-y-0.5 ${fMembers.includes(m.id) ? 'ring-2 ring-offset-1 ring-amber-300 z-10' : fMembers.length ? 'opacity-50' : ''}`}>
+                  <Avatar m={m} size={28} />
+                </button>
+              ))}
+            </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button size="icon" variant="ghost" className={`hidden md:inline-flex h-8 w-8 ${ink} ${hov}`} aria-label="Горячие клавиши"><Keyboard size={16} /></Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-64 text-sm space-y-1.5">
+                <div className="font-semibold mb-1">Горячие клавиши</div>
+                {[['/', 'поиск карточек'], ['N', 'новая карточка в первой колонке'], ['1–6', 'переключить вид'], ['Esc', 'закрыть карточку'], ['Двойной клик', 'по пустому месту — новая колонка']].map(([k, t]) => (
+                  <div key={k} className="flex items-center gap-2"><kbd className="min-w-[28px] text-center rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-sans">{k}</kbd><span className="text-muted-foreground">{t}</span></div>
+                ))}
+              </PopoverContent>
+            </Popover>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-8 w-8 text-white hover:bg-white/20" aria-label="Меню доски"><MoreHorizontal size={16} /></Button>
+                <Button size="icon" variant="ghost" className={`h-8 w-8 ${ink} ${hov}`} aria-label="Меню доски"><MoreHorizontal size={16} /></Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuItem onClick={() => openMenu('automation')}><Zap size={14} className="mr-2" />Автоматизация</DropdownMenuItem>
@@ -389,10 +457,10 @@ export default function BoardPage() {
                 <DropdownMenuSeparator />
                 <div className="px-2 py-1.5">
                   <div className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1"><Palette size={12} />Фон доски</div>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {Object.entries(BOARD_BACKGROUNDS).map(([k, v]) => (
-                      <button key={k} type="button" aria-label={k} onClick={async () => { setBoard({ ...board, background: k }); await updateBoard(id, { background: k }); }}
-                        className={`h-7 rounded ${board.background === k ? 'ring-2 ring-offset-1 ring-primary' : ''}`} style={{ background: v }} />
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {BOARD_MATERIALS.map(m => (
+                      <button key={m.key} type="button" aria-label={m.name} title={m.name} onClick={async () => { setBoard({ ...board, background: m.key }); await updateBoard(id, { background: m.key }); }}
+                        className={`h-7 rounded ${board.background === m.key ? 'ring-2 ring-offset-1 ring-primary' : ''}`} style={{ background: m.css }} />
                     ))}
                   </div>
                 </div>
@@ -407,14 +475,14 @@ export default function BoardPage() {
         </div>
 
         {/* Виды доски */}
-        <div className="flex items-center gap-1 px-3 md:px-4 py-1.5 bg-black/10 overflow-x-auto">
+        <div className={`flex items-center gap-1 px-3 md:px-4 py-1.5 overflow-x-auto ${light ? "bg-white/25" : "bg-black/10"}`}>
           {VIEWS.map(v => (
             <button key={v.key} type="button" onClick={() => setView(v.key)}
-              className={`shrink-0 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm transition-colors ${view === v.key ? 'bg-white text-foreground font-medium shadow-sm' : 'text-white/90 hover:bg-white/20'}`}>
+              className={`shrink-0 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm transition-colors ${view === v.key ? 'bg-white text-foreground font-medium shadow-sm' : `${light ? 'text-black/70' : 'text-white/90'} ${hov}`}`}>
               <v.icon size={14} />{v.label}
             </button>
           ))}
-          {filtering && view !== 'board' && <span className="ml-2 text-xs text-white/90 shrink-0">фильтр включён · {viewCards.length} карт.</span>}
+          {filtering && view !== 'board' && <span className={`ml-2 text-xs shrink-0 ${light ? 'text-black/60' : 'text-white/90'}`}>фильтр включён, показано {viewCards.length}</span>}
         </div>
 
         {view === 'table' && <div className="flex-1 min-h-0"><TableView boardTitle={board.title} lists={activeLists} cards={viewCards} labels={labels} managers={managers} fields={fields} onOpen={cid => setSearchParams({ card: cid })} /></div>}
@@ -426,8 +494,23 @@ export default function BoardPage() {
         {view === 'map' && <div className="flex-1 min-h-0"><MapView lists={activeLists} cards={viewCards} readOnly={readOnly} onOpen={cid => setSearchParams({ card: cid })} onChanged={load} /></div>}
 
         {/* Колонки */}
-        {view === 'board' && <div className="flex-1 overflow-x-auto overflow-y-hidden kanban-scroll">
+        {view === 'board' && <div className="flex-1 overflow-x-auto overflow-y-hidden kanban-scroll snap-x snap-mandatory sm:snap-none"
+          onDoubleClick={e => { if (!readOnly && e.target === e.currentTarget.firstElementChild) setAddingList(true); }}>
           <div className="flex items-start gap-3 p-3 md:p-4 h-full">
+            {activeLists.length === 0 && !readOnly && (
+              <div className="shrink-0 w-[min(420px,85vw)] rounded-2xl bg-white/90 backdrop-blur p-5 space-y-3 shadow-sm">
+                <div className="font-display text-lg font-bold">Доска пустая</div>
+                <p className="text-sm text-muted-foreground">Колонки — это этапы работы. Добавьте свою или возьмите готовый набор для производства дверей.</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => setAddingList(true)}><Plus size={14} className="mr-1" />Своя колонка</Button>
+                  <Button size="sm" variant="outline" onClick={async () => {
+                    const titles = ['Продано', 'Замер', 'Заказ поставщику', 'В производстве', 'Склад', 'Монтаж', 'Завершено'];
+                    for (let i = 0; i < titles.length; i++) await createList(id, titles[i], (i + 1) * 1024);
+                    load();
+                  }}>Этапы производства дверей</Button>
+                </div>
+              </div>
+            )}
             {activeLists.map(list => {
               const all = cardsOf(list.id);
               const visible = filtering ? all.filter(matches) : all;
@@ -437,7 +520,7 @@ export default function BoardPage() {
                     onClick={async () => { setLists(p => p.map(x => x.id === list.id ? { ...x, collapsed: false } : x)); await updateList(list.id, { collapsed: false }); }}
                     onDragOver={e => { if (dragCard.current) { e.preventDefault(); onListBodyDragOver(e, list.id); } }}
                     onDrop={e => onCardDrop(e)}
-                    className="shrink-0 w-10 max-h-full rounded-xl bg-[#f1f2f4] dark:bg-zinc-800 shadow-sm flex flex-col items-center gap-2 py-3 hover:brightness-95"
+                    className="shrink-0 w-10 max-h-full rounded-xl bg-[#f4f5f6]/95 dark:bg-zinc-800 shadow-sm flex flex-col items-center gap-2 py-3 hover:brightness-95 snap-start"
                     style={list.color ? { borderTop: `4px solid ${labelHex(list.color)}` } : undefined}>
                     <ChevronsLeftRight size={14} className="text-muted-foreground" />
                     <span className="text-[11px] text-muted-foreground tabular-nums">{all.length}</span>
@@ -447,10 +530,13 @@ export default function BoardPage() {
               }
               return (
                 <div key={list.id}
-                  className="shrink-0 w-[272px] max-h-full flex flex-col rounded-xl bg-[#f1f2f4] dark:bg-zinc-800 shadow-sm overflow-hidden"
-                  style={list.color ? { borderTop: `4px solid ${labelHex(list.color)}`, background: `color-mix(in srgb, ${labelHex(list.color)} 14%, #f1f2f4)` } : undefined}
+                  className={`shrink-0 w-[85vw] sm:w-[280px] snap-start max-h-full flex flex-col rounded-xl bg-[#f4f5f6]/95 dark:bg-zinc-800 shadow-[0_1px_2px_rgba(0,0,0,.12),0_8px_24px_-12px_rgba(0,0,0,.35)] overflow-hidden transition-shadow
+                    ${draggingId && dropHint?.listId === list.id ? 'ring-2 ring-primary/70 ring-offset-2 ring-offset-transparent' : ''}`}
+                  style={list.color ? { background: `color-mix(in srgb, ${labelHex(list.color)} 13%, #f4f5f6)` } : undefined}
                   onDragOver={e => { if (dragList.current) e.preventDefault(); else onListBodyDragOver(e, list.id); }}
                   onDrop={e => { if (dragList.current) { e.preventDefault(); onListDrop(list.id); } else onCardDrop(e); }}>
+                  {/* алюминиевая кромка сверху — как у наших дверей; у цветной колонки — её цвет */}
+                  <div className="h-[4px] shrink-0" style={{ background: list.color ? labelHex(list.color) : 'linear-gradient(90deg, #aab1b8 0%, #eef1f3 35%, #b7bec5 60%, #e2e6e9 85%, #9ea6ad 100%)' }} />
                   {/* заголовок колонки — за него можно перетаскивать колонку */}
                   <div className="flex items-center gap-1 px-2 pt-2 pb-1 cursor-grab active:cursor-grabbing"
                     draggable={!readOnly && editingListId !== list.id}
@@ -465,7 +551,7 @@ export default function BoardPage() {
                         {list.title}
                       </button>
                     )}
-                    <span className="text-[11px] text-muted-foreground tabular-nums px-1">{filtering ? `${visible.length}/${all.length}` : all.length}</span>
+                    <span className="text-[11px] text-muted-foreground tabular-nums rounded-full bg-black/5 px-1.5 py-0.5">{filtering ? `${visible.length}/${all.length}` : all.length}</span>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Меню колонки"><MoreHorizontal size={14} /></Button>
@@ -509,7 +595,10 @@ export default function BoardPage() {
                           onDragEnd={() => { dragCard.current = null; setDraggingId(null); setDropHint(null); }}
                           onDragOver={e => onCardDragOver(e, list.id, i)}>
                           <CardTile card={c} labels={labels} members={managers} fields={fields} dragging={draggingId === c.id}
-                            onOpen={() => setSearchParams({ card: c.id })} />
+                            onOpen={() => setSearchParams({ card: c.id })}
+                            onToggleDue={readOnly ? undefined : () => quickToggleDue(c)}
+                            onArchive={readOnly ? undefined : () => quickArchive(c)}
+                            onToggleMemberFilter={toggleMember} />
                         </div>
                       </React.Fragment>
                     ))}
@@ -552,9 +641,9 @@ export default function BoardPage() {
             })}
 
             {/* новая колонка */}
-            {!readOnly && <div className="shrink-0 w-[272px]">
+            {!readOnly && <div className="shrink-0 w-[85vw] sm:w-[280px] snap-start">
               {addingList ? (
-                <div className="rounded-xl bg-[#f1f2f4] dark:bg-zinc-800 p-2 space-y-1.5">
+                <div className="rounded-xl bg-[#f4f5f6] dark:bg-zinc-800 p-2 space-y-1.5">
                   <Input autoFocus value={newListTitle} placeholder="Название колонки" onChange={e => setNewListTitle(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') addList(); if (e.key === 'Escape') setAddingList(false); }} />
                   <div className="flex items-center gap-1">
@@ -564,7 +653,7 @@ export default function BoardPage() {
                 </div>
               ) : (
                 <button type="button" onClick={() => setAddingList(true)}
-                  className="w-full flex items-center gap-1.5 rounded-xl bg-white/25 hover:bg-white/35 text-white px-3 py-2.5 text-sm font-medium">
+                  className={`w-full flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${light ? 'bg-black/10 hover:bg-black/15 text-[#22272b]' : 'bg-white/25 hover:bg-white/35 text-white'}`}>
                   <Plus size={15} />Добавить ещё одну колонку
                 </button>
               )}
