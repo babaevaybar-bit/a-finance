@@ -217,7 +217,7 @@ export default function MapView({ boardId, lists, cards, onOpen, onChanged, read
         </div>
       </div>
 
-      <aside className="md:w-72 shrink-0 rounded-xl bg-card shadow-sm p-3 space-y-3 overflow-y-auto">
+      <aside className="md:w-72 shrink-0 rounded-xl bg-card shadow-sm p-3 space-y-3 overflow-y-auto flex flex-col">
         <div className="text-sm font-semibold flex items-center gap-1.5"><MapPin size={14} />На карте: {located.length}</div>
 
         {!readOnly && (
@@ -251,41 +251,42 @@ export default function MapView({ boardId, lists, cards, onOpen, onChanged, read
           </div>
         )}
 
-        {/* 2ГИС */}
-        <div className="border-t border-border pt-3 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold flex items-center gap-1.5"><KeyRound size={12} />2ГИС</div>
-            {isDirector && has2gis && (
-              <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none">
-                Ключ API
-                <Switch checked={showKey} onCheckedChange={setShowKey} aria-label="Показать настройки ключа 2ГИС" />
-              </label>
+        {/* 2ГИС — только для директора; весь блок прячется ползунком (положение запоминается) */}
+        {isDirector && (
+          <div className="border-t border-border pt-2 mt-auto">
+            <div className="flex items-center justify-end gap-1.5">
+              <KeyRound size={12} className="text-muted-foreground/60" aria-hidden />
+              <Switch checked={showKey || has2gis === false} disabled={has2gis === false} onCheckedChange={setShowKey}
+                aria-label="Показать или скрыть настройки 2ГИС" title="Настройки 2ГИС" className="scale-75 origin-right" />
+            </div>
+            {(showKey || has2gis === false) && (
+              <div className="space-y-2 pt-1">
+                <div className="text-xs font-semibold flex items-center gap-1.5"><KeyRound size={12} />2ГИС</div>
+                {has2gis ? (
+                  <div className="text-xs text-green-700">Подключён: поиск идёт по базе 2ГИС (ЖК, организации, адреса).</div>
+                ) : (
+                  <div className="text-xs text-muted-foreground">Сейчас поиск идёт по OpenStreetMap — там нет многих ЖК. С ключом 2ГИС поиск будет как в приложении 2ГИС.</div>
+                )}
+                <div className="space-y-1.5">
+                  {/* type="text" + маскировка: браузер не подставляет сюда сохранённый пароль от сайта */}
+                  <Input className="h-8 text-xs [-webkit-text-security:disc]" type="text" name="dgis-api-key" inputMode="text"
+                    autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} data-lpignore="true" data-1p-ignore
+                    value={keyInput} onChange={e => setKeyInput(e.target.value)} placeholder={has2gis ? 'Новый ключ 2ГИС' : 'Вставьте ключ 2ГИС'} />
+                  <div className="flex gap-1.5">
+                    <Button size="sm" className="h-7 text-xs flex-1" disabled={!keyInput.trim()} onClick={async () => {
+                      const key = keyInput.trim();
+                      if (key.length < 20 || /\s/.test(key)) { toast.error('Это не похоже на ключ 2ГИС — скопируйте ключ из Platform Manager'); return; }
+                      try { await setDgisKey(key); setKeyInput(''); setHas2gis(true); setShowKey(false); toast.success('Ключ 2ГИС сохранён'); }
+                      catch (e) { toast.error(e instanceof Error ? e.message : 'Не удалось сохранить'); }
+                    }}>Сохранить ключ</Button>
+                    {has2gis && <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={async () => { await setDgisKey(''); setHas2gis(false); toast('Ключ 2ГИС удалён'); }}>Отключить</Button>}
+                  </div>
+                  <a href="https://platform.2gis.ru/" target="_blank" rel="noopener noreferrer" className="text-[11px] text-primary hover:underline inline-flex items-center gap-1">Где взять ключ: Platform Manager 2ГИС<ExternalLink size={10} /></a>
+                </div>
+              </div>
             )}
           </div>
-          {has2gis ? (
-            <div className="text-xs text-green-700">Подключён: поиск идёт по базе 2ГИС (ЖК, организации, адреса).</div>
-          ) : (
-            <div className="text-xs text-muted-foreground">Сейчас поиск идёт по OpenStreetMap — там нет многих ЖК. С ключом 2ГИС поиск будет как в приложении 2ГИС.</div>
-          )}
-          {isDirector && (!has2gis || showKey) && (
-            <div className="space-y-1.5">
-              {/* type="text" + маскировка: браузер не подставляет сюда сохранённый пароль от сайта */}
-              <Input className="h-8 text-xs [-webkit-text-security:disc]" type="text" name="dgis-api-key" inputMode="text"
-                autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} data-lpignore="true" data-1p-ignore
-                value={keyInput} onChange={e => setKeyInput(e.target.value)} placeholder={has2gis ? 'Новый ключ 2ГИС' : 'Вставьте ключ 2ГИС'} />
-              <div className="flex gap-1.5">
-                <Button size="sm" className="h-7 text-xs flex-1" disabled={!keyInput.trim()} onClick={async () => {
-                  const key = keyInput.trim();
-                  if (key.length < 20 || /\s/.test(key)) { toast.error('Это не похоже на ключ 2ГИС — скопируйте ключ из Platform Manager'); return; }
-                  try { await setDgisKey(key); setKeyInput(''); setHas2gis(true); setShowKey(false); toast.success('Ключ 2ГИС сохранён'); }
-                  catch (e) { toast.error(e instanceof Error ? e.message : 'Не удалось сохранить'); }
-                }}>Сохранить ключ</Button>
-                {has2gis && <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={async () => { await setDgisKey(''); setHas2gis(false); toast('Ключ 2ГИС удалён'); }}>Отключить</Button>}
-              </div>
-              <a href="https://platform.2gis.ru/" target="_blank" rel="noopener noreferrer" className="text-[11px] text-primary hover:underline inline-flex items-center gap-1">Где взять ключ: Platform Manager 2ГИС<ExternalLink size={10} /></a>
-            </div>
-          )}
-        </div>
+        )}
       </aside>
     </div>
   );
