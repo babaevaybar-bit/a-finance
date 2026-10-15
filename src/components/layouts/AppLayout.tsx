@@ -8,11 +8,12 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Menu, LayoutDashboard, TrendingUp, Wallet, BarChart2,
+  Menu, Settings, LayoutDashboard, TrendingUp, Wallet, BarChart2,
   Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell, HandCoins, KanbanSquare,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { countPendingDeals, countUnreadNotifications } from '@/lib/api';
+import { UserAvatar } from '@/components/common/UserAvatar';
 
 export const navItems = [
   { path: '/',             label: 'Дашборд',          icon: LayoutDashboard, adminOnly: false, pageKey: 'dashboard'    },
@@ -124,12 +125,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     navigate('/login', { replace: true });
   }
 
-  const displayName = profile?.name ?? user?.email?.split('@')[0] ?? 'Пользователь';
+  const displayName = (profile?.name && profile.name !== 'admin') ? profile.name : (user?.email?.split('@')[0] ?? 'Пользователь');
+
+  // Стартовая страница из профиля: один раз за сессию при открытии «/»
+  const location = useLocation();
+  useEffect(() => {
+    if (!profile || location.pathname !== '/') return;
+    try {
+      if (sessionStorage.getItem('afin-start-applied')) return;
+      sessionStorage.setItem('afin-start-applied', '1');
+    } catch { return; }
+    if (profile.start_page === '/welcome') navigate('/welcome', { replace: true });
+  }, [profile, location.pathname, navigate]);
 
   return (
     <div className="flex min-h-screen w-full bg-background">
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex flex-col w-56 shrink-0 border-r border-sidebar-border bg-sidebar">
+      <aside className="hidden lg:flex flex-col w-56 shrink-0 border-r border-sidebar-border bg-sidebar sticky top-0 h-screen">
         <Link to="/welcome" title="Главная" className="h-14 flex items-center gap-2 px-4 border-b border-sidebar-border hover:bg-sidebar-accent/60 transition-colors">
           <span className="w-7 h-7 rounded-[8px] bg-black text-white flex items-center justify-center text-xs font-display font-bold shrink-0">A</span>
           <span className="font-semibold text-sm text-sidebar-foreground tracking-wide">A-Finance</span>
@@ -142,16 +154,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md hover:bg-sidebar-accent transition-colors text-left">
-                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                  <User size={13} className="text-primary" />
-                </div>
+                <UserAvatar name={displayName} url={profile?.avatar_url} size={30} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium truncate text-sidebar-foreground">{displayName}</p>
                   <p className="text-xs text-muted-foreground">{roleLabel}</p>
                 </div>
+                <Settings size={14} className="text-muted-foreground shrink-0" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent side="top" align="start" className="w-44">
+            <DropdownMenuContent side="top" align="start" className="w-48">
+              <DropdownMenuItem className="cursor-pointer" onClick={() => navigate('/profile')}>
+                <User size={14} className="mr-2" />Мой профиль и настройки
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-destructive focus:text-destructive cursor-pointer" onClick={handleSignOut}>
                 <LogOut size={14} className="mr-2" />Выйти
@@ -180,15 +194,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <NavLinks onClose={() => setOpen(false)} />
               </div>
               <div className="border-t border-sidebar-border p-3">
-                <div className="flex items-center gap-2 px-2 py-1 mb-1">
-                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    <User size={13} className="text-primary" />
-                  </div>
+                <Link to="/profile" onClick={() => setOpen(false)} className="flex items-center gap-2 px-2 py-1.5 mb-1 rounded-md hover:bg-sidebar-accent">
+                  <UserAvatar name={displayName} url={profile?.avatar_url} size={30} />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium truncate text-sidebar-foreground">{displayName}</p>
                     <p className="text-xs text-muted-foreground">{roleLabel}</p>
                   </div>
-                </div>
+                  <Settings size={14} className="text-muted-foreground shrink-0" />
+                </Link>
                 <Button variant="ghost" size="sm" className="w-full justify-start text-destructive hover:text-destructive h-8 text-xs px-2"
                   onClick={() => { setOpen(false); handleSignOut(); }}>
                   <LogOut size={13} className="mr-2" />Выйти

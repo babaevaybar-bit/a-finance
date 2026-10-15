@@ -19,6 +19,12 @@ export interface Profile {
   manager_id: string | null;
   created_at: string;
   updated_at: string;
+  phone?: string | null;
+  birthday?: string | null;
+  city?: string | null;
+  about?: string | null;
+  avatar_url?: string | null;
+  start_page?: string | null;
 }
 
 export interface SalesPlan {
