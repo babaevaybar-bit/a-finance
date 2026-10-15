@@ -1,42 +1,117 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import AppLayout, { navItems } from '@/components/layouts/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/db/supabase';
 import { countPendingDeals, countUnreadNotifications, getDeals } from '@/lib/api';
 import { formatCurrency, getCurrentMonthYear } from '@/lib/utils';
-import { Sunrise, Sun, Sunset, Moon, ArrowRight, TrendingUp, CheckSquare, HandCoins, Bell, ClipboardList } from 'lucide-react';
+import { Sunrise, Sun, Sunset, Moon, ArrowRight, ArrowUpRight, TrendingUp, CheckSquare, HandCoins, Bell, ClipboardList, Sparkles } from 'lucide-react';
+import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 
-// Приветствие по времени суток (Шымкент)
+// ── helpers ──────────────────────────────────────────────────────────────────
 function greeting(h: number) {
   if (h >= 5 && h < 12) return { text: 'Доброе утро', Icon: Sunrise };
   if (h >= 12 && h < 18) return { text: 'Добрый день', Icon: Sun };
   if (h >= 18 && h < 23) return { text: 'Добрый вечер', Icon: Sunset };
   return { text: 'Доброй ночи', Icon: Moon };
 }
-
 function plural(n: number, one: string, few: string, many: string) {
   const m10 = n % 10, m100 = n % 100;
   if (m10 === 1 && m100 !== 11) return one;
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
   return many;
 }
+const money = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} ₸`;
+
+// Плавный «набег» числа
+function useCountUp(target: number | null, ms = 1100) {
+  const [v, setV] = useState(0);
+  const from = useRef(0);
+  useEffect(() => {
+    if (target == null) return;
+    const start = performance.now(); const a = from.current;
+    let raf = 0;
+    const tick = (t: number) => {
+      const k = Math.min(1, (t - start) / ms);
+      const e = 1 - Math.pow(1 - k, 3);
+      const val = a + (target - a) * e;
+      setV(val);
+      if (k < 1) raf = requestAnimationFrame(tick); else from.current = target;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, ms]);
+  return v;
+}
 
 interface Summary {
-  revenue: number | null;
-  dealsCount: number | null;
-  pending: number | null;
-  overdueCount: number | null;
-  overdueSum: number | null;
-  unread: number | null;
-  lastReport: { report_date: string; leads: number; calls: number; chats: number } | null;
+  revenue: number | null; plan: number | null; dealsCount: number | null;
+  pending: number | null; overdueCount: number | null; overdueSum: number | null; unread: number | null;
+  reports: { report_date: string; leads: number; calls: number; chats: number }[] | null;
+}
+
+// ── Дверь Profildoors: скрытая дверь с алюминиевой кромкой, приоткрывается при входе ──
+function DoorScene() {
+  return (
+    <div className="relative w-[230px] h-[300px] md:w-[260px] md:h-[340px] select-none" aria-hidden>
+      {/* полоса света на полу */}
+      <div className="absolute -bottom-5 left-3 right-0 h-14 wl-floor"
+        style={{ background: 'linear-gradient(180deg, rgba(255,214,140,.55), rgba(255,214,140,0))', clipPath: 'polygon(10% 0, 92% 0, 100% 100%, 0 100%)', filter: 'blur(5px)' }} />
+      {/* проём с алюминиевым торцом, внутри — тёплый свет */}
+      <div className="absolute inset-3 rounded-[3px]" style={{ background: 'linear-gradient(90deg,#c9ced3,#f4f6f8 45%,#aeb4ba)', padding: 3 }}>
+        <div className="relative w-full h-full rounded-[2px] overflow-hidden" style={{ background: '#1a120a' }}>
+          <div className="absolute inset-0 wl-glow" style={{ background: 'radial-gradient(90% 70% at 70% 55%, #fff1cf 0%, #ffcf7a 30%, #d98a3a 60%, #3a2412 100%)' }} />
+        </div>
+      </div>
+      {/* полотно */}
+      <div className="absolute inset-3 [perspective:900px]">
+        <div className="w-full h-full origin-left wl-door rounded-[2px] overflow-hidden"
+          style={{ transformStyle: 'preserve-3d', boxShadow: '-10px 0 30px -12px rgba(0,0,0,.6)' }}>
+          {/* шпон ореха */}
+          <div className="absolute inset-0" style={{
+            background: 'repeating-linear-gradient(92deg, rgba(0,0,0,.08) 0 2px, transparent 2px 9px), repeating-linear-gradient(88deg, rgba(255,255,255,.05) 0 1px, transparent 1px 14px), linear-gradient(180deg,#8a5a37,#6b4428 60%,#5a381f)',
+          }} />
+          {/* алюминиевая кромка по периметру */}
+          <div className="absolute inset-0 rounded-[2px]" style={{ boxShadow: 'inset 0 0 0 3px #d9dde1, inset 0 0 0 4px rgba(0,0,0,.25)' }} />
+          {/* ручка */}
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 w-2.5 h-14 rounded-full"
+            style={{ background: 'linear-gradient(90deg,#9aa1a8,#f2f4f6 50%,#8e959c)', boxShadow: '0 2px 6px rgba(0,0,0,.4)' }} />
+          {/* блик */}
+          <div className="absolute inset-0 wl-sheen" style={{ background: 'linear-gradient(105deg, transparent 30%, rgba(255,255,255,.18) 45%, transparent 60%)' }} />
+        </div>
+      </div>
+      {/* логотип-марка */}
+      <div className="absolute -bottom-12 left-0 right-0 text-center text-[10px] tracking-[0.35em] text-white/40 uppercase">Profildoors</div>
+    </div>
+  );
+}
+
+// Кольцо выполнения плана
+function PlanRing({ pct }: { pct: number }) {
+  const r = 42, c = 2 * Math.PI * r;
+  const shown = useCountUp(pct, 1400);
+  return (
+    <svg viewBox="0 0 100 100" className="w-24 h-24 -rotate-90">
+      <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(255,255,255,.12)" strokeWidth="9" />
+      <circle cx="50" cy="50" r={r} fill="none" stroke="url(#wlRing)" strokeWidth="9" strokeLinecap="round"
+        strokeDasharray={c} strokeDashoffset={c * (1 - Math.min(100, shown) / 100)} />
+      <defs>
+        <linearGradient id="wlRing" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stopColor="#f6c56f" /><stop offset="100%" stopColor="#7fd1a8" />
+        </linearGradient>
+      </defs>
+      <text x="50" y="50" textAnchor="middle" dominantBaseline="central" className="rotate-90 origin-center fill-white font-semibold" fontSize="20">
+        {Math.round(shown)}%
+      </text>
+    </svg>
+  );
 }
 
 /** Приветственная страница — открывается по нажатию на «A-Finance». */
 export default function WelcomePage() {
   const { profile, isAdmin, canView, canViewAllManagers, canApprove } = useAuth();
   const [now, setNow] = useState(() => new Date());
-  const [s, setS] = useState<Summary>({ revenue: null, dealsCount: null, pending: null, overdueCount: null, overdueSum: null, unread: null, lastReport: null });
+  const [s, setS] = useState<Summary>({ revenue: null, plan: null, dealsCount: null, pending: null, overdueCount: null, overdueSum: null, unread: null, reports: null });
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30_000); return () => clearInterval(t); }, []);
 
@@ -45,21 +120,23 @@ export default function WelcomePage() {
     const today = new Date().toISOString().slice(0, 10);
     const managerFilter = canViewAllManagers ? null : (profile?.manager_id ?? null);
 
-    // Выручка за месяц: директор/РОП — по всем подтверждённым сделкам, менеджер — свои
     (async () => {
       try {
-        let list: { total_amount: number; paid_amount: number; next_payment_date: string | null; status: string }[] = [];
+        let list: { total_amount: number; status: string }[] = [];
+        let planQ = supabase.from('sales_plans').select('plan_amount, manager_id').eq('month_year', month);
         if (canViewAllManagers) {
-          const { data } = await supabase.from('deals').select('total_amount, paid_amount, next_payment_date, status').eq('month_year', month).eq('status', 'approved');
+          const { data } = await supabase.from('deals').select('total_amount, status').eq('month_year', month).eq('status', 'approved');
           list = (data as typeof list) ?? [];
         } else if (profile?.manager_id) {
           list = (await getDeals(profile.manager_id, month)).filter(d => d.status === 'approved');
+          planQ = planQ.eq('manager_id', profile.manager_id);
         }
-        setS(p => ({ ...p, revenue: list.reduce((a, d) => a + Number(d.total_amount), 0), dealsCount: list.length }));
+        const { data: plans } = await planQ;
+        const plan = ((plans as { plan_amount: number }[]) ?? []).reduce((a, p) => a + Number(p.plan_amount || 0), 0);
+        setS(p => ({ ...p, revenue: list.reduce((a, d) => a + Number(d.total_amount), 0), dealsCount: list.length, plan }));
       } catch { /* silent */ }
     })();
 
-    // Просроченные доплаты (по всем месяцам)
     (async () => {
       try {
         let q = supabase.from('deals').select('total_amount, paid_amount').eq('status', 'approved').lt('next_payment_date', today);
@@ -74,10 +151,11 @@ export default function WelcomePage() {
     countUnreadNotifications(managerFilter).then(n => setS(p => ({ ...p, unread: n }))).catch(() => {});
 
     if (canViewAllManagers) {
-      supabase.from('amo_daily_reports').select('report_date, leads, calls_in, calls_out, chats').order('report_date', { ascending: false }).limit(1)
+      supabase.from('amo_daily_reports').select('report_date, leads, calls_in, calls_out, chats').order('report_date', { ascending: false }).limit(14)
         .then(({ data }) => {
-          const r = data?.[0] as { report_date: string; leads: number; calls_in: number; calls_out: number; chats: number } | undefined;
-          if (r) setS(p => ({ ...p, lastReport: { report_date: r.report_date, leads: r.leads, calls: r.calls_in + r.calls_out, chats: r.chats } }));
+          const rows = ((data ?? []) as { report_date: string; leads: number; calls_in: number; calls_out: number; chats: number }[])
+            .map(r => ({ report_date: r.report_date, leads: r.leads, calls: r.calls_in + r.calls_out, chats: r.chats })).reverse();
+          setS(p => ({ ...p, reports: rows }));
         });
     }
   }, [canViewAllManagers, canApprove, profile?.manager_id]);
@@ -88,79 +166,175 @@ export default function WelcomePage() {
   const dateLabel = rawDate.charAt(0).toUpperCase() + rawDate.slice(1);
   const timeLabel = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   const monthLabel = now.toLocaleDateString('ru-RU', { month: 'long' });
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysLeft = daysInMonth - now.getDate();
 
-  const sections = navItems.filter(i => isAdmin || canView(i.pageKey));
+  const revenueAnim = useCountUp(s.revenue);
+  const pct = s.plan && s.revenue != null ? (s.revenue / s.plan) * 100 : 0;
+  const missing = s.plan && s.revenue != null ? Math.max(0, s.plan - s.revenue) : 0;
+
   const allowed = (key: string) => isAdmin || canView(key);
+  const sections = navItems.filter(i => allowed(i.pageKey));
+  const last = s.reports && s.reports.length ? s.reports[s.reports.length - 1] : null;
 
-  const tiles: { to: string; key: string; icon: React.ElementType; label: string; value: string; hint?: string; tone?: 'warn' | 'bad' }[] = [];
-  tiles.push({ to: '/sales', key: 'sales', icon: TrendingUp, label: `Продажи за ${monthLabel}`, value: s.revenue == null ? '…' : formatCurrency(s.revenue), hint: s.dealsCount == null ? undefined : `подтверждено ${s.dealsCount} ${plural(s.dealsCount, 'сделка', 'сделки', 'сделок')}` });
-  if (canApprove) tiles.push({ to: '/approvals', key: 'approvals', icon: CheckSquare, label: 'Ждут подтверждения', value: s.pending == null ? '…' : String(s.pending), tone: s.pending ? 'warn' : undefined });
-  tiles.push({ to: '/debtors', key: 'debtors', icon: HandCoins, label: 'Просрочены доплаты', value: s.overdueCount == null ? '…' : String(s.overdueCount), hint: s.overdueSum ? `на ${formatCurrency(s.overdueSum)}` : undefined, tone: s.overdueCount ? 'bad' : undefined });
-  tiles.push({ to: '/messages', key: 'messages', icon: Bell, label: 'Новые сообщения', value: s.unread == null ? '…' : String(s.unread), tone: s.unread ? 'warn' : undefined });
-  if (s.lastReport) {
-    const d = new Date(`${s.lastReport.report_date}T12:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
-    tiles.push({ to: '/daily-report', key: 'daily-report', icon: ClipboardList, label: `Отчёт за ${d}`, value: `${s.lastReport.leads} лидов`, hint: `${s.lastReport.calls} звонков · ${s.lastReport.chats} чатов` });
+  const tiles: { to: string; page: string; icon: React.ElementType; label: string; value: number | null; fmt?: (n: number) => string; hint?: string; color: string }[] = [];
+  if (canApprove) tiles.push({ to: '/approvals', page: 'approvals', icon: CheckSquare, label: 'Ждут подтверждения', value: s.pending, color: '#d97706' });
+  tiles.push({ to: '/debtors', page: 'debtors', icon: HandCoins, label: 'Просрочены доплаты', value: s.overdueCount, hint: s.overdueSum ? `на ${money(s.overdueSum)}` : 'всё вовремя', color: '#dc2626' });
+  tiles.push({ to: '/messages', page: 'messages', icon: Bell, label: 'Новые сообщения', value: s.unread, color: '#2563eb' });
+  if (last) {
+    const d = new Date(`${last.report_date}T12:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+    tiles.push({ to: '/daily-report', page: 'daily-report', icon: ClipboardList, label: `Лиды за ${d}`, value: last.leads, hint: `${last.calls} звонков · ${last.chats} чатов`, color: '#059669' });
   }
 
   return (
     <AppLayout>
-      <div className="max-w-5xl mx-auto space-y-6">
-        {/* Приветствие */}
-        <section className="relative overflow-hidden rounded-2xl px-6 py-8 md:px-10 md:py-12 text-white shadow-sm"
-          style={{ background: 'linear-gradient(135deg, #1f3d34 0%, #2f5d4f 55%, #8a6a45 130%)' }}>
-          <div aria-hidden className="absolute inset-0 opacity-[0.07]"
-            style={{ backgroundImage: 'repeating-linear-gradient(90deg, #fff 0 1px, transparent 1px 22px)' }} />
-          <div aria-hidden className="absolute -right-10 -top-10 w-64 h-64 rounded-full bg-white/10 blur-2xl" />
-          <div className="relative">
-            <div className="flex items-center gap-2 text-white/80 text-sm">
-              <Icon size={18} />
-              <span>{dateLabel}</span>
-              <span className="text-white/50">·</span>
-              <span className="tabular-nums">{timeLabel}</span>
+      <style>{`
+        @keyframes wlDoor { 0% { transform: rotateY(0deg) } 60% { transform: rotateY(38deg) } 100% { transform: rotateY(32deg) } }
+        @keyframes wlGlow { 0% { opacity: 0 } 100% { opacity: .95 } }
+        @keyframes wlSheen { 0% { transform: translateX(-120%) } 100% { transform: translateX(120%) } }
+        @keyframes wlUp { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: none } }
+        @keyframes wlFloat { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-6px) } }
+        .wl-door { animation: wlDoor 1.8s cubic-bezier(.2,.7,.2,1) .35s both }
+        .wl-glow, .wl-floor { animation: wlGlow 1.6s ease-out .6s both }
+        .wl-sheen { animation: wlSheen 2.6s ease-in-out 1.2s both }
+        .wl-up { animation: wlUp .6s cubic-bezier(.2,.7,.2,1) both }
+        .wl-float { animation: wlFloat 6s ease-in-out 2.2s infinite }
+        @media (prefers-reduced-motion: reduce) { .wl-door,.wl-glow,.wl-floor,.wl-sheen,.wl-up,.wl-float { animation: none !important } .wl-door { transform: rotateY(32deg) } }
+      `}</style>
+
+      <div className="max-w-6xl mx-auto space-y-6">
+        {/* ── Hero ── */}
+        <section className="relative overflow-hidden rounded-3xl text-white shadow-[0_30px_60px_-30px_rgba(10,30,24,.65)]"
+          style={{ background: 'radial-gradient(90% 120% at 85% 40%, #2b4a3f 0%, #172b24 45%, #0e1c17 100%)' }}>
+          {/* мягкая текстура и световые пятна */}
+          <div aria-hidden className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: 'repeating-linear-gradient(90deg,#fff 0 1px,transparent 1px 24px)' }} />
+          <div aria-hidden className="absolute -left-24 -bottom-24 w-80 h-80 rounded-full bg-emerald-400/10 blur-3xl" />
+          <div aria-hidden className="absolute right-10 top-10 w-72 h-72 rounded-full bg-amber-300/10 blur-3xl" />
+
+          <div className="relative grid md:grid-cols-[1fr_auto] gap-8 px-6 py-8 md:px-12 md:py-12">
+            <div className="flex flex-col justify-center min-w-0">
+              <div className="wl-up flex flex-wrap items-center gap-2 text-white/70 text-sm" style={{ animationDelay: '.05s' }}>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 backdrop-blur"><Icon size={15} />{dateLabel}</span>
+                <span className="rounded-full bg-white/10 px-3 py-1 tabular-nums">{timeLabel}</span>
+              </div>
+              <h1 className="wl-up mt-5 text-4xl md:text-6xl font-semibold tracking-tight leading-[1.05]" style={{ animationDelay: '.15s' }}>
+                {text}{name ? ',' : ''}<br className="hidden md:block" />
+                {name && <span className="bg-gradient-to-r from-amber-200 via-amber-100 to-emerald-200 bg-clip-text text-transparent"> {name}</span>}
+                {name ? '!' : '!'}
+              </h1>
+              <p className="wl-up mt-4 text-white/70 max-w-lg text-sm md:text-base" style={{ animationDelay: '.25s' }}>
+                Двери открыты — продажи, оплаты, производство и отчёты Profildoors в одном месте.
+              </p>
+
+              {/* План месяца */}
+              {s.plan != null && s.plan > 0 && allowed('sales') && (
+                <Link to="/sales" className="wl-up group mt-7 flex items-center gap-4 rounded-2xl bg-white/[0.07] hover:bg-white/[0.11] ring-1 ring-white/10 p-3 pr-5 max-w-md transition-colors" style={{ animationDelay: '.35s' }}>
+                  <PlanRing pct={pct} />
+                  <div className="min-w-0">
+                    <div className="text-xs text-white/60">План продаж на {monthLabel}</div>
+                    <div className="text-xl md:text-2xl font-semibold tabular-nums mt-0.5 whitespace-nowrap">{money(revenueAnim)}</div>
+                    <div className="text-xs text-white/60 mt-0.5">
+                      {missing > 0 ? <>ещё {money(missing)} · осталось {daysLeft} {plural(daysLeft, 'день', 'дня', 'дней')}</> : <span className="text-emerald-300 inline-flex items-center gap-1"><Sparkles size={12} />план выполнен!</span>}
+                    </div>
+                  </div>
+                  <ArrowUpRight size={18} className="ml-auto text-white/40 group-hover:text-white transition-colors shrink-0" />
+                </Link>
+              )}
+
+              <div className="wl-up mt-6 flex flex-wrap gap-2" style={{ animationDelay: '.45s' }}>
+                {allowed('dashboard') && (
+                  <Link to="/" className="inline-flex items-center gap-2 rounded-full bg-white text-[#14231e] px-5 py-2.5 text-sm font-medium hover:bg-amber-50 transition-colors shadow-lg shadow-black/20">
+                    Открыть дашборд <ArrowRight size={16} />
+                  </Link>
+                )}
+                {allowed('sales') && (
+                  <Link to="/sales" className="inline-flex items-center gap-2 rounded-full bg-white/10 ring-1 ring-white/20 px-5 py-2.5 text-sm hover:bg-white/15 transition-colors">
+                    <TrendingUp size={15} />Продажи
+                  </Link>
+                )}
+              </div>
             </div>
-            <h1 className="mt-3 text-3xl md:text-5xl font-semibold tracking-tight">
-              {text}{name ? `, ${name}` : ''}!
-            </h1>
-            <p className="mt-3 text-white/80 max-w-xl text-sm md:text-base">
-              Добро пожаловать в A-Finance — продажи, оплаты, производство и отчёты Profildoors в одном месте.
-            </p>
-            {allowed('dashboard') && (
-              <Link to="/" className="mt-6 inline-flex items-center gap-2 rounded-full bg-white text-[#1f3d34] px-5 py-2.5 text-sm font-medium hover:bg-white/90 transition-colors">
-                Открыть дашборд <ArrowRight size={16} />
-              </Link>
-            )}
+
+            <div className="hidden sm:flex items-center justify-center pr-2 md:pr-6 pb-8 wl-float">
+              <DoorScene />
+            </div>
           </div>
         </section>
 
-        {/* Коротко о сегодняшнем */}
-        <section>
-          <h2 className="text-sm font-medium text-muted-foreground mb-3">Коротко на сегодня</h2>
-          <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-            {tiles.filter(t => allowed(t.key)).map(t => (
-              <Link key={t.to} to={t.to}
-                className="group rounded-xl border border-border bg-card p-4 hover:border-primary/40 hover:shadow-sm transition-all min-w-0">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><t.icon size={14} /><span className="truncate">{t.label}</span></div>
-                <div className={`mt-1.5 text-xl font-semibold tabular-nums truncate ${t.tone === 'bad' ? 'text-red-600' : t.tone === 'warn' ? 'text-amber-600' : ''}`}>{t.value}</div>
-                {t.hint && <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{t.hint}</div>}
-              </Link>
-            ))}
-          </div>
+        {/* ── Коротко на сегодня ── */}
+        <section className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+          {tiles.filter(t => allowed(t.page)).map((t, i) => (
+            <StatTile key={t.to} {...t} delay={0.1 + i * 0.07} />
+          ))}
         </section>
 
-        {/* Быстрый переход по разделам */}
+        {/* ── Лиды за 2 недели ── */}
+        {s.reports && s.reports.length > 2 && allowed('daily-report') && (
+          <Link to="/daily-report" className="wl-up group block rounded-2xl border border-border bg-card p-5 hover:shadow-md hover:-translate-y-0.5 transition-all" style={{ animationDelay: '.4s' }}>
+            <div className="flex items-baseline justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium">Лиды за последние {s.reports.length} {plural(s.reports.length, 'день', 'дня', 'дней')}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  всего {s.reports.reduce((a, r) => a + r.leads, 0)} · звонков {s.reports.reduce((a, r) => a + r.calls, 0)} · чатов {s.reports.reduce((a, r) => a + r.chats, 0)}
+                </div>
+              </div>
+              <span className="text-xs text-primary inline-flex items-center gap-1 group-hover:gap-1.5 transition-all">Отчёты по дням <ArrowRight size={13} /></span>
+            </div>
+            <div className="h-28 mt-3 -mx-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={s.reports.map(r => ({ d: new Date(`${r.report_date}T12:00:00`).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }), Лиды: r.leads }))} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="wlLeads" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#2f6b57" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="#2f6b57" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="d" tick={{ fontSize: 10, fill: '#8a8f8c' }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                  <Tooltip cursor={{ stroke: '#2f6b57', strokeOpacity: 0.2 }} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
+                  <Area type="monotone" dataKey="Лиды" stroke="#2f6b57" strokeWidth={2.2} fill="url(#wlLeads)" dot={false} activeDot={{ r: 4 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </Link>
+        )}
+
+        {/* ── Разделы ── */}
         <section>
           <h2 className="text-sm font-medium text-muted-foreground mb-3">Разделы</h2>
-          <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-            {sections.map(item => (
-              <Link key={item.path} to={item.path}
-                className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-3 text-sm hover:border-primary/40 hover:bg-muted/40 transition-colors min-w-0">
-                <span className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0"><item.icon size={16} /></span>
-                <span className="truncate">{item.label}</span>
+          <div className="grid gap-2.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+            {sections.map((item, i) => (
+              <Link key={item.path} to={item.path} style={{ animationDelay: `${0.45 + i * 0.03}s` }}
+                className="wl-up group relative flex items-center gap-3 rounded-2xl border border-border bg-card px-3.5 py-3.5 text-sm hover:-translate-y-0.5 hover:shadow-md hover:border-primary/30 transition-all min-w-0 overflow-hidden">
+                <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                  <item.icon size={17} />
+                </span>
+                <span className="truncate font-medium">{item.label}</span>
+                <ArrowUpRight size={14} className="ml-auto shrink-0 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors" />
               </Link>
             ))}
           </div>
         </section>
       </div>
     </AppLayout>
+  );
+}
+
+function StatTile({ to, icon: I, label, value, hint, color, delay }: {
+  to: string; icon: React.ElementType; label: string; value: number | null; hint?: string; color: string; delay: number;
+}) {
+  const v = useCountUp(value, 900);
+  return (
+    <Link to={to} style={{ animationDelay: `${delay}s` }}
+      className="wl-up group relative overflow-hidden rounded-2xl border border-border bg-card p-4 hover:-translate-y-0.5 hover:shadow-md transition-all min-w-0">
+      <div aria-hidden className="absolute -right-6 -top-6 w-20 h-20 rounded-full opacity-10 group-hover:opacity-20 transition-opacity" style={{ background: color }} />
+      <div className="flex items-center gap-2">
+        <span className="w-8 h-8 rounded-xl flex items-center justify-center text-white shrink-0" style={{ background: color }}><I size={15} /></span>
+        <span className="text-xs text-muted-foreground leading-tight line-clamp-2">{label}</span>
+      </div>
+      <div className="mt-3 text-3xl font-semibold tabular-nums" style={{ color: value ? color : undefined }}>
+        {value == null ? '…' : Math.round(v)}
+      </div>
+      {hint && <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{hint}</div>}
+    </Link>
   );
 }
