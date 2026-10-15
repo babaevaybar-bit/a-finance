@@ -205,9 +205,6 @@ export default function WelcomePage() {
                 {name && <span className="bg-gradient-to-r from-amber-200 via-amber-100 to-emerald-200 bg-clip-text text-transparent"> {name}</span>}
                 {name ? '!' : '!'}
               </h1>
-              <p className="wl-up mt-4 text-white/70 max-w-lg text-sm md:text-base" style={{ animationDelay: '.25s' }}>
-                Двери открыты — продажи, оплаты, производство и отчёты Profildoors в одном месте.
-              </p>
 
               {/* План месяца */}
               {s.plan != null && s.plan > 0 && allowed('sales') && (
