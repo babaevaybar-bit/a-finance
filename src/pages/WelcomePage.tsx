@@ -6,7 +6,7 @@ import { supabase } from '@/db/supabase';
 import { countPendingDeals, countUnreadNotifications, getDeals } from '@/lib/api';
 import { formatCurrency, getCurrentMonthYear } from '@/lib/utils';
 import { Sunrise, Sun, Sunset, Moon, ArrowRight, ArrowUpRight, TrendingUp, CheckSquare, HandCoins, Bell, ClipboardList, Sparkles } from 'lucide-react';
-import '@fontsource/great-vibes/latin-400.css';
+import '@fontsource/petit-formal-script/latin-400.css';
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -61,10 +61,10 @@ function SignatureLogo() {
         </linearGradient>
       </defs>
       <text x="260" y="118" textAnchor="middle" className="wl-sign wl-sign-1"
-        style={{ fontFamily: "'Great Vibes', cursive", fontSize: 128 }}>A-Finance</text>
-      <path d="M120 150 C 200 138, 330 136, 420 146" className="wl-flourish" fill="none" stroke="url(#wlInk)" strokeWidth="2" strokeLinecap="round" />
+        style={{ fontFamily: "'Petit Formal Script', cursive", fontSize: 88 }}>A-Finance</text>
+      <path d="M110 148 C 200 136, 330 134, 430 144" className="wl-flourish" fill="none" stroke="url(#wlInk)" strokeWidth="2" strokeLinecap="round" />
       <text x="260" y="205" textAnchor="middle" className="wl-sign wl-sign-2"
-        style={{ fontFamily: "'Great Vibes', cursive", fontSize: 58 }}>for ProfilDoors</text>
+        style={{ fontFamily: "'Petit Formal Script', cursive", fontSize: 40 }}>for ProfilDoors</text>
     </svg>
   );
 }
@@ -172,11 +172,11 @@ export default function WelcomePage() {
   return (
     <AppLayout>
       <style>{`
-        @keyframes wlWrite { 0% { stroke-dashoffset: 1600; fill-opacity: 0 } 70% { stroke-dashoffset: 0; fill-opacity: 0 } 100% { stroke-dashoffset: 0; fill-opacity: 1 } }
+        @keyframes wlWrite { 0% { stroke-dashoffset: 2600; fill-opacity: 0 } 70% { stroke-dashoffset: 0; fill-opacity: 0 } 100% { stroke-dashoffset: 0; fill-opacity: 1 } }
         @keyframes wlLine { from { stroke-dashoffset: 320 } to { stroke-dashoffset: 0 } }
         @keyframes wlUp { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: none } }
         @keyframes wlFloat { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-6px) } }
-        .wl-sign { fill: url(#wlInk); stroke: url(#wlInk); stroke-width: 1.2; stroke-dasharray: 1600; stroke-dashoffset: 1600; fill-opacity: 0; paint-order: stroke }
+        .wl-sign { fill: url(#wlInk); stroke: url(#wlInk); stroke-width: 1.2; stroke-dasharray: 2600; stroke-dashoffset: 2600; fill-opacity: 0; paint-order: stroke }
         .wl-sign-1 { animation: wlWrite 2.8s cubic-bezier(.45,.05,.3,1) .3s forwards }
         .wl-sign-2 { animation: wlWrite 2.2s cubic-bezier(.45,.05,.3,1) 2.4s forwards }
         .wl-flourish { stroke-dasharray: 320; stroke-dashoffset: 320; animation: wlLine 1.2s ease-out 2s forwards; opacity: .7 }
