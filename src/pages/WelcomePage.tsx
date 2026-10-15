@@ -6,6 +6,7 @@ import { supabase } from '@/db/supabase';
 import { countPendingDeals, countUnreadNotifications, getDeals } from '@/lib/api';
 import { formatCurrency, getCurrentMonthYear } from '@/lib/utils';
 import { Sunrise, Sun, Sunset, Moon, ArrowRight, ArrowUpRight, TrendingUp, CheckSquare, HandCoins, Bell, ClipboardList, Sparkles } from 'lucide-react';
+import '@fontsource/great-vibes/latin-400.css';
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -50,39 +51,21 @@ interface Summary {
   reports: { report_date: string; leads: number; calls: number; chats: number }[] | null;
 }
 
-// ── Дверь Profildoors: скрытая дверь с алюминиевой кромкой, приоткрывается при входе ──
-function DoorScene() {
+// ── Надпись «A-Finance for ProfilDoors», которая пишется пером при открытии ──
+function SignatureLogo() {
   return (
-    <div className="relative w-[230px] h-[300px] md:w-[260px] md:h-[340px] select-none" aria-hidden>
-      {/* полоса света на полу */}
-      <div className="absolute -bottom-5 left-3 right-0 h-14 wl-floor"
-        style={{ background: 'linear-gradient(180deg, rgba(255,214,140,.55), rgba(255,214,140,0))', clipPath: 'polygon(10% 0, 92% 0, 100% 100%, 0 100%)', filter: 'blur(5px)' }} />
-      {/* проём с алюминиевым торцом, внутри — тёплый свет */}
-      <div className="absolute inset-3 rounded-[3px]" style={{ background: 'linear-gradient(90deg,#c9ced3,#f4f6f8 45%,#aeb4ba)', padding: 3 }}>
-        <div className="relative w-full h-full rounded-[2px] overflow-hidden" style={{ background: '#1a120a' }}>
-          <div className="absolute inset-0 wl-glow" style={{ background: 'radial-gradient(90% 70% at 70% 55%, #fff1cf 0%, #ffcf7a 30%, #d98a3a 60%, #3a2412 100%)' }} />
-        </div>
-      </div>
-      {/* полотно */}
-      <div className="absolute inset-3 [perspective:900px]">
-        <div className="w-full h-full origin-left wl-door rounded-[2px] overflow-hidden"
-          style={{ transformStyle: 'preserve-3d', boxShadow: '-10px 0 30px -12px rgba(0,0,0,.6)' }}>
-          {/* шпон ореха */}
-          <div className="absolute inset-0" style={{
-            background: 'repeating-linear-gradient(92deg, rgba(0,0,0,.08) 0 2px, transparent 2px 9px), repeating-linear-gradient(88deg, rgba(255,255,255,.05) 0 1px, transparent 1px 14px), linear-gradient(180deg,#8a5a37,#6b4428 60%,#5a381f)',
-          }} />
-          {/* алюминиевая кромка по периметру */}
-          <div className="absolute inset-0 rounded-[2px]" style={{ boxShadow: 'inset 0 0 0 3px #d9dde1, inset 0 0 0 4px rgba(0,0,0,.25)' }} />
-          {/* ручка */}
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 w-2.5 h-14 rounded-full"
-            style={{ background: 'linear-gradient(90deg,#9aa1a8,#f2f4f6 50%,#8e959c)', boxShadow: '0 2px 6px rgba(0,0,0,.4)' }} />
-          {/* блик */}
-          <div className="absolute inset-0 wl-sheen" style={{ background: 'linear-gradient(105deg, transparent 30%, rgba(255,255,255,.18) 45%, transparent 60%)' }} />
-        </div>
-      </div>
-      {/* логотип-марка */}
-      <div className="absolute -bottom-12 left-0 right-0 text-center text-[10px] tracking-[0.35em] text-white/40 uppercase">Profildoors</div>
-    </div>
+    <svg viewBox="0 0 520 230" className="w-[300px] md:w-[440px] h-auto overflow-visible" role="img" aria-label="A-Finance for ProfilDoors">
+      <defs>
+        <linearGradient id="wlInk" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0%" stopColor="#fde7b0" /><stop offset="55%" stopColor="#f7f3ea" /><stop offset="100%" stopColor="#a7e3c6" />
+        </linearGradient>
+      </defs>
+      <text x="260" y="118" textAnchor="middle" className="wl-sign wl-sign-1"
+        style={{ fontFamily: "'Great Vibes', cursive", fontSize: 128 }}>A-Finance</text>
+      <path d="M120 150 C 200 138, 330 136, 420 146" className="wl-flourish" fill="none" stroke="url(#wlInk)" strokeWidth="2" strokeLinecap="round" />
+      <text x="260" y="205" textAnchor="middle" className="wl-sign wl-sign-2"
+        style={{ fontFamily: "'Great Vibes', cursive", fontSize: 58 }}>for ProfilDoors</text>
+    </svg>
   );
 }
 
@@ -189,17 +172,17 @@ export default function WelcomePage() {
   return (
     <AppLayout>
       <style>{`
-        @keyframes wlDoor { 0% { transform: rotateY(0deg) } 60% { transform: rotateY(38deg) } 100% { transform: rotateY(32deg) } }
-        @keyframes wlGlow { 0% { opacity: 0 } 100% { opacity: .95 } }
-        @keyframes wlSheen { 0% { transform: translateX(-120%) } 100% { transform: translateX(120%) } }
+        @keyframes wlWrite { 0% { stroke-dashoffset: 1600; fill-opacity: 0 } 70% { stroke-dashoffset: 0; fill-opacity: 0 } 100% { stroke-dashoffset: 0; fill-opacity: 1 } }
+        @keyframes wlLine { from { stroke-dashoffset: 320 } to { stroke-dashoffset: 0 } }
         @keyframes wlUp { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: none } }
         @keyframes wlFloat { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-6px) } }
-        .wl-door { animation: wlDoor 1.8s cubic-bezier(.2,.7,.2,1) .35s both }
-        .wl-glow, .wl-floor { animation: wlGlow 1.6s ease-out .6s both }
-        .wl-sheen { animation: wlSheen 2.6s ease-in-out 1.2s both }
+        .wl-sign { fill: url(#wlInk); stroke: url(#wlInk); stroke-width: 1.2; stroke-dasharray: 1600; stroke-dashoffset: 1600; fill-opacity: 0; paint-order: stroke }
+        .wl-sign-1 { animation: wlWrite 2.8s cubic-bezier(.45,.05,.3,1) .3s forwards }
+        .wl-sign-2 { animation: wlWrite 2.2s cubic-bezier(.45,.05,.3,1) 2.4s forwards }
+        .wl-flourish { stroke-dasharray: 320; stroke-dashoffset: 320; animation: wlLine 1.2s ease-out 2s forwards; opacity: .7 }
         .wl-up { animation: wlUp .6s cubic-bezier(.2,.7,.2,1) both }
         .wl-float { animation: wlFloat 6s ease-in-out 2.2s infinite }
-        @media (prefers-reduced-motion: reduce) { .wl-door,.wl-glow,.wl-floor,.wl-sheen,.wl-up,.wl-float { animation: none !important } .wl-door { transform: rotateY(32deg) } }
+        @media (prefers-reduced-motion: reduce) { .wl-up,.wl-float,.wl-sign,.wl-flourish { animation: none !important; stroke-dashoffset: 0 !important; fill-opacity: 1 !important } }
       `}</style>
 
       <div className="max-w-6xl mx-auto space-y-6">
@@ -255,8 +238,8 @@ export default function WelcomePage() {
               </div>
             </div>
 
-            <div className="hidden sm:flex items-center justify-center pr-2 md:pr-6 pb-8 wl-float">
-              <DoorScene />
+            <div className="hidden sm:flex items-center justify-center pr-2 md:pr-6 wl-float">
+              <SignatureLogo />
             </div>
           </div>
         </section>
