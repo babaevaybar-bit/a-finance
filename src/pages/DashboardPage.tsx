@@ -1,3 +1,4 @@
+import { waitingForWarehouse } from '@/lib/payments';
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
@@ -237,7 +238,7 @@ export default function DashboardPage() {
           const todayStr = new Date().toISOString().slice(0, 10);
           const weekStr = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
           const due = deals
-            .filter(d => Number(d.total_amount) > Number(d.paid_amount) && d.next_payment_date && d.next_payment_date <= weekStr)
+            .filter(d => Number(d.total_amount) > Number(d.paid_amount) && !waitingForWarehouse(d) && d.next_payment_date && d.next_payment_date <= weekStr)
             .sort((a, b) => (a.next_payment_date ?? '').localeCompare(b.next_payment_date ?? ''));
           if (due.length === 0) return null;
           const overdueSum = due.filter(d => d.next_payment_date! < todayStr)
@@ -295,7 +296,6 @@ export default function DashboardPage() {
             if (!d.contract_number || !/\d/.test(d.contract_number)) list.push('нет № договора');
             if (!d.client_phone) list.push('нет телефона');
             if (!(CHANNELS as readonly string[]).includes(d.payment_method) && d.payment_method !== SPLIT_PAYMENT_METHOD) list.push('способ оплаты «' + d.payment_method + '»');
-            if (Number(d.total_amount) > Number(d.paid_amount) && !d.next_payment_date) list.push('нет даты доплаты');
             return list;
           };
           const problems = deals.map(d => ({ d, issues: issuesOf(d) })).filter(x => x.issues.length > 0);

@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/db/supabase';
 import { countPendingDeals, countUnreadNotifications, getDeals } from '@/lib/api';
 import { formatCurrency, getCurrentMonthYear } from '@/lib/utils';
+import { waitingForWarehouse } from '@/lib/payments';
 import { Sunrise, Sun, Sunset, Moon, ArrowRight, ArrowUpRight, TrendingUp, CheckSquare, HandCoins, Bell, ClipboardList, Sparkles } from 'lucide-react';
 import '@fontsource/petit-formal-script/latin-400.css';
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
@@ -122,10 +123,10 @@ export default function WelcomePage() {
 
     (async () => {
       try {
-        let q = supabase.from('deals').select('total_amount, paid_amount').eq('status', 'approved').lt('next_payment_date', today);
+        let q = supabase.from('deals').select('total_amount, paid_amount, production_stage').eq('status', 'approved').lt('next_payment_date', today);
         if (!canViewAllManagers && profile?.manager_id) q = q.eq('manager_id', profile.manager_id);
         const { data } = await q;
-        const rows = ((data as { total_amount: number; paid_amount: number }[]) ?? []).filter(d => Number(d.total_amount) > Number(d.paid_amount));
+        const rows = ((data as { total_amount: number; paid_amount: number; production_stage: string | null }[]) ?? []).filter(d => Number(d.total_amount) > Number(d.paid_amount) && !waitingForWarehouse(d));
         setS(p => ({ ...p, overdueCount: rows.length, overdueSum: rows.reduce((a, d) => a + Number(d.total_amount) - Number(d.paid_amount), 0) }));
       } catch { /* silent */ }
     })();

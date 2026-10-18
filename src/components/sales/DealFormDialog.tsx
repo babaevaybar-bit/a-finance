@@ -277,8 +277,11 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
             <Input type="date" value={form.prepayment_date || ''} onChange={e => set('prepayment_date', e.target.value || null)} />
           </div>
           <div className="space-y-1">
-            <Label>Дата следующей доплаты <span className="text-muted-foreground font-normal">(несколько доплат — в «График доплат» у сделки)</span></Label>
+            <Label>Дата доплаты <span className="text-muted-foreground font-normal">(ставится сама, когда заказ приходит на «Склад Альянс»)</span></Label>
             <Input type="date" value={form.next_payment_date || ''} onChange={e => set('next_payment_date', e.target.value || null)} />
+            {deal?.production_stage && (
+              <p className="text-[11px] text-muted-foreground">Этап в производстве: <b className="font-medium text-foreground">{deal.production_stage}</b></p>
+            )}
           </div>
           <div className="space-y-1">
             <Label>Стадия установки</Label>

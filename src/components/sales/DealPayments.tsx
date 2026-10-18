@@ -1,3 +1,4 @@
+import { effectiveDueDate, waitingForWarehouse } from '@/lib/payments';
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,7 +30,9 @@ export default function DealPayments({ deal, onChanged, suggestedAmount, suggest
   const remainder = Math.max(0, total - paid);
   const pct = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
   const today = new Date().toISOString().slice(0, 10);
-  const nextOverdue = !!deal.next_payment_date && deal.next_payment_date < today && remainder > 0;
+  const dueDate = effectiveDueDate(deal);
+  const waiting = waitingForWarehouse(deal);
+  const nextOverdue = !!dueDate && dueDate < today && remainder > 0;
 
   return (
     <div className="mt-1.5 space-y-1.5 text-left whitespace-normal min-w-0">
@@ -43,9 +46,12 @@ export default function DealPayments({ deal, onChanged, suggestedAmount, suggest
         ) : (
           <span className="text-muted-foreground">Оплачено {pct}%</span>
         )}
-        {remainder > 0 && deal.next_payment_date && (
+        {remainder > 0 && waiting && (
+          <span className="text-muted-foreground" title={`Сейчас: ${deal.production_stage}`}>доплата после склада Альянс</span>
+        )}
+        {remainder > 0 && dueDate && (
           <span className={nextOverdue ? 'text-destructive font-medium' : 'text-muted-foreground'}>
-            {nextOverdue ? 'просрочено ' : 'след. '}{formatDate(deal.next_payment_date)}
+            {nextOverdue ? 'просрочено ' : 'след. '}{formatDate(dueDate)}
           </span>
         )}
       </div>

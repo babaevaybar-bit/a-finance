@@ -3,15 +3,16 @@ import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Phone, MessageCircle, Search, AlertTriangle, CalendarClock, Wallet } from 'lucide-react';
+import { Phone, MessageCircle, Search, AlertTriangle, CalendarClock, Wallet, Factory } from 'lucide-react';
 import { getAllDeals, getManagers } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, Manager } from '@/types/types';
 import DealPayments from '@/components/sales/DealPayments';
 import DealFormDialog from '@/components/sales/DealFormDialog';
 import DealCompleteness from '@/components/sales/DealCompleteness';
+import { effectiveDueDate, waitingForWarehouse, PAYMENT_TRIGGER_STAGE } from '@/lib/payments';
 
-type Filter = 'all' | 'overdue' | 'week' | 'nodate';
+type Filter = 'all' | 'overdue' | 'week' | 'waiting';
 
 function todayKz(): string {
   return new Date(Date.now() + 5 * 3600000).toISOString().slice(0, 10);
@@ -59,14 +60,15 @@ export default function DebtorsPage() {
     .filter(x => x.rest > 0), [deals]);
 
   const totals = useMemo(() => {
-    let all = 0, overdue = 0, week = 0, nodate = 0;
+    let all = 0, overdue = 0, week = 0, waiting = 0;
     for (const { d, rest } of debtors) {
       all += rest;
-      if (!d.next_payment_date) nodate += rest;
-      else if (d.next_payment_date < today) overdue += rest;
-      else if (d.next_payment_date <= weekEnd) week += rest;
+      const due = effectiveDueDate(d);
+      if (!due) waiting += rest;
+      else if (due < today) overdue += rest;
+      else if (due <= weekEnd) week += rest;
     }
-    return { all, overdue, week, nodate };
+    return { all, overdue, week, waiting };
   }, [debtors, today, weekEnd]);
 
   const visible = useMemo(() => {
@@ -74,16 +76,17 @@ export default function DebtorsPage() {
     return debtors
       .filter(({ d }) => managerId === 'all' || d.manager_id === managerId)
       .filter(({ d }) => {
-        if (filter === 'overdue') return !!d.next_payment_date && d.next_payment_date < today;
-        if (filter === 'week') return !!d.next_payment_date && d.next_payment_date >= today && d.next_payment_date <= weekEnd;
-        if (filter === 'nodate') return !d.next_payment_date;
+        const due = effectiveDueDate(d);
+        if (filter === 'overdue') return !!due && due < today;
+        if (filter === 'week') return !!due && due >= today && due <= weekEnd;
+        if (filter === 'waiting') return !due;
         return true;
       })
       .filter(({ d }) => !q || (d.client_name ?? '').toLowerCase().includes(q) || (d.client_phone ?? '').includes(q) || (d.contract_number ?? '').toLowerCase().includes(q))
       .sort((a, b) => {
-        // Сначала просроченные (самые давние), потом по ближайшей дате, без даты — в конце
-        const ad = a.d.next_payment_date ?? '9999-12-31';
-        const bd = b.d.next_payment_date ?? '9999-12-31';
+        // Сначала просроченные (самые давние), потом по ближайшей дате, ждущие склада — в конце
+        const ad = effectiveDueDate(a.d) ?? '9999-12-31';
+        const bd = effectiveDueDate(b.d) ?? '9999-12-31';
         return ad === bd ? b.rest - a.rest : ad.localeCompare(bd);
       });
   }, [debtors, filter, managerId, search, today, weekEnd]);
@@ -95,7 +98,7 @@ export default function DebtorsPage() {
     { key: 'all', label: 'Весь долг клиентов', value: totals.all, icon: Wallet, tone: 'text-foreground' },
     { key: 'overdue', label: 'Просрочено', value: totals.overdue, icon: AlertTriangle, tone: 'text-destructive' },
     { key: 'week', label: 'Ожидается за 7 дней', value: totals.week, icon: CalendarClock, tone: 'text-amber-700' },
-    { key: 'nodate', label: 'Без даты доплаты', value: totals.nodate, icon: CalendarClock, tone: 'text-muted-foreground' },
+    { key: 'waiting', label: 'В производстве — ждут склада', value: totals.waiting, icon: Factory, tone: 'text-muted-foreground' },
   ];
 
   return (
@@ -103,7 +106,7 @@ export default function DebtorsPage() {
       <div className="space-y-5">
         <div>
           <h1 className="text-xl font-semibold">Должники</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Клиенты, которые ещё не оплатили сделку полностью. Просроченные — сверху.</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Клиенты с остатком. Остаток доплачивается, когда заказ приходит на «{PAYMENT_TRIGGER_STAGE}» — тогда дата ставится сама. Просроченные — сверху.</p>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -140,8 +143,9 @@ export default function DebtorsPage() {
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {visible.map(({ d, rest }) => {
-              const overdueDays = d.next_payment_date && d.next_payment_date < today ? daysBetween(d.next_payment_date, today) : 0;
-              const isToday = d.next_payment_date === today;
+              const due = effectiveDueDate(d);
+              const overdueDays = due && due < today ? daysBetween(due, today) : 0;
+              const isToday = due === today;
               const wa = waLink(d.client_phone);
               return (
                 <Card key={d.id} className={overdueDays > 0 ? 'border-destructive/40' : ''}>
@@ -163,14 +167,16 @@ export default function DebtorsPage() {
                     </div>
 
                     <div className="text-xs">
-                      {!d.next_payment_date ? (
-                        <span className="text-muted-foreground">Дата доплаты не указана</span>
+                      {waitingForWarehouse(d) ? (
+                        <span className="text-muted-foreground inline-flex items-center gap-1"><Factory size={12} />В производстве ({d.production_stage}) — доплата после «{PAYMENT_TRIGGER_STAGE}»</span>
+                      ) : !due ? (
+                        <span className="text-muted-foreground">Доплата — когда заказ придёт на «{PAYMENT_TRIGGER_STAGE}»</span>
                       ) : overdueDays > 0 ? (
-                        <span className="text-destructive font-medium">Просрочено на {overdueDays} дн. (с {formatDate(d.next_payment_date)})</span>
+                        <span className="text-destructive font-medium">Просрочено на {overdueDays} дн. (с {formatDate(due)}){d.production_stage ? ` · ${d.production_stage}` : ''}</span>
                       ) : isToday ? (
-                        <span className="text-amber-700 font-medium">Доплата сегодня</span>
+                        <span className="text-amber-700 font-medium">Пора доплатить — сегодня{d.production_stage ? ` · ${d.production_stage}` : ''}</span>
                       ) : (
-                        <span className="text-muted-foreground">Следующая доплата {formatDate(d.next_payment_date)}</span>
+                        <span className="text-muted-foreground">Следующая доплата {formatDate(due)}</span>
                       )}
                     </div>
 

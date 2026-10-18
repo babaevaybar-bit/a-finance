@@ -55,7 +55,9 @@ export interface Deal {
   salary_amount: number | null; // base for commission calc; null = use total_amount
   vat_gross_amount: number | null; // сумма с НДС при оплате «Перечисление» (общая сумма вводится отдельно, вручную — процент бывает разный)
   contract_number: string | null; // номер договора — ключ для связки с карточкой в Trello
-  next_payment_date: string | null; // примерная дата следующей доплаты — для напоминаний сотруднику
+  next_payment_date: string | null; // дата доплаты: ставится сама, когда заказ приходит на «Склад Альянс»
+  production_stage?: string | null; // текущий этап в Trello (Производство)
+  production_stage_at?: string | null;
   amo_mismatch?: string | null; // расхождение с amoCRM (заполняет синхронизация), null — совпадает
   payment_split: { channel: string; amount: number }[] | null; // предоплата несколькими способами (часть нал, часть Kaspi…)
   status: 'pending' | 'approved' | 'rejected'; // pending = awaiting director's approval

@@ -3,7 +3,8 @@ import type { Deal } from '@/types/types';
 import { CHANNELS, SPLIT_PAYMENT_METHOD } from '@/types/types';
 
 // Заполненность сделки: какие поля важны для сверки с Trello, напоминаний и «Финансов».
-// Условные пункты (способ оплаты, дата доплаты) учитываются только когда они нужны.
+// Способ оплаты учитывается, только когда есть оплата. Дату доплаты не требуем — она ставится сама,
+// когда заказ приходит на «Склад Альянс».
 export function dealCompleteness(d: Deal): { filled: number; total: number; missing: string[] } {
   const paid = Number(d.paid_amount) || 0;
   const total = Number(d.total_amount) || 0;
@@ -21,7 +22,6 @@ export function dealCompleteness(d: Deal): { filled: number; total: number; miss
     ['дата сделки', !!d.deal_date],
   ];
   if (paid > 0) checks.push(['способ оплаты', validMethod]);
-  if (total > paid) checks.push(['дата доплаты', !!d.next_payment_date]);
   if (d.amo_mismatch) checks.push([`совпадение с amoCRM (${d.amo_mismatch})`, false]);
 
   const missing = checks.filter(([, ok]) => !ok).map(([n]) => n);
