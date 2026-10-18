@@ -8,11 +8,12 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Menu, Settings, LayoutDashboard, TrendingUp, Wallet, BarChart2,
+  Menu, Settings, Activity, LayoutDashboard, TrendingUp, Wallet, BarChart2,
   Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell, HandCoins, KanbanSquare,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { countPendingDeals, countUnreadNotifications } from '@/lib/api';
+import { supabase } from '@/db/supabase';
 import { UserAvatar } from '@/components/common/UserAvatar';
 
 export const navItems = [
@@ -30,6 +31,7 @@ export const navItems = [
   { path: '/profit',       label: 'Чистая прибыль',    icon: TrendingDown,    adminOnly: true,  pageKey: 'profit'       },
   { path: '/daily-report', label: 'Ежедневный отчёт',  icon: ClipboardList,   adminOnly: false, pageKey: 'daily-report' },
   { path: '/managers',     label: 'Сотрудники',        icon: Users,           adminOnly: true,  pageKey: 'managers'     },
+  { path: '/activity',     label: 'Активность',        icon: Activity,        adminOnly: true,  pageKey: 'activity'     },
   { path: '/permissions',  label: 'Доступ',            icon: ShieldCheck,     adminOnly: true,  pageKey: 'permissions'  },
 ];
 
@@ -126,6 +128,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   const displayName = (profile?.name && profile.name !== 'admin') ? profile.name : (user?.email?.split('@')[0] ?? 'Пользователь');
+
+  // Учёт времени на сайте: раз в минуту «я активен» — только если вкладка открыта и человек что-то делал за последние 2 минуты
+  useEffect(() => {
+    if (!user) return;
+    let lastInput = Date.now();
+    const mark = () => { lastInput = Date.now(); };
+    const evs = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'] as const;
+    evs.forEach(e => window.addEventListener(e, mark, { passive: true }));
+    const ping = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastInput > 120_000) return;
+      supabase.rpc('touch_presence', { p_page: window.location.pathname }).then(() => {}, () => {});
+    };
+    ping();
+    const t = setInterval(ping, 60_000);
+    const onVis = () => { if (document.visibilityState === 'visible') { mark(); ping(); } };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis); evs.forEach(e => window.removeEventListener(e, mark)); };
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Стартовая страница из профиля: один раз за сессию при открытии «/»
   const location = useLocation();

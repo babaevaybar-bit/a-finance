@@ -10,6 +10,7 @@ import ResetPasswordPage from '@/pages/ResetPasswordPage';
 // Lazy-load all pages to reduce initial bundle size
 const WelcomePage = lazy(() => import('./pages/WelcomePage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const ActivityPage = lazy(() => import('./pages/ActivityPage'));
 const DashboardPage    = lazy(() => import('@/pages/DashboardPage'));
 const SalesPage        = lazy(() => import('@/pages/SalesPage'));
 const ApprovalsPage    = lazy(() => import('@/pages/ApprovalsPage'));
@@ -119,6 +120,7 @@ const lazyRoutes = [
   { path: '/daily-report', element: <DailyReportPage />,  adminOnly: false, pageKey: 'daily-report' },
   { path: '/search',       element: <SearchPage />,       adminOnly: false, pageKey: 'search'        },
   { path: '/managers',     element: <ManagersPage />,     adminOnly: true,  pageKey: 'managers'     },
+  { path: '/activity',     element: <ActivityPage />,     adminOnly: true,  pageKey: 'activity'     },
   { path: '/permissions',  element: <PermissionsPage />,  adminOnly: true,  pageKey: 'permissions'  },
 ];
 
