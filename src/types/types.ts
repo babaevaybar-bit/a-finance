@@ -223,6 +223,7 @@ export const PERMISSION_PAGES = [
   { key: 'permissions',   label: 'Доступ' },
   { key: 'daily-report',  label: 'Ежедневный отчёт' },
   { key: 'boards',        label: 'Доски (в разработке)' },
+  { key: 'training',      label: 'Обучение' },
 ] as const;
 
 // ─── Profit Row ────────────────────────────────────────────────────────────────
@@ -302,8 +303,7 @@ export interface ClientReport {
   is_deal_closed: boolean;
   deal_amount: number;
   comment: string | null;
-  tags: string[  { key: 'training',      label: 'Обучение' },
-];
+  tags: string[];
   lead_source: string;
   deal_id: string | null; // связь с реальной сделкой в «Продажи», если клиент дошёл до покупки
   created_at: string;
