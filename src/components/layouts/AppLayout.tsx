@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Menu, Settings, Activity, LayoutDashboard, TrendingUp, Wallet, BarChart2,
+  Menu, Settings, Activity, ChevronDown, LayoutDashboard, TrendingUp, Wallet, BarChart2,
   Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell, HandCoins, KanbanSquare,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,31 +16,32 @@ import { countPendingDeals, countUnreadNotifications } from '@/lib/api';
 import { supabase } from '@/db/supabase';
 import { UserAvatar } from '@/components/common/UserAvatar';
 
+// Разделы, сгруппированные по смыслу. «Сообщения» — колокольчиком в верхней панели (в меню не показываем).
+export const NAV_GROUPS = ['Продажи', 'Деньги', 'Производство', 'Клиенты и лиды', 'Команда'] as const;
 export const navItems = [
-  { path: '/',             label: 'Дашборд',          icon: LayoutDashboard, adminOnly: false, pageKey: 'dashboard'    },
-  { path: '/sales',        label: 'Продажи',           icon: TrendingUp,      adminOnly: false, pageKey: 'sales'        },
-  { path: '/debtors',      label: 'Должники',          icon: HandCoins,       adminOnly: false, pageKey: 'debtors'      },
-  { path: '/approvals',    label: 'Подтверждения',     icon: CheckSquare,     adminOnly: true,  pageKey: 'approvals'    },
-  { path: '/finance',      label: 'Финансы',           icon: Wallet,          adminOnly: true,  pageKey: 'finance'      },
-  { path: '/reports',      label: 'Отчёты',            icon: BarChart2,       adminOnly: true,  pageKey: 'reports'      },
-  { path: '/amocrm',       label: 'amoCRM',            icon: Layers,          adminOnly: true,  pageKey: 'amocrm'       },
-  { path: '/production',   label: 'Производство',      icon: Wrench,          adminOnly: true,  pageKey: 'production'   },
-  { path: '/boards',       label: 'Доски',             icon: KanbanSquare,    adminOnly: true,  pageKey: 'boards'       },
-  { path: '/messages',     label: 'Сообщения',         icon: Bell,            adminOnly: false, pageKey: 'messages'     },
-  { path: '/salary',       label: 'Зарплаты',          icon: Banknote,        adminOnly: true,  pageKey: 'salary'       },
-  { path: '/profit',       label: 'Чистая прибыль',    icon: TrendingDown,    adminOnly: true,  pageKey: 'profit'       },
-  { path: '/daily-report', label: 'Ежедневный отчёт',  icon: ClipboardList,   adminOnly: false, pageKey: 'daily-report' },
-  { path: '/managers',     label: 'Сотрудники',        icon: Users,           adminOnly: true,  pageKey: 'managers'     },
-  { path: '/activity',     label: 'Активность',        icon: Activity,        adminOnly: true,  pageKey: 'activity'     },
-  { path: '/permissions',  label: 'Доступ',            icon: ShieldCheck,     adminOnly: true,  pageKey: 'permissions'  },
+  { path: '/',             label: 'Дашборд',          icon: LayoutDashboard, adminOnly: false, pageKey: 'dashboard',    group: 'Продажи' },
+  { path: '/sales',        label: 'Продажи',           icon: TrendingUp,      adminOnly: false, pageKey: 'sales',        group: 'Продажи' },
+  { path: '/debtors',      label: 'Должники',          icon: HandCoins,       adminOnly: false, pageKey: 'debtors',      group: 'Продажи' },
+  { path: '/approvals',    label: 'Подтверждения',     icon: CheckSquare,     adminOnly: true,  pageKey: 'approvals',    group: 'Продажи' },
+  { path: '/finance',      label: 'Финансы',           icon: Wallet,          adminOnly: true,  pageKey: 'finance',      group: 'Деньги' },
+  { path: '/reports',      label: 'Отчёты',            icon: BarChart2,       adminOnly: true,  pageKey: 'reports',      group: 'Деньги' },
+  { path: '/salary',       label: 'Зарплаты',          icon: Banknote,        adminOnly: true,  pageKey: 'salary',       group: 'Деньги' },
+  { path: '/profit',       label: 'Чистая прибыль',    icon: TrendingDown,    adminOnly: true,  pageKey: 'profit',       group: 'Деньги' },
+  { path: '/production',   label: 'Производство',      icon: Wrench,          adminOnly: true,  pageKey: 'production',   group: 'Производство' },
+  { path: '/boards',       label: 'Доски',             icon: KanbanSquare,    adminOnly: true,  pageKey: 'boards',       group: 'Производство' },
+  { path: '/amocrm',       label: 'amoCRM',            icon: Layers,          adminOnly: true,  pageKey: 'amocrm',       group: 'Клиенты и лиды' },
+  { path: '/daily-report', label: 'Ежедневный отчёт',  icon: ClipboardList,   adminOnly: false, pageKey: 'daily-report', group: 'Клиенты и лиды' },
+  { path: '/managers',     label: 'Сотрудники',        icon: Users,           adminOnly: true,  pageKey: 'managers',     group: 'Команда' },
+  { path: '/activity',     label: 'Активность',        icon: Activity,        adminOnly: true,  pageKey: 'activity',     group: 'Команда' },
+  { path: '/permissions',  label: 'Доступ',            icon: ShieldCheck,     adminOnly: true,  pageKey: 'permissions',  group: 'Команда' },
+  { path: '/messages',     label: 'Сообщения',         icon: Bell,            adminOnly: false, pageKey: 'messages',     group: 'hidden' },
 ];
 
-function NavLinks({ onClose }: { onClose?: () => void }) {
-  const { pathname } = useLocation();
-  const { isAdmin, isDirector, isRop, canView, profile, canViewAllManagers, canApprove } = useAuth();
+// Счётчики для меню и колокольчика: ждут подтверждения / непрочитанные сообщения
+function useCounters() {
+  const { profile, canViewAllManagers, canApprove } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
-
   useEffect(() => {
     const managerFilter = canViewAllManagers ? null : (profile?.manager_id ?? null);
     const refresh = () => {
@@ -49,51 +50,99 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
     };
     refresh();
     window.addEventListener('afin:counters', refresh);
-    return () => window.removeEventListener('afin:counters', refresh);
+    const t = setInterval(refresh, 120_000);
+    return () => { window.removeEventListener('afin:counters', refresh); clearInterval(t); };
   }, [canApprove, canViewAllManagers, profile?.manager_id]);
+  return { unreadCount, pendingCount };
+}
 
-  const visibleItems = navItems.filter(item => {
-    // Администратор видит всё
-    if (isAdmin) return true;
-    // Для обычного сотрудника: показываем только если canView вернул true
-    // (по умолчанию canView=true для разделов без записи в employee_permissions,
-    //  но adminOnly-разделы по умолчанию скрыты — их можно открыть через PermissionsPage)
-    if (item.adminOnly) return canView(item.pageKey);
-    return canView(item.pageKey);
-  });
+function readCollapsed(): string[] {
+  try { return JSON.parse(localStorage.getItem('afin-nav-collapsed') || '[]'); } catch { return []; }
+}
+
+function NavLinks({ onClose }: { onClose?: () => void }) {
+  const { pathname } = useLocation();
+  const { isAdmin, canView } = useAuth();
+  const { pendingCount } = useCounters();
+  const [collapsed, setCollapsed] = useState<string[]>(readCollapsed);
+
+  const visibleItems = navItems.filter(item => item.group !== 'hidden' && (isAdmin || canView(item.pageKey)));
+  const isActive = (path: string) => pathname === path || (path === '/boards' && pathname.startsWith('/boards/'));
+  // Мало разделов (например, у менеджера) — без групп, простым списком
+  const flat = visibleItems.length <= 6;
+
+  function toggle(g: string) {
+    setCollapsed(prev => {
+      const next = prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g];
+      try { localStorage.setItem('afin-nav-collapsed', JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }
+
+  const renderItem = ({ path, label, icon: Icon }: typeof navItems[number]) => (
+    <Link
+      key={path}
+      to={path}
+      onClick={onClose}
+      className={cn(
+        'flex items-center gap-3 px-3 py-[7px] rounded-md text-sm font-medium transition-colors',
+        isActive(path)
+          ? 'bg-sidebar-accent text-sidebar-primary font-semibold'
+          : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+      )}
+    >
+      <Icon size={16} className="shrink-0" />
+      <span className="flex-1">{label}</span>
+      {path === '/boards' && (
+        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold shrink-0">бета</span>
+      )}
+      {path === '/approvals' && pendingCount > 0 && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-semibold shrink-0">{pendingCount}</span>
+      )}
+    </Link>
+  );
+
+  if (flat) return <nav className="flex flex-col gap-0.5 p-3">{visibleItems.map(renderItem)}</nav>;
 
   return (
-    <nav className="flex flex-col gap-1 p-4">
-      {visibleItems.map(({ path, label, icon: Icon }) => (
-        <Link
-          key={path}
-          to={path}
-          onClick={onClose}
-          className={cn(
-            'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
-            (pathname === path || (path === '/boards' && pathname.startsWith('/boards/')))
-              ? 'bg-sidebar-accent text-sidebar-primary font-semibold'
-              : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-          )}
-        >
-          <Icon size={16} className="shrink-0" />
-          <span className="flex-1">{label}</span>
-          {path === '/boards' && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold shrink-0">бета</span>
-          )}
-          {path === '/approvals' && pendingCount > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-semibold shrink-0">
-              {pendingCount}
-            </span>
-          )}
-          {path === '/messages' && unreadCount > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive text-destructive-foreground font-semibold shrink-0">
-              {unreadCount}
-            </span>
-          )}
-        </Link>
-      ))}
+    <nav className="flex flex-col p-3 gap-2">
+      {NAV_GROUPS.map(g => {
+        const items = visibleItems.filter(i => i.group === g);
+        if (!items.length) return null;
+        const hasActive = items.some(i => isActive(i.path));
+        const open = hasActive || !collapsed.includes(g);
+        const badge = g === 'Продажи' && !open && pendingCount > 0;
+        return (
+          <div key={g}>
+            <button type="button" onClick={() => toggle(g)}
+              className="w-full flex items-center gap-1 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80 hover:text-foreground">
+              <span className="flex-1 text-left">{g}</span>
+              {badge && <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
+              <ChevronDown size={12} className={cn('transition-transform', open ? '' : '-rotate-90')} />
+            </button>
+            {open && <div className="flex flex-col gap-0.5 mt-0.5">{items.map(renderItem)}</div>}
+          </div>
+        );
+      })}
     </nav>
+  );
+}
+
+// Колокольчик «Сообщения» со счётчиком непрочитанных — в верхней панели
+function MessagesBell() {
+  const { unreadCount } = useCounters();
+  const { pathname } = useLocation();
+  return (
+    <Link to="/messages" title="Сообщения"
+      className={cn('relative inline-flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted transition-colors shrink-0',
+        pathname === '/messages' ? 'bg-muted text-primary' : 'text-muted-foreground')}>
+      <Bell size={18} />
+      {unreadCount > 0 && (
+        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-semibold flex items-center justify-center ring-2 ring-background">
+          {unreadCount > 99 ? '99+' : unreadCount}
+        </span>
+      )}
+    </Link>
   );
 }
 
@@ -118,7 +167,7 @@ function GlobalSearchBar() {
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
-  const { user, profile, isDirector, isDirectorView, isRop, isLidorub, signOut } = useAuth();
+  const { user, profile, isDirector, isDirectorView, isRop, isLidorub, signOut, canView } = useAuth();
   const roleLabel = isDirector ? 'Главный админ' : isDirectorView ? 'Директор' : isRop ? 'РОП' : isLidorub ? 'Лидоруб' : 'Менеджер';
   const navigate = useNavigate();
 
@@ -236,8 +285,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Полоса поиска — видна на всех страницах и устройствах */}
-        <div className="h-12 flex items-center px-4 md:px-6 border-b border-border bg-background shrink-0">
+        <div className="h-12 flex items-center gap-2 px-4 md:px-6 border-b border-border bg-background shrink-0 sticky top-0 z-30">
           <GlobalSearchBar />
+          {canView('messages') || isDirector || isDirectorView ? <div className="ml-auto"><MessagesBell /></div> : null}
         </div>
 
         <main className="flex-1 min-w-0 overflow-x-hidden p-4 md:p-6">

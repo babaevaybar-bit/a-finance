@@ -18,7 +18,7 @@ import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, Search, ArrowUpDown } 
 import { deleteDeal } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, SalesPlan } from '@/types/types';
-import { INSTALL_STAGE_LABELS, DEAL_STATUS_LABELS } from '@/types/types';
+import { DEAL_STATUS_LABELS } from '@/types/types';
 import DealFormDialog from './DealFormDialog';
 import DealPayments from './DealPayments';
 import TrelloLookup from '@/components/trello/TrelloLookup';
@@ -380,25 +380,19 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                             {formatDate(d.deal_date)}{d.contract_number ? ` · Договор №${d.contract_number}` : d.has_contract === false ? ' · без договора' : ''}
                           </div>
                           {d.door_model && <div className="text-xs truncate mt-0.5" title={d.door_model}>{d.door_model}</div>}
-                          {d.comment && <div className="text-[11px] italic text-muted-foreground truncate mt-0.5" title={d.comment}>{d.comment}</div>}
+                          {d.comment && !d.comment.startsWith('Импортировано из amoCRM') && <div className="text-[11px] italic text-muted-foreground truncate mt-0.5" title={d.comment}>{d.comment}</div>}
                         </TableCell>
                         <TableCell className="text-sm align-top">
                           <div className="truncate" title={d.payment_method}>{d.payment_method}</div>
                           {d.vat_gross_amount ? (
                             <span className="block text-[11px] text-muted-foreground">с НДС: {formatCurrency(d.vat_gross_amount)}</span>
                           ) : null}
-                          <div className="text-[11px] text-muted-foreground mt-0.5">
-                            ЗП база: {d.salary_amount !== null && d.salary_amount !== undefined ? formatCurrency(d.salary_amount) : <span className="italic">авто</span>}
-                          </div>
                         </TableCell>
                         <TableCell className="text-sm align-top">
                           <Badge className={`text-[11px] font-normal ${STATUS_BADGE_VARIANT[d.status] || ''}`} variant="secondary">
                             {DEAL_STATUS_LABELS[d.status] || d.status}
                           </Badge>
-                          <div className="text-xs text-muted-foreground mt-1">{INSTALL_STAGE_LABELS[d.stage] || d.stage}</div>
-                          <div className="mt-0.5">
-                            <TrelloLookup phone={d.client_phone} contractNumber={d.contract_number} />
-                          </div>
+                          {d.production_stage && <div className="text-[11px] text-muted-foreground mt-1 truncate" title="Этап в производстве (Trello)">{d.production_stage}</div>}
                         </TableCell>
                         <TableCell className="text-sm align-top">
                           <div className="flex items-baseline justify-between gap-2">

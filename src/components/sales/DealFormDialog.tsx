@@ -1,3 +1,4 @@
+import TrelloLookup from '@/components/trello/TrelloLookup';
 import { Checkbox } from '@/components/ui/checkbox';
 import React, { useState, useEffect } from 'react';
 import {
@@ -329,6 +330,11 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
               onChange={e => set('comment', e.target.value || null)}
             />
           </div>
+          {deal && (deal.client_phone || deal.contract_number) && (
+            <div className="md:col-span-2 text-sm">
+              <TrelloLookup phone={deal.client_phone} contractNumber={deal.contract_number} />
+            </div>
+          )}
 
           {/* Auto-calculated */}
           <div className="md:col-span-2 rounded-md bg-muted p-3 text-sm">
