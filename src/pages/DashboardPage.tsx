@@ -131,15 +131,19 @@ export default function DashboardPage() {
     { name: '—', revenue: 0 }
   );
 
+  // На графиках — только месяцы с данными (не пустые январь…август), минимум последние 3
+  const firstWithData = months.findIndex(my => deals.some(d => d.month_year === my && Number(d.total_amount) > 0));
+  const chartMonths = months.slice(Math.max(0, Math.min(firstWithData === -1 ? months.length : firstWithData, months.length - 3)));
+
   // Chart data
-  const chartData = buildChartData(deals, managers, months);
+  const chartData = buildChartData(deals, managers, chartMonths);
 
   // Total plan vs actual (current month)
   const totalPlan = plans.reduce((s, p) => s + Number(p.plan_amount), 0);
   const planProgress = totalPlan > 0 ? Math.min(100, (totalRevenueCurrent / totalPlan) * 100) : 0;
 
   // Line chart: overall revenue trend
-  const trendData = months.map(my => ({
+  const trendData = chartMonths.map(my => ({
     month: monthYearToLabel(my),
     revenue: deals.filter(d => d.month_year === my).reduce((s, d) => s + Number(d.total_amount), 0),
     paid: deals.filter(d => d.month_year === my).reduce((s, d) => s + Number(d.paid_amount), 0),
@@ -336,7 +340,8 @@ export default function DashboardPage() {
         {loading ? (
           <div className="h-72 rounded-lg bg-muted animate-pulse" />
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4 items-start">
+          <div className={`grid grid-cols-1 gap-4 ${activity.length > 0 ? 'lg:grid-cols-[1.6fr_1fr]' : ''}`}>
+            <div className="flex flex-col gap-4 min-w-0">
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Выручка по менеджерам (по месяцам)</CardTitle>
@@ -408,41 +413,6 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Лента последних событий — сразу видно, что произошло, без захода
-                в каждый раздел по очереди */}
-            {activity.length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Последние события</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0 divide-y divide-border">
-                  {activity.map(a => {
-                    const managerName = managers.find(m => m.id === a.managerId)?.name;
-                    const Icon = a.type === 'deal_approved' ? CheckCircle2 : UserPlus;
-                    const iconColor = a.type === 'deal_approved' ? 'text-green-600' : 'text-blue-500';
-                    return (
-                      <div key={a.id} className="flex items-center gap-3 px-4 py-2.5">
-                        <Icon size={16} className={`shrink-0 ${iconColor}`} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{a.title}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {a.subtitle}{managerName ? ` · ${managerName}` : ''}
-                          </p>
-                        </div>
-                        <span className="text-xs text-muted-foreground shrink-0">
-                          {new Date(a.at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        )}
-
-        {/* Line chart: overall revenue trend */}
-        {!loading && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Динамика выручки (общая)</CardTitle>
@@ -495,6 +465,41 @@ export default function DashboardPage() {
               </div>
             </CardContent>
           </Card>
+            </div>
+
+            {/* Лента последних событий — сразу видно, что произошло, без захода
+                в каждый раздел по очереди */}
+            {activity.length > 0 && (
+              <div className="relative min-h-[320px]">
+              <Card className="lg:absolute lg:inset-0 flex flex-col overflow-hidden">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Последние события</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 divide-y divide-border flex-1 min-h-0 overflow-y-auto max-h-[480px] lg:max-h-none">
+                  {activity.map(a => {
+                    const managerName = managers.find(m => m.id === a.managerId)?.name;
+                    const Icon = a.type === 'deal_approved' ? CheckCircle2 : UserPlus;
+                    const iconColor = a.type === 'deal_approved' ? 'text-green-600' : 'text-blue-500';
+                    return (
+                      <div key={a.id} className="flex items-center gap-3 px-4 py-2.5">
+                        <Icon size={16} className={`shrink-0 ${iconColor}`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{a.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {a.subtitle}{managerName ? ` · ${managerName}` : ''}
+                          </p>
+                        </div>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {new Date(a.at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Per-manager current month table */}

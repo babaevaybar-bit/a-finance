@@ -292,12 +292,14 @@ export default function AmoCrmPage() {
                 </CardContent>
               </Card>
 
-              <Card>
+              {/* Высота — как у воронки слева: список прокручивается внутри, без пустого места */}
+              <div className="relative min-h-[300px]">
+              <Card className="md:absolute md:inset-0 flex flex-col overflow-hidden">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium">Последние переходы по этапам</CardTitle>
                 </CardHeader>
-                <CardContent className="p-0">
-                  <div className="max-h-[280px] overflow-y-auto divide-y divide-border">
+                <CardContent className="p-0 flex-1 min-h-0">
+                  <div className="h-full max-h-[320px] md:max-h-none overflow-y-auto divide-y divide-border">
                     {transitions.length === 0 ? (
                       <p className="text-sm text-muted-foreground px-4 py-3">Нет переходов за последние 30 дней</p>
                     ) : transitions.map((t, i) => (
@@ -317,6 +319,7 @@ export default function AmoCrmPage() {
                   </div>
                 </CardContent>
               </Card>
+              </div>
             </div>
           </>
         )}
