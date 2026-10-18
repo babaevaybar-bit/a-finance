@@ -302,7 +302,8 @@ export interface ClientReport {
   is_deal_closed: boolean;
   deal_amount: number;
   comment: string | null;
-  tags: string[];
+  tags: string[  { key: 'training',      label: 'Обучение' },
+];
   lead_source: string;
   deal_id: string | null; // связь с реальной сделкой в «Продажи», если клиент дошёл до покупки
   created_at: string;

@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Menu, Settings, Activity, ChevronDown, LayoutDashboard, TrendingUp, Wallet, BarChart2,
+  Menu, Settings, Activity, ChevronDown, GraduationCap, LayoutDashboard, TrendingUp, Wallet, BarChart2,
   Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell, HandCoins, KanbanSquare,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,6 +34,7 @@ export const navItems = [
   { path: '/managers',     label: 'Сотрудники',        icon: Users,           adminOnly: true,  pageKey: 'managers',     group: 'Команда' },
   { path: '/activity',     label: 'Активность',        icon: Activity,        adminOnly: true,  pageKey: 'activity',     group: 'Команда' },
   { path: '/permissions',  label: 'Доступ',            icon: ShieldCheck,     adminOnly: true,  pageKey: 'permissions',  group: 'Команда' },
+  { path: '/training',     label: 'Обучение',          icon: GraduationCap,   adminOnly: false, pageKey: 'training',     group: 'Команда' },
   { path: '/messages',     label: 'Сообщения',         icon: Bell,            adminOnly: false, pageKey: 'messages',     group: 'hidden' },
 ];
 
@@ -95,6 +96,9 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
       <span className="flex-1">{label}</span>
       {path === '/boards' && (
         <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold shrink-0">бета</span>
+      )}
+      {path === '/training' && (
+        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold shrink-0">скоро</span>
       )}
       {path === '/approvals' && pendingCount > 0 && (
         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-semibold shrink-0">{pendingCount}</span>
