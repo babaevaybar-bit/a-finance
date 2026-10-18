@@ -158,22 +158,18 @@ export default function ActivityPage() {
                   {last ? ago(last) : 'ещё не заходил(а)'}
                 </span>
               </div>
-              <div className="grid grid-cols-3 gap-2 mt-3 text-center">
-                <div className="rounded-lg bg-muted/50 py-1.5">
-                  <div className="text-[10px] text-muted-foreground">Пришёл(а)</div>
-                  <div className="text-sm font-semibold tabular-nums">{t ? hm(t.first_seen) : '—'}</div>
-                </div>
+              <div className="grid grid-cols-2 gap-2 mt-3 text-center">
                 <div className="rounded-lg bg-muted/50 py-1.5">
                   <div className="text-[10px] text-muted-foreground">На сайте сегодня</div>
                   <div className="text-sm font-semibold tabular-nums">{t ? dur(t.active_seconds) : '—'}</div>
                 </div>
                 <div className="rounded-lg bg-muted/50 py-1.5">
-                  <div className="text-[10px] text-muted-foreground">Действий</div>
+                  <div className="text-[10px] text-muted-foreground">Действий сегодня</div>
                   <div className="text-sm font-semibold tabular-nums">{actionsToday}</div>
                 </div>
               </div>
               <div className="flex justify-between text-[11px] text-muted-foreground mt-2">
-                <span>{online && t?.last_page ? <>сейчас: <b className="font-medium text-foreground">{pageLabel(t.last_page)}</b></> : t ? `последний раз: ${hm(t.last_seen)}` : ''}</span>
+                <span>{online && t?.last_page ? <>сейчас: <b className="font-medium text-foreground">{pageLabel(t.last_page)}</b></> : ''}</span>
                 <span>за 7 дней: {dur(week)}</span>
               </div>
             </button>
@@ -204,7 +200,7 @@ export default function ActivityPage() {
                         return (
                           <td key={i} className="px-1 py-1.5">
                             <div className="h-8 rounded-md flex items-center justify-center text-[11px] tabular-nums"
-                              title={x ? `${hm(x.first_seen)}–${hm(x.last_seen)}, активно ${dur(x.active_seconds)}` : 'не заходил(а)'}
+                              title={x ? `активно ${dur(x.active_seconds)}` : 'не заходил(а)'}
                               style={{ background: x ? `rgba(47,107,87,${k * 0.85})` : 'transparent', color: k > 0.55 ? 'white' : undefined, border: x ? 'none' : '1px dashed hsl(var(--border))' }}>
                               {x ? (x.active_seconds >= 3600 ? `${(x.active_seconds / 3600).toFixed(1)} ч` : `${Math.round(x.active_seconds / 60)} м`) : ''}
                             </div>
