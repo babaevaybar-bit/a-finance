@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Menu, Settings, Activity, ChevronDown, GraduationCap, LayoutDashboard, TrendingUp, Wallet, BarChart2,
+  Menu, Settings, Activity, ChevronDown, GraduationCap, Calculator, LayoutDashboard, TrendingUp, Wallet, BarChart2,
   Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell, HandCoins, KanbanSquare,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -23,6 +23,7 @@ export const navItems = [
   { path: '/sales',        label: 'Продажи',           icon: TrendingUp,      adminOnly: false, pageKey: 'sales',        group: 'Продажи' },
   { path: '/debtors',      label: 'Должники',          icon: HandCoins,       adminOnly: false, pageKey: 'debtors',      group: 'Продажи' },
   { path: '/approvals',    label: 'Подтверждения',     icon: CheckSquare,     adminOnly: true,  pageKey: 'approvals',    group: 'Продажи' },
+  { path: '/estimate',     label: 'Просчёт',           icon: Calculator,      adminOnly: false, pageKey: 'estimate',     group: 'Продажи' },
   { path: '/finance',      label: 'Финансы',           icon: Wallet,          adminOnly: true,  pageKey: 'finance',      group: 'Деньги' },
   { path: '/reports',      label: 'Отчёты',            icon: BarChart2,       adminOnly: true,  pageKey: 'reports',      group: 'Деньги' },
   { path: '/salary',       label: 'Зарплаты',          icon: Banknote,        adminOnly: true,  pageKey: 'salary',       group: 'Деньги' },
@@ -97,7 +98,7 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
       {path === '/boards' && (
         <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold shrink-0">бета</span>
       )}
-      {path === '/training' && (
+      {(path === '/training' || path === '/estimate') && (
         <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold shrink-0">скоро</span>
       )}
       {path === '/approvals' && pendingCount > 0 && (

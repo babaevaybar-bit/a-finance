@@ -223,6 +223,7 @@ export const PERMISSION_PAGES = [
   { key: 'permissions',   label: 'Доступ' },
   { key: 'daily-report',  label: 'Ежедневный отчёт' },
   { key: 'boards',        label: 'Доски (в разработке)' },
+  { key: 'estimate',      label: 'Просчёт' },
   { key: 'training',      label: 'Обучение' },
 ] as const;
 
