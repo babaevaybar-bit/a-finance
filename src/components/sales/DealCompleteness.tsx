@@ -16,11 +16,12 @@ export function dealCompleteness(d: Deal): { filled: number; total: number; miss
     ['имя клиента', !!d.client_name?.trim()],
     ['телефон', !!d.client_phone?.trim()],
     ['адрес', !!d.address?.trim()],
-    ['№ договора', !!d.contract_number && /\d/.test(d.contract_number)],
     ['модель/товар', !!d.door_model?.trim()],
     ['сумма сделки', total > 0],
     ['дата сделки', !!d.deal_date],
   ];
+  // Мелкая покупка «без договора» — номер не нужен
+  if (d.has_contract !== false) checks.push(['№ договора', !!d.contract_number && /\d/.test(d.contract_number)]);
   if (paid > 0) checks.push(['способ оплаты', validMethod]);
   if (d.amo_mismatch) checks.push([`совпадение с amoCRM (${d.amo_mismatch})`, false]);
 

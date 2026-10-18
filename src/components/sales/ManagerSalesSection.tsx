@@ -302,7 +302,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                             <span className="font-medium truncate">{d.client_name || '—'}</span>
                           </div>
                           <div className="text-[11px] text-muted-foreground truncate">
-                            {managerNames ? `${managerNames[d.manager_id] ?? '—'} · ` : ''}{formatDate(d.deal_date)}{d.contract_number ? ` · №${d.contract_number}` : ''} · {d.payment_method}
+                            {managerNames ? `${managerNames[d.manager_id] ?? '—'} · ` : ''}{formatDate(d.deal_date)}{d.contract_number ? ` · №${d.contract_number}` : d.has_contract === false ? ' · без договора' : ''} · {d.payment_method}
                           </div>
                         </button>
                         <Badge className={`text-[11px] font-normal shrink-0 ${STATUS_BADGE_VARIANT[d.status] || ''}`} variant="secondary">
@@ -377,7 +377,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                           </div>
                           <div className="text-[11px] text-muted-foreground truncate mt-0.5">
                             {managerNames && <span className="font-medium text-foreground/80">{managerNames[d.manager_id] ?? '—'} · </span>}
-                            {formatDate(d.deal_date)}{d.contract_number ? ` · Договор №${d.contract_number}` : ''}
+                            {formatDate(d.deal_date)}{d.contract_number ? ` · Договор №${d.contract_number}` : d.has_contract === false ? ' · без договора' : ''}
                           </div>
                           {d.door_model && <div className="text-xs truncate mt-0.5" title={d.door_model}>{d.door_model}</div>}
                           {d.comment && <div className="text-[11px] italic text-muted-foreground truncate mt-0.5" title={d.comment}>{d.comment}</div>}

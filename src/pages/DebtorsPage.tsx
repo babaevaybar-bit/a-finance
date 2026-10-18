@@ -157,7 +157,7 @@ export default function DebtorsPage() {
                           <span className="font-medium truncate hover:underline">{d.client_name || 'Без имени'}</span>
                         </div>
                         <div className="text-[11px] text-muted-foreground truncate">
-                          {managerName(d.manager_id)}{d.contract_number ? ` · Договор №${d.contract_number}` : ''}
+                          {managerName(d.manager_id)}{d.contract_number ? ` · Договор №${d.contract_number}` : d.has_contract === false ? ' · без договора' : ''}
                         </div>
                       </button>
                       <div className="text-right shrink-0">

@@ -55,6 +55,7 @@ export interface Deal {
   salary_amount: number | null; // base for commission calc; null = use total_amount
   vat_gross_amount: number | null; // сумма с НДС при оплате «Перечисление» (общая сумма вводится отдельно, вручную — процент бывает разный)
   contract_number: string | null; // номер договора — ключ для связки с карточкой в Trello
+  has_contract?: boolean; // false — мелкая покупка без договора, номер не нужен
   next_payment_date: string | null; // дата доплаты: ставится сама, когда заказ приходит на «Склад Альянс»
   production_stage?: string | null; // текущий этап в Trello (Производство)
   production_stage_at?: string | null;

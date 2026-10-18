@@ -293,7 +293,7 @@ export default function DashboardPage() {
             const list: string[] = [];
             const ck = contractKey(d.contract_number);
             if (ck && (keyCount.get(ck) ?? 0) > 1) list.push('№ договора повторяется');
-            if (!d.contract_number || !/\d/.test(d.contract_number)) list.push('нет № договора');
+            if (d.has_contract !== false && (!d.contract_number || !/\d/.test(d.contract_number))) list.push('нет № договора');
             if (!d.client_phone) list.push('нет телефона');
             if (!(CHANNELS as readonly string[]).includes(d.payment_method) && d.payment_method !== SPLIT_PAYMENT_METHOD) list.push('способ оплаты «' + d.payment_method + '»');
             return list;

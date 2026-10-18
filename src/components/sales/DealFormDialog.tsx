@@ -1,3 +1,4 @@
+import { Checkbox } from '@/components/ui/checkbox';
 import React, { useState, useEffect } from 'react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -52,6 +53,7 @@ function emptyDeal(monthYear: string): Omit<Deal, 'id' | 'created_at' | 'updated
     salary_amount: null,
     vat_gross_amount: null,
     contract_number: null,
+    has_contract: true,
     status: 'pending',
     stage: 'new',
   };
@@ -83,6 +85,7 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
         salary_amount: deal.salary_amount ?? null,
         vat_gross_amount: deal.vat_gross_amount ?? null,
         contract_number: deal.contract_number ?? null,
+        has_contract: deal.has_contract !== false,
         status: deal.status ?? 'pending',
         stage: deal.stage ?? 'new',
       });
@@ -110,6 +113,7 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
       }
     }
     if (form.salary_amount !== null && Number(form.salary_amount) < 0) { toast.error('Сумма для ЗП не может быть отрицательной'); return; }
+    if (form.has_contract && !/\d/.test(form.contract_number || '')) { toast.error('Укажите номер договора или снимите галочку «Есть договор»'); return; }
 
     setSaving(true);
     try {
@@ -121,6 +125,8 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
         vat_gross_amount: form.payment_method === 'Перечисление' && form.vat_gross_amount
           ? Number(form.vat_gross_amount)
           : null,
+        contract_number: form.has_contract ? (form.contract_number?.trim() || null) : null,
+        has_contract: !!form.has_contract,
         client_phone: form.client_phone || null,
         address: form.address || null,
         client_name: form.client_name || null,
@@ -192,9 +198,20 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
             <Input placeholder="+7 700 000 0000" value={form.client_phone || ''} onChange={e => set('client_phone', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>Номер договора</Label>
-            <Input placeholder="26.53" value={form.contract_number || ''} onChange={e => set('contract_number', e.target.value)} />
-            {(() => {
+            <div className="flex items-center justify-between gap-2 min-h-[20px]">
+              <Label>Номер договора</Label>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+                <Checkbox checked={!!form.has_contract}
+                  onCheckedChange={v => setForm(f => ({ ...f, has_contract: v === true }))} />
+                Есть договор
+              </label>
+            </div>
+            {form.has_contract ? (
+              <Input placeholder="26.53" value={form.contract_number || ''} onChange={e => set('contract_number', e.target.value)} />
+            ) : (
+              <div className="h-9 rounded-md border border-dashed border-border px-3 flex items-center text-sm text-muted-foreground">Без договора — мелкая покупка</div>
+            )}
+            {form.has_contract && (() => {
               const dups = contractDuplicates(contractIdx, deal?.id, form.contract_number);
               return dups.length > 0 ? (
                 <p className="text-[11px] text-destructive">Этот номер уже есть у: {dups.map(x => x.client_name || 'без имени').join(', ')}</p>
