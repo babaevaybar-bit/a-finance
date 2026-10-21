@@ -1,3 +1,4 @@
+import { weakPasswordReason } from '@/lib/passwordCheck';
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
@@ -138,7 +139,7 @@ function SetNewPasswordForm({ token }: { token: string }) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (password.length < 6) { toast.error('Пароль должен быть не менее 6 символов'); return; }
+    { const weak = weakPasswordReason(password); if (weak) { toast.error(weak); return; } }
     if (password !== confirm) { toast.error('Пароли не совпадают'); return; }
     setLoading(true);
     const { error } = await supabase.auth.updateUser({ password });

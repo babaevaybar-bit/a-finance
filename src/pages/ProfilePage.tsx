@@ -1,3 +1,4 @@
+import { weakPasswordReason } from '@/lib/passwordCheck';
 import React, { useEffect, useRef, useState } from 'react';
 import AppLayout from '@/components/layouts/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
@@ -75,7 +76,7 @@ export default function ProfilePage() {
   }
 
   async function changePassword() {
-    if (pw.a.length < 6) { toast.error('Пароль — минимум 6 символов'); return; }
+    { const weak = weakPasswordReason(pw.a); if (weak) { toast.error(weak); return; } }
     if (pw.a !== pw.b) { toast.error('Пароли не совпадают'); return; }
     setPwSaving(true);
     const { error } = await supabase.auth.updateUser({ password: pw.a });

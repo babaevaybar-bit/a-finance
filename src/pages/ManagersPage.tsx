@@ -1,3 +1,4 @@
+import { weakPasswordReason } from '@/lib/passwordCheck';
 import React, { useEffect, useState, useCallback } from 'react';
 import AppLayout from '@/components/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
@@ -313,10 +314,14 @@ export default function ManagersPage() {
     try {
       // Начали заполнять аккаунт, но не до конца — не создаём молча без аккаунта
       const anyAcc = !!(newUsername.trim() || newPassword || newRecoveryEmail.trim());
-      if (anyAcc && (!newUsername.trim() || newPassword.length < 6 || !/^\S+@\S+\.\S+$/.test(newRecoveryEmail.trim()))) {
-        toast.error('Для аккаунта заполните все три поля: логин, пароль (мин. 6 символов) и почту');
+      if (anyAcc && (!newUsername.trim() || !newPassword || !/^\S+@\S+\.\S+$/.test(newRecoveryEmail.trim()))) {
+        toast.error('Для аккаунта заполните все три поля: логин, пароль и почту');
         setSaving(false);
         return;
+      }
+      if (anyAcc) {
+        const weak = weakPasswordReason(newPassword);
+        if (weak) { toast.error(`${weak} — или нажмите «Сгенерировать»`); setSaving(false); return; }
       }
       // Сначала создаём менеджера, чтобы получить его ID для Edge Function
       const managerId = await createManager(name, role, null);
@@ -384,7 +389,7 @@ export default function ManagersPage() {
     const anyAccountField = !!(editUsername.trim() || editPassword || editRecoveryEmail.trim());
     if (creatingAccount && anyAccountField) {
       if (!editUsername.trim()) { toast.error('Для аккаунта заполните «Логин»'); return; }
-      if (editPassword.length < 6) { toast.error('Для аккаунта заполните «Пароль» (мин. 6 символов) или нажмите «Сгенерировать»'); return; }
+      { const weak = weakPasswordReason(editPassword); if (weak) { toast.error(`${weak} — или нажмите «Сгенерировать»`); return; } }
       if (!/^\S+@\S+\.\S+$/.test(editRecoveryEmail.trim())) { toast.error('Укажите настоящую почту сотрудника — на неё придёт письмо подтверждения'); return; }
     }
 
@@ -474,7 +479,7 @@ export default function ManagersPage() {
                 <div className="space-y-1">
                   <Label className="text-xs">Пароль</Label>
                   <div className="flex gap-1.5">
-                    <Input placeholder="Мин. 6 символов" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" />
+                    <Input placeholder="Мин. 8 символов, буквы и цифры" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" />
                     <Button type="button" variant="outline" size="sm" className="h-9 shrink-0" onClick={() => setNewPassword(generateStrongPassword())}>
                       Сгенерировать
                     </Button>
@@ -684,7 +689,7 @@ export default function ManagersPage() {
                 <div className="space-y-1">
                   <Label className="text-xs">Пароль</Label>
                   <div className="flex gap-1.5">
-                    <Input placeholder="Мин. 6 символов" value={editPassword} onChange={e => setEditPassword(e.target.value)} autoComplete="new-password" />
+                    <Input placeholder="Мин. 8 символов, буквы и цифры" value={editPassword} onChange={e => setEditPassword(e.target.value)} autoComplete="new-password" />
                     <Button type="button" variant="outline" size="sm" className="h-9 shrink-0" onClick={() => setEditPassword(generateStrongPassword())}>
                       Сгенерировать
                     </Button>
