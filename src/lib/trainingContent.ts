@@ -595,7 +595,28 @@ const product: Course = {
   ],
 };
 
-export const COURSES: Course[] = [sales, product];
+/** Черновики по памятке — не показываются, пока директор не согласует */
+export const ARCHIVE_COURSES: Course[] = [sales, product];
+export { module1 } from './trainingModule1';
+import { module1 } from './trainingModule1';
+
+/** Опубликованные модули (по мере согласования) */
+export const COURSES: Course[] = [module1];
+
+/** План курса — модули, которые ещё готовятся */
+export const PLANNED_MODULES: string[] = [
+  'Из чего состоит дверь',
+  'Покрытия и материалы',
+  'Виды дверей и серии',
+  'Короба и наличники',
+  'Системы открывания',
+  'Фурнитура и сопутствующие товары',
+  'Интерьерные решения',
+  'Замер и монтаж',
+  'Продажи',
+  'Как оформляем заказ у нас',
+  'Итоговый экзамен',
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Тренажёр «Вопрос клиента — ответ» (14 вопросов из пособия)
@@ -621,5 +642,4 @@ export const QA_CARDS: QaCard[] = [
 /** Все «зачётные» элементы — для подсчёта общего прогресса */
 export const ALL_ITEMS: { id: string; title: string; course: string }[] = [
   ...COURSES.flatMap(c => c.lessons.map(l => ({ id: l.id, title: l.title, course: c.title }))),
-  { id: QA_TRAINER_ID, title: 'Тренажёр вопросов', course: 'Тренажёр' },
 ];
