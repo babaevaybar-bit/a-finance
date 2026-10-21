@@ -132,7 +132,7 @@ export default function ProfitPage() {
             : mRevenue;
           return s + base + rev * (pct / 100);
         }, 0);
-        return { month: monthYearToLabel(mm), profit: mRevenue - mCogs - mExpenses - mSalary };
+        return { month: `${new Date(`${mm}-15`).toLocaleDateString('ru-RU', { month: 'short' }).replace('.', '')} '${mm.slice(2, 4)}`, profit: mRevenue - mCogs - mExpenses - mSalary };
       }));
       setMonthlyTrend(trend);
     } catch { /* silent */ }
@@ -301,7 +301,7 @@ export default function ProfitPage() {
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={monthlyTrend} margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                        <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+                        <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={0} />
                         <YAxis tick={{ fontSize: 10 }} width={56}
                           tickFormatter={(v: number) => Math.abs(v) >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : Math.abs(v) >= 1000 ? `${Math.round(v / 1000)}K` : String(v)} />
                         <Tooltip formatter={(v: number) => formatCurrency(v)} />

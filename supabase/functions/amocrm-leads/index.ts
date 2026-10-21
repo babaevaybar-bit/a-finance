@@ -129,8 +129,8 @@ Deno.serve(async (req) => {
       amoGet(`/api/v4/leads/pipelines`),
       amoGet(`/api/v4/users?limit=250`),
       amoGetAllPages(`/api/v4/leads?order[id]=desc`, 20, 'leads'),
-      amoGetAllPages(`/api/v4/events?filter[type][]=incoming_call&filter[type][]=outgoing_call&filter[created_at][from]=${from30}&filter[created_at][to]=${now}`, 2, 'events'),
-      amoGetAllPages(`/api/v4/events?filter[type][]=lead_status_changed&filter[created_at][from]=${from30}&filter[created_at][to]=${now}&with=lead_name`, 2, 'events'),
+      amoGetAllPages(`/api/v4/events?filter[type][]=incoming_call&filter[type][]=outgoing_call&filter[created_at][from]=${from30}&filter[created_at][to]=${now}`, 8, 'events'),
+      amoGetAllPages(`/api/v4/events?filter[type][]=lead_status_changed&filter[created_at][from]=${from30}&filter[created_at][to]=${now}&with=lead_name`, 8, 'events'),
       amoGetAllPages(`/api/v4/events?filter[type][]=outgoing_chat_message&filter[type][]=incoming_chat_message&filter[created_at][from]=${from30}&filter[created_at][to]=${now}`, 2, 'events'),
     ]);
 

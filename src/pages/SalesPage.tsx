@@ -252,7 +252,7 @@ function SummaryTile({ title, active, muted, onClick, revenue, plan, count, debt
   title: React.ReactNode; active: boolean; muted?: boolean; onClick: () => void;
   revenue: number; plan: number; count: number; debt: number; overdue: number; pending: number;
 }) {
-  const pct = plan > 0 ? Math.min(100, (revenue / plan) * 100) : 0;
+  const pct = plan > 0 ? (revenue / plan) * 100 : 0; // реальный %, может быть больше 100
   const missing = Math.max(0, plan - revenue);
   return (
     <button type="button" onClick={onClick}
@@ -265,7 +265,7 @@ function SummaryTile({ title, active, muted, onClick, revenue, plan, count, debt
       {plan > 0 ? (
         <div className="mt-1.5">
           <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-            <div className={`h-full rounded-full ${pct >= 100 ? 'bg-emerald-500' : 'bg-primary'}`} style={{ width: `${pct}%` }} />
+            <div className={`h-full rounded-full ${pct >= 100 ? 'bg-emerald-500' : 'bg-primary'}`} style={{ width: `${Math.min(100, pct)}%` }} />
           </div>
           <div className="flex justify-between text-[11px] text-muted-foreground mt-1 tabular-nums">
             <span>{pct.toFixed(0)}% плана</span>

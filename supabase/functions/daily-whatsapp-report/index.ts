@@ -9,6 +9,7 @@ const KZ_OFFSET_SEC = 5 * 60 * 60;
 // Рабочий день: с 20:00 до 20:00 следующего дня (лиды, звонки, чаты, переходы)
 const LEAD_SHIFT_SEC = 4 * 60 * 60;
 const ALLOWED_PIPELINE_NAMES = ['Отдел продаж', 'Квалификация'];
+const WON_PIPELINE_NAME = 'Успешные продажи 2026';
 
 // Green-API: общий адрес api.green-api.com перестал отвечать — используем адрес своего инстанса
 function gaBase(ga: any): string {
@@ -40,6 +41,12 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
+
+    // Запускать может только расписание (cron): ключ хранится в таблице cron_secret (доступна только серверу)
+    const { data: cronKey } = await supabaseAdmin.from('cron_secret').select('value').eq('name', 'cron_key').maybeSingle();
+    if (!cronKey?.value || req.headers.get('x-cron-key') !== cronKey.value) {
+      return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
 
     const { data: ga } = await supabaseAdmin
       .from('green_api_settings')
@@ -134,7 +141,9 @@ Deno.serve(async (req) => {
     const statusMap: Record<string, { name: string; pipeline_id: string; sort: number }> = {};
     const allowedPipelineIds = new Set<string>();
     let salesPipelineId: string | null = null;
+    const pipelineNameById: Record<string, string> = {};
     for (const pipeline of pipelinesData?._embedded?.pipelines ?? []) {
+      pipelineNameById[String(pipeline.id)] = pipeline.name;
       if (ALLOWED_PIPELINE_NAMES.includes(pipeline.name)) allowedPipelineIds.add(String(pipeline.id));
       if (pipeline.name === 'Отдел продаж') salesPipelineId = String(pipeline.id);
       for (const status of pipeline._embedded?.statuses ?? []) {
@@ -183,16 +192,26 @@ Deno.serve(async (req) => {
     let wonTodayCount = 0;
     let wonTodaySum = 0;
     const leadById = new Map(allLeadsUnfiltered.map((l: any) => [l.id, l]));
+    // Успешная сделка = лид перешёл в «Успешно реализовано» ИЛИ в воронку «Успешные продажи 2026»
+    // (у нас выигранные сделки переносятся в отдельную воронку). Каждый лид считаем один раз.
+    const wonLeadIds = new Set<number>();
     for (const ev of statusEvents) {
       if (!inWindow(ev.created_at)) continue;
       const toId = ev.value_after?.[0]?.lead_status?.id;
-      if (!toId || !leadAllowed(toId)) continue;
-      transitionsToday += 1;
-      if (statusMap[toId]?.name === 'Успешно реализовано') {
+      if (!toId) continue;
+      const fromId = ev.value_before?.[0]?.lead_status?.id;
+      const toSt = statusMap[toId];
+      const toPipe = pipelineNameById[String(ev.value_after?.[0]?.lead_status?.pipeline_id ?? toSt?.pipeline_id ?? '')];
+      const fromPipe = pipelineNameById[String(ev.value_before?.[0]?.lead_status?.pipeline_id ?? (fromId ? statusMap[fromId]?.pipeline_id : '') ?? '')];
+      const toWonPipeline = toPipe === WON_PIPELINE_NAME && fromPipe !== WON_PIPELINE_NAME;
+      if ((toSt?.name === 'Успешно реализовано' || toWonPipeline) && fromPipe !== WON_PIPELINE_NAME && !wonLeadIds.has(ev.entity_id)) {
+        wonLeadIds.add(ev.entity_id);
         wonTodayCount += 1;
         const lead = leadById.get(ev.entity_id) as any;
         wonTodaySum += Number(lead?.price || 0);
       }
+      if (!leadAllowed(toId)) continue;
+      transitionsToday += 1;
     }
 
     const funnelCounts: Record<string, number> = {};
@@ -271,6 +290,16 @@ Deno.serve(async (req) => {
         updated_at: new Date().toISOString(),
       });
       return error ? String(error.message) : null;
+    }
+
+    // Пересчёт только «Успешно» для уже сохранённого дня — остальные поля и отметку об отправке не трогаем
+    if (snapshotDate && body?.only === 'won') {
+      const { error } = await supabaseAdmin.from('amo_daily_reports')
+        .update({ won_count: wonTodayCount, won_sum: wonTodaySum, updated_at: new Date().toISOString() })
+        .eq('report_date', reportDate);
+      return new Response(JSON.stringify({ updated: !error, date: reportDate, won: wonTodayCount, error: error?.message ?? null }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     if (snapshotDate) {
