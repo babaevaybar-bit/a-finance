@@ -918,13 +918,15 @@ export async function deleteProductionChecklistItem(id: string): Promise<void> {
 }
 
 // ─── Номера договоров: поиск повторов ──────────────────────────────────────
-// «26-59», «26/59», «26.59», «26-00-59» → один и тот же ключ «26:59»; «57» → «:57»
+// «26-59», «26/59», «26.59», «26-00-59» → один и тот же ключ «26:59»; «57» → «:57».
+// Подномера сохраняются: «26/61/1» и «26/65/1» — РАЗНЫЕ договоры («26:61:1» и «26:65:1»).
 export function contractKey(raw: string | null | undefined): string | null {
   const groups = (raw ?? '').match(/\d+/g);
   if (!groups || groups.length === 0) return null;
-  const last = String(parseInt(groups[groups.length - 1], 10));
-  const first = groups.length > 1 ? String(parseInt(groups[0], 10)) : '';
-  return `${first}:${last}`;
+  const nums = groups.map(g => String(parseInt(g, 10)));
+  // «00» в середине («26-00-59») — просто разделитель, не часть номера
+  const parts = nums.filter((n, i) => !(n === '0' && i > 0 && i < nums.length - 1));
+  return parts.length === 1 ? `:${parts[0]}` : parts.join(':');
 }
 export type ContractIndex = Map<string, { id: string; client_name: string | null }[]>;
 export async function getContractIndex(): Promise<ContractIndex> {
