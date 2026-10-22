@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -78,13 +78,24 @@ function Swatch({ c, cat, on, onClick, size = 30 }: { c: ColorDef; cat: PhotoCat
 }
 
 /** Рисунок двустворчатого проёма в масштабе: полотна рядом, правая половина зеркально — ручки к центру */
-function OpeningDrawing({ sizes, url, hex, maxW, maxH }: { sizes: LeafSize[]; url?: string | null; hex?: string; maxW: number; maxH: number }) {
+function OpeningDrawing({ sizes, url, hex, maxW: maxW0, maxH }: { sizes: LeafSize[]; url?: string | null; hex?: string; maxW: number; maxH: number }) {
   const n = sizes.length;
+  // подгоняем под ширину блока (на телефоне он уже)
+  const ref = useRef<HTMLDivElement>(null);
+  const [avail, setAvail] = useState(maxW0);
+  useEffect(() => {
+    const el = ref.current?.parentElement;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setAvail(el.clientWidth - 40));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const maxW = Math.max(120, Math.min(maxW0, avail));
   const topH = Math.max(...sizes.map(x => x.h || 1));
   const sumW = sizes.reduce((a, x) => a + (x.w || 1), 0);
   const k = Math.min(maxH / topH, maxW / sumW); // пикселей на мм
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div ref={ref} className="flex flex-col items-center gap-1">
       <div className="flex items-end rounded-[3px] border-[5px] border-stone-400/80 bg-stone-100 shadow-md" style={{ height: topH * k + 10 }}>
         {sizes.map((x, i) => (
           <div key={i} className={`flex ${i > 0 ? 'border-l border-stone-400/70' : ''}`}
@@ -260,7 +271,7 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
                 </div>
               )}
               <button type="button" onClick={() => photo ? setZoom(true) : setGallery(true)}
-                className="group relative w-full h-[260px] md:h-[340px] rounded-xl bg-gradient-to-b from-muted/30 to-muted/70 flex items-center justify-center p-3">
+                className={`group relative w-full ${leaves === 1 ? 'h-[260px] md:h-[340px]' : 'py-4'} rounded-xl bg-gradient-to-b from-muted/30 to-muted/70 flex items-center justify-center p-3`}>
                 {leaves === 1
                   ? <DoorImage url={photo?.thumb} hex={color?.hex} className="h-full max-w-full drop-shadow-md" />
                   : <OpeningDrawing sizes={sizes} url={photo?.thumb} hex={color?.hex} maxW={leaves === 2 ? 240 : 380} maxH={leaves === 2 ? 290 : 270} />}
