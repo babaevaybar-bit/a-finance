@@ -1,4 +1,4 @@
-import { doorUnit, transomUnit, totals, type EstimateData } from '@/lib/estimate/model';
+import { leavesOf, doorUnit, transomUnit, totals, type EstimateData } from '@/lib/estimate/model';
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 const money = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} ₸`;
@@ -23,9 +23,10 @@ export function openKp(e: EstimateData, meta: KpMeta, photoFor?: (o: EstimateDat
       if (o.door.color) colors.add(o.door.color);
       covers.add(d.series.name + (o.door.perl && d.series.perl ? ' (Перламутр/Элегант)' : ''));
       const ph = photoFor?.(o) ?? o.door.photo;
+      const lv = leavesOf(o);
       rows.push([isV ? 'В-Полотно' : 'Полотно',
-        `${ph ? `<img class="door" src="${esc(ph)}" referrerpolicy="no-referrer">` : ''}${esc(o.door.modelName || d.model.model)}${d.model.fill ? `<br><small>${esc(d.model.fill)}</small>` : ''}${opts.length ? `<br><small>${esc(opts.join(', '))}</small>` : ''}`,
-        `${o.door.height}×${o.door.width}${o.door.thickness ? `×${esc(o.door.thickness)}` : ''}`, esc(o.openType), 'шт', money(d.unit), String(o.qty), money(d.unit * o.qty)]);
+        `${ph ? `<span class="pics">${Array.from({ length: lv }, (_, k) => `<img class="door${k >= lv / 2 && lv > 1 ? ' flip' : ''}" src="${esc(ph)}" referrerpolicy="no-referrer">`).join('')}</span>` : ''}${lv > 1 ? `<b>${lv} полотна в проёме</b><br>` : ''}${esc(o.door.modelName || d.model.model)}${d.model.fill ? `<br><small>${esc(d.model.fill)}</small>` : ''}${opts.length ? `<br><small>${esc(opts.join(', '))}</small>` : ''}`,
+        `${o.door.height}×${o.door.width}${o.door.thickness ? `×${esc(o.door.thickness)}` : ''}`, esc(o.openType), 'шт', money(d.unit), String(o.qty * lv), money(d.unit * o.qty * lv)]);
     }
     const tr = transomUnit(o);
     if (tr && o.transom) rows.push(['Фрамуга-дверь', esc(tr.label), `${o.transom.area} м²`, '', 'м²', money(tr.perm2), String(Math.round(o.transom.area * o.qty * 100) / 100), money(tr.sum * o.qty)]);
@@ -54,7 +55,9 @@ export function openKp(e: EstimateData, meta: KpMeta, photoFor?: (o: EstimateDat
   td.r, th.r { text-align: right; white-space: nowrap; }
   td.num { text-align: center; font-weight: 700; }
   small { color: #6b7280; }
-  img.door { float: left; height: 80px; margin: 0 8px 0 0; }
+  .pics { float: left; display: flex; margin: 0 8px 0 0; border: 2px solid #a8a29e; }
+  img.door { height: 80px; display: block; }
+  img.door.flip { transform: scaleX(-1); }
   .sum { display: flex; justify-content: space-between; gap: 16px; margin-top: 6px; }
   .info td { border: none; padding: 2px 6px; }
   .total { font-size: 13px; font-weight: 700; }

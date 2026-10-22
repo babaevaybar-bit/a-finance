@@ -34,6 +34,7 @@ export interface Opening {
   room: string;
   openType: string;          // Распашная, Купе, Пенал …
   qty: number;               // одинаковых проёмов
+  leaves?: number;           // полотен в проёме: 1, для двустворчатой 2 или 4
   door?: DoorSpec;
   transom?: { idx: number; area: number }; // верхняя фрамуга-дверь, м²
   lines: Line[];
@@ -74,12 +75,16 @@ export function transomUnit(o: Opening) {
   return { label: t.label, perm2, sum: Math.round(perm2 * o.transom.area * 100) / 100 };
 }
 
+export const isDouble = (openType: string) => /двуствор/i.test(openType);
+/** Сколько полотен в одном проёме */
+export const leavesOf = (o: Pick<Opening, 'leaves' | 'openType'>) => o.leaves ?? (isDouble(o.openType) ? 2 : 1);
+
 export function openingTotal(o: Opening): number {
   const d = doorUnit(o.door);
   const door = d && d.ok && d.unit ? d.unit : 0;
   const tr = transomUnit(o)?.sum ?? 0;
   const lines = o.lines.reduce((s, l) => s + l.price * l.qty, 0);
-  return (door + tr + lines) * (o.qty || 0);
+  return (door * leavesOf(o) + tr + lines) * (o.qty || 0);
 }
 
 export function totals(e: EstimateData) {
