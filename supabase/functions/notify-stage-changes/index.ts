@@ -167,7 +167,17 @@ Deno.serve(async (req) => {
       const dContract = contractKey(deal.contract_number);
       let matched: typeof currentCards = [];
       if (dContract) {
-        matched = currentCards.filter(c => contractsMatch(c.contract, dContract) && (!dPhone || !c.phone || c.phone === dPhone));
+        // Полный номер (с годом и подномером) совпал — этого достаточно: телефон в карточке бывает другой
+        // (например, номер прораба или дизайнера). Короткий номер без года — дополнительно сверяем телефон.
+        matched = currentCards.filter(c => c.contract === dContract && !dContract.startsWith(':'));
+        // Одинаковый номер у нескольких карточек (бывает при ошибке в номере) — уточняем по телефону
+        if (matched.length > 1 && dPhone) {
+          const samePhone = matched.filter(c => c.phone === dPhone);
+          if (samePhone.length) matched = samePhone;
+        }
+        if (matched.length === 0) {
+          matched = currentCards.filter(c => contractsMatch(c.contract, dContract) && (!dPhone || !c.phone || c.phone === dPhone));
+        }
       }
       if (matched.length === 0 && dPhone) {
         const byPhone = currentCards.filter(c => c.phone === dPhone);
