@@ -35,7 +35,7 @@ function EstimateList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: 
   }, []);
   const shown = (rows ?? []).filter(r => !q || `${r.client_name ?? ''} ${r.client_phone ?? ''} ${r.author_name ?? ''}`.toLowerCase().includes(q.toLowerCase()));
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div className="space-y-5 max-w-6xl">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold flex items-center gap-2"><Calculator size={22} className="text-primary" />Просчёт</h1>
@@ -125,10 +125,10 @@ function EstimateEditor({ id, onBack, onSaved }: { id: string | null; onBack: ()
     if (!ok) toast.error('Браузер заблокировал новое окно — разрешите всплывающие окна для сайта');
   }
 
-  if (!loaded) return <div className="h-40 rounded-xl bg-muted animate-pulse max-w-5xl" />;
+  if (!loaded) return <div className="h-40 rounded-xl bg-muted animate-pulse" />;
 
   return (
-    <div className="space-y-5 max-w-5xl pb-24">
+    <div className="space-y-5 w-full max-w-[2000px] pb-24">
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => { if (!dirty || confirm('Есть несохранённые изменения. Выйти без сохранения?')) onBack(); }}
           className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center"><ChevronLeft size={16} />Все просчёты</button>
@@ -184,7 +184,7 @@ function EstimateEditor({ id, onBack, onSaved }: { id: string | null; onBack: ()
 
       {/* Итог — закреплён внизу */}
       <div className="fixed bottom-0 left-0 right-0 lg:left-56 z-30 border-t bg-background/95 backdrop-blur px-4 py-3">
-        <div className="max-w-5xl flex flex-wrap items-center gap-x-6 gap-y-1">
+        <div className="max-w-[2000px] flex flex-wrap items-center gap-x-6 gap-y-1">
           <span className="text-sm text-muted-foreground">Двери и комплектующие <b className="text-foreground tabular-nums">{fmt(t.doors)}</b></span>
           <span className="text-sm text-muted-foreground">Фурнитура <b className="text-foreground tabular-nums">{fmt(t.hardware)}</b></span>
           {t.discount > 0 && <span className="text-sm text-muted-foreground">Скидка <b className="text-foreground tabular-nums">−{fmt(t.discount)}</b></span>}

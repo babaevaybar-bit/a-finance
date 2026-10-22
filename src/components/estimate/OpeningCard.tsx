@@ -292,7 +292,8 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
               </div>
             </div>
 
-            <div className="space-y-4 min-w-0">
+            <div className="grid gap-4 min-w-0 min-[1500px]:grid-cols-2 min-[1500px]:gap-8 items-start">
+              <div className="space-y-4 min-w-0">
               {/* Коллекция */}
               <div className="space-y-1.5">
                 <span className="text-xs text-muted-foreground">Коллекция</span>
@@ -332,6 +333,8 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
                 </div>
               </div>
 
+              </div>
+              <div className="space-y-4 min-w-0">
               {/* Размер */}
               {leaves > 1 && <p className="text-xs text-muted-foreground -mb-2">Задать всем полотнам сразу:</p>}
               <div className="grid gap-3 sm:grid-cols-2">
@@ -392,6 +395,7 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
               <label className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">Название в КП
                 <Input value={d.modelName ?? ''} onChange={e => onChange({ ...o, door: { ...d, modelName: e.target.value } })} className="h-7 w-52 text-xs" placeholder={entry?.name ?? s.models[d.modelIdx]?.model} />
               </label>
+              </div>
             </div>
           </div>
 
