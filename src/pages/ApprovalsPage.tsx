@@ -159,8 +159,8 @@ export default function ApprovalsPage() {
               {tab === 'pending' ? 'Сделки, ожидающие вашего подтверждения' : 'Отклонённые сделки — можно вернуть на проверку'}
             </p>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex flex-col items-end">
+          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+          <div className="flex flex-col items-stretch sm:items-end flex-1 sm:flex-none">
             <Button variant="outline" size="sm" onClick={syncNow} disabled={syncing}>
               <RefreshCw size={14} className={`mr-1.5 ${syncing ? 'animate-spin' : ''}`} />
               {syncing ? 'Обновляю…' : 'Обновить из CRM и Trello'}
@@ -206,9 +206,9 @@ export default function ApprovalsPage() {
             {deals.map(d => (
               <Card key={d.id} className={`border border-border transition-opacity ${busyId === d.id ? 'opacity-60 pointer-events-none' : ''}`}>
                 <CardHeader className="pb-2 pt-4 px-4">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      <CardTitle className="text-sm font-medium flex flex-wrap items-center gap-2">
                         {tab === 'pending' ? (
                           <Clock size={14} className="shrink-0 text-amber-500" />
                         ) : (
@@ -227,12 +227,12 @@ export default function ApprovalsPage() {
                         )}
                       </CardTitle>
                     </div>
-                    <div className="flex gap-2 shrink-0">
+                    <div className="flex gap-2 shrink-0 w-full sm:w-auto">
                       {tab === 'pending' ? (
                         <>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive border border-destructive/30">
+                              <Button variant="ghost" size="sm" className="h-9 sm:h-7 flex-1 sm:flex-none text-xs text-destructive hover:text-destructive border border-destructive/30">
                                 <XCircle size={13} className="mr-1" />Отклонить
                               </Button>
                             </AlertDialogTrigger>
@@ -252,13 +252,13 @@ export default function ApprovalsPage() {
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
-                          <Button size="sm" className="h-7 text-xs" disabled={busyId === d.id} onClick={() => handleApprove(d.id)}>
+                          <Button size="sm" className="h-9 sm:h-7 flex-1 sm:flex-none text-xs" disabled={busyId === d.id} onClick={() => handleApprove(d.id)}>
                             {busyId === d.id ? <Loader2 size={13} className="mr-1 animate-spin" /> : <CheckCircle size={13} className="mr-1" />}
                             {busyId === d.id ? 'Подтверждаю…' : 'Подтвердить'}
                           </Button>
                         </>
                       ) : (
-                        <Button size="sm" className="h-7 text-xs" disabled={busyId === d.id} onClick={() => handleRestore(d.id)}>
+                        <Button size="sm" className="h-9 sm:h-7 w-full sm:w-auto text-xs" disabled={busyId === d.id} onClick={() => handleRestore(d.id)}>
                           <RotateCcw size={13} className="mr-1" />Вернуть на проверку
                         </Button>
                       )}
@@ -266,7 +266,7 @@ export default function ApprovalsPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="px-4 pb-4">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-sm">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 text-sm">
                     <div>
                       <span className="text-muted-foreground text-xs">Дата</span>
                       <p>{formatDate(d.deal_date)}</p>
@@ -291,34 +291,34 @@ export default function ApprovalsPage() {
                       <p>{d.payment_method}</p>
                     </div>
                     {d.door_model && (
-                      <div className="md:col-span-2">
+                      <div className="col-span-2">
                         <span className="text-muted-foreground text-xs">Модель</span>
                         <p>{d.door_model}</p>
                       </div>
                     )}
                     {d.comment && (
-                      <div className="md:col-span-2">
+                      <div className="col-span-2">
                         <span className="text-muted-foreground text-xs">Комментарий</span>
-                        <p className="text-muted-foreground">{d.comment}</p>
+                        <p className="text-muted-foreground break-words">{d.comment}</p>
                       </div>
                     )}
                     {Number(d.paid_amount) > 0 && !(CHANNELS as readonly string[]).includes(d.payment_method) && !(d.payment_method === SPLIT_PAYMENT_METHOD && (d.payment_split?.length ?? 0) > 1) && (
-                      <div className="md:col-span-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 space-y-2">
-                        <div className="flex items-center justify-between gap-3">
+                      <div className="col-span-2 md:col-span-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 space-y-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-3">
                           <span>Не указан способ оплаты предоплаты {formatCurrency(d.paid_amount)} — выберите банк, и сделку можно подтвердить.</span>
-                          <button type="button" className="underline shrink-0" onClick={() => setEditDeal(d)}>
+                          <button type="button" className="underline shrink-0 self-start sm:self-auto" onClick={() => setEditDeal(d)}>
                             Несколько способов…
                           </button>
                         </div>
                         {tab === 'pending' && (
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
                             <Select value={channelPick[d.id] ?? ''} onValueChange={v => setChannelPick(p => ({ ...p, [d.id]: v }))}>
-                              <SelectTrigger className="h-8 w-48 bg-background text-xs"><SelectValue placeholder="Выберите способ оплаты" /></SelectTrigger>
+                              <SelectTrigger className="h-9 sm:h-8 w-full sm:w-48 bg-background text-xs"><SelectValue placeholder="Выберите способ оплаты" /></SelectTrigger>
                               <SelectContent>
                                 {CHANNELS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                               </SelectContent>
                             </Select>
-                            <Button size="sm" className="h-8 text-xs" disabled={!channelPick[d.id] || busyId === d.id} onClick={() => handleSetChannelAndApprove(d.id)}>
+                            <Button size="sm" className="h-9 sm:h-8 w-full sm:w-auto text-xs" disabled={!channelPick[d.id] || busyId === d.id} onClick={() => handleSetChannelAndApprove(d.id)}>
                               {busyId === d.id ? <Loader2 size={13} className="mr-1 animate-spin" /> : <CheckCircle size={13} className="mr-1" />}
                               Сохранить и подтвердить
                             </Button>
@@ -330,12 +330,12 @@ export default function ApprovalsPage() {
                       const dups = contractDuplicates(contractIdx, d.id, d.contract_number);
                       if (!dups.length) return null;
                       return (
-                        <div className="md:col-span-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                        <div className="col-span-2 md:col-span-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
                           Договор №{d.contract_number} уже указан у: {dups.map(x => x.client_name || 'без имени').join(', ')}. Проверьте номер — иначе сверка с Trello может перепутать клиентов.
                         </div>
                       );
                     })()}
-                    <div className="md:col-span-4 mt-1">
+                    <div className="col-span-2 md:col-span-4 mt-1">
                       <TrelloLookup refreshKey={trelloTick} phone={d.client_phone} contractNumber={d.contract_number} />
                     </div>
                   </div>
