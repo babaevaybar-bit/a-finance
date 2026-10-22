@@ -10,7 +10,7 @@ export interface KpMeta {
 }
 
 /** Коммерческое предложение — как лист «КП» в таблице просчёта. Открывается в новом окне для печати / PDF. */
-export function openKp(e: EstimateData, meta: KpMeta) {
+export function openKp(e: EstimateData, meta: KpMeta, photoFor?: (o: EstimateData['openings'][number]) => string | undefined) {
   const t = totals(e);
   const colors = new Set<string>(); const covers = new Set<string>();
   const doorRows: string[] = [];
@@ -22,8 +22,9 @@ export function openKp(e: EstimateData, meta: KpMeta) {
       const opts = d.series.options.filter(x => o.door!.options.includes(x.id) && x.id !== 'v').map(x => x.label);
       if (o.door.color) colors.add(o.door.color);
       covers.add(d.series.name + (o.door.perl && d.series.perl ? ' (Перламутр/Элегант)' : ''));
+      const ph = photoFor?.(o) ?? o.door.photo;
       rows.push([isV ? 'В-Полотно' : 'Полотно',
-        `${esc(o.door.modelName || d.model.model)}${d.model.fill ? `<br><small>${esc(d.model.fill)}</small>` : ''}${opts.length ? `<br><small>${esc(opts.join(', '))}</small>` : ''}`,
+        `${ph ? `<img class="door" src="${esc(ph)}" referrerpolicy="no-referrer">` : ''}${esc(o.door.modelName || d.model.model)}${d.model.fill ? `<br><small>${esc(d.model.fill)}</small>` : ''}${opts.length ? `<br><small>${esc(opts.join(', '))}</small>` : ''}`,
         `${o.door.height}×${o.door.width}${o.door.thickness ? `×${esc(o.door.thickness)}` : ''}`, esc(o.openType), 'шт', money(d.unit), String(o.qty), money(d.unit * o.qty)]);
     }
     const tr = transomUnit(o);
@@ -53,6 +54,7 @@ export function openKp(e: EstimateData, meta: KpMeta) {
   td.r, th.r { text-align: right; white-space: nowrap; }
   td.num { text-align: center; font-weight: 700; }
   small { color: #6b7280; }
+  img.door { float: left; height: 80px; margin: 0 8px 0 0; }
   .sum { display: flex; justify-content: space-between; gap: 16px; margin-top: 6px; }
   .info td { border: none; padding: 2px 6px; }
   .total { font-size: 13px; font-weight: 700; }

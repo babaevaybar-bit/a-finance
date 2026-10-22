@@ -18,8 +18,11 @@ export interface DoorSpec {
   seriesId: string;
   modelIdx: number;          // индекс строки в series.models
   modelName?: string;        // точное название модели для КП (например «1.2.2 PD»)
+  modelKey?: string;         // выбранная модель из галереи (адрес на сайте или подпись строки прайса)
   perl: boolean;
-  color: string;
+  color: string;             // название цвета для КП
+  colorId?: string;          // код цвета (white, graphite …)
+  photo?: string;            // ссылка на фото для КП
   height: number;
   width: number;
   thickness?: string;
@@ -52,7 +55,7 @@ export const catalogById = (id: string | undefined): CatalogItem | undefined => 
 
 export function newOpening(n: number): Opening {
   return { id: uid(), room: `Проём ${n}`, openType: 'Распашная', qty: 1, lines: [],
-    door: { seriesId: 'PDO_IE', modelIdx: 0, perl: false, color: '', height: 2000, width: 800, options: [] } };
+    door: { seriesId: 'PDO_IE', modelIdx: 0, perl: false, color: 'Вайт', colorId: 'white', height: 2000, width: 800, options: [] } };
 }
 
 export function doorUnit(d: DoorSpec | undefined) {

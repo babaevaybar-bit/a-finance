@@ -12,6 +12,9 @@ import { newOpening, totals, uid, lineFromCatalog, type EstimateData, type Openi
 import OpeningCard, { LinesTable } from '@/components/estimate/OpeningCard';
 import CatalogPicker from '@/components/estimate/CatalogPicker';
 import { openKp } from '@/components/estimate/kpPrint';
+import usePhotoCatalog from '@/lib/estimate/usePhotoCatalog';
+import { doorPhoto } from '@/lib/estimate/photos';
+import { seriesById } from '@/lib/estimate/model';
 
 interface EstimateRow {
   id: string; created_by: string; author_name: string | null; client_name: string | null; client_phone: string | null;
@@ -73,6 +76,7 @@ function EstimateEditor({ id, onBack, onSaved }: { id: string | null; onBack: ()
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [hwPicker, setHwPicker] = useState(false);
+  const photoCat = usePhotoCatalog();
 
   useEffect(() => {
     if (!id) return;
@@ -117,7 +121,7 @@ function EstimateEditor({ id, onBack, onSaved }: { id: string | null; onBack: ()
     const ok = openKp(data, {
       managerName: author || profile?.name || '', managerPhone: profile?.phone || '+7 701 073 2022',
       clientName: client.name, clientPhone: client.phone, clientAddress: client.address, date: data.date || today(),
-    });
+    }, o => doorPhoto(photoCat, seriesById(o.door?.seriesId), o.door));
     if (!ok) toast.error('Браузер заблокировал новое окно — разрешите всплывающие окна для сайта');
   }
 
