@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { ExternalLink, ChevronDown } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
@@ -17,16 +17,25 @@ export interface TrelloComment { text: string; date: string; by: string | null; 
  * «Подтверждения», «Продажи», «Ежедневный отчёт» и в «Поиске» — везде, где
  * есть телефон клиента, чтобы не заходить в саму Trello.
  */
-export default function TrelloLookup({ phone, contractNumber }: { phone: string | null; contractNumber?: string | null }) {
+export default function TrelloLookup({ phone, contractNumber, refreshKey = 0 }: { phone: string | null; contractNumber?: string | null; refreshKey?: number }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [matches, setMatches] = useState<TrelloMatch[] | null>(null);
   const [comments, setComments] = useState<TrelloComment[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleOpen() {
+  // Кнопка «Обновить» на странице: открытый блок загружается заново, закрытый — при следующем открытии
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    setMatches(null);
+    if (open) handleOpen(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
+
+  async function handleOpen(force = false) {
     setOpen(true);
-    if (matches !== null) return; // уже загружено — не запрашиваем повторно
+    if (matches !== null && !force) return; // уже загружено — не запрашиваем повторно
     setLoading(true);
     setError(null);
     try {

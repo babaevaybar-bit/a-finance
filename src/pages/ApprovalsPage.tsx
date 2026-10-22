@@ -9,7 +9,8 @@ import {
   AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { CheckCircle, XCircle, Clock, ShieldOff, RotateCcw } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, ShieldOff, RotateCcw, RefreshCw } from 'lucide-react';
+import { supabase } from '@/db/supabase';
 import { getPendingDeals, getRejectedDeals, approveDeal, rejectDeal, restoreDeal, getManagers, notifyCountersChanged, updateDeal, getContractIndex, contractDuplicates } from '@/lib/api';
 import type { ContractIndex } from '@/lib/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -33,6 +34,9 @@ export default function ApprovalsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [channelPick, setChannelPick] = useState<Record<string, string>>({});
   const [contractIdx, setContractIdx] = useState<ContractIndex | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncedAt, setSyncedAt] = useState<Date | null>(null);
+  const [trelloTick, setTrelloTick] = useState(0);
 
   // Скелетон — только при первой загрузке/смене вкладки; дальше обновляем тихо
   const load = useCallback(async (silent = false) => {
@@ -59,6 +63,33 @@ export default function ApprovalsPage() {
   }
 
   useEffect(() => { load(); }, [load]);
+
+  /** Сразу подтянуть изменения из amoCRM и Trello, не дожидаясь автообновления (раз в 30 минут) */
+  async function syncNow() {
+    if (syncing) return;
+    setSyncing(true);
+    const t = toast.loading('Обновляю из amoCRM и Trello…');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined;
+      const [amo, trello] = await Promise.allSettled([
+        supabase.functions.invoke('amocrm-sync-deals', { body: {}, headers }),
+        supabase.functions.invoke('notify-stage-changes', { body: {}, headers }),
+      ]);
+      const a = amo.status === 'fulfilled' && !amo.value.error ? amo.value.data as { synced?: number; updated?: number; filled?: number } : null;
+      const tr = trello.status === 'fulfilled' && !trello.value.error ? trello.value.data as { stagesUpdated?: number } : null;
+      await load(true);
+      setTrelloTick(x => x + 1); // открытые блоки «Данные из Trello» загрузятся заново
+      notifyCountersChanged();
+      setSyncedAt(new Date());
+      const parts: string[] = [];
+      parts.push(a ? `amoCRM: новых ${a.synced ?? 0}, обновлено ${(a.updated ?? 0) + (a.filled ?? 0)}` : 'amoCRM: не удалось обновить');
+      parts.push(tr ? `Trello: этапов обновлено ${tr.stagesUpdated ?? 0}` : 'Trello: не удалось обновить');
+      (a && tr ? toast.success : toast.warning)(parts.join(' · '), { id: t });
+    } catch {
+      toast.error('Не удалось обновить', { id: t });
+    } finally { setSyncing(false); }
+  }
 
   function managerName(id: string) {
     return managers.find(m => m.id === id)?.name ?? '—';
@@ -128,6 +159,14 @@ export default function ApprovalsPage() {
               {tab === 'pending' ? 'Сделки, ожидающие вашего подтверждения' : 'Отклонённые сделки — можно вернуть на проверку'}
             </p>
           </div>
+          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex flex-col items-end">
+            <Button variant="outline" size="sm" onClick={syncNow} disabled={syncing}>
+              <RefreshCw size={14} className={`mr-1.5 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Обновляю…' : 'Обновить из CRM и Trello'}
+            </Button>
+            {syncedAt && <span className="text-[11px] text-muted-foreground mt-0.5">обновлено в {syncedAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>}
+          </div>
           <div className="flex gap-1.5 rounded-lg border border-border p-1">
             <Button
               variant={tab === 'pending' ? 'default' : 'ghost'}
@@ -145,6 +184,7 @@ export default function ApprovalsPage() {
             >
               Отклонённые
             </Button>
+          </div>
           </div>
         </div>
 
@@ -296,7 +336,7 @@ export default function ApprovalsPage() {
                       );
                     })()}
                     <div className="md:col-span-4 mt-1">
-                      <TrelloLookup phone={d.client_phone} contractNumber={d.contract_number} />
+                      <TrelloLookup refreshKey={trelloTick} phone={d.client_phone} contractNumber={d.contract_number} />
                     </div>
                   </div>
                 </CardContent>
