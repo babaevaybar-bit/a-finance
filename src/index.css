@@ -135,3 +135,37 @@
 .production-scroll::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--primary) / 0.65);
 }
+
+/* ── Телефоны: поля ввода ─────────────────────────────────────────────────
+   Поля даты/времени в iPhone по умолчанию шире своей колонки, выше обычных
+   полей и с текстом по центру — выравниваем их как обычные поля. */
+input[type="date"],
+input[type="time"],
+input[type="month"],
+input[type="datetime-local"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+}
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value,
+input[type="month"]::-webkit-date-and-time-value,
+input[type="datetime-local"]::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+  min-height: 1.25em;
+}
+/* В iPhone поле с шрифтом меньше 16px увеличивает весь экран при нажатии */
+@supports (-webkit-touch-callout: none) {
+  input, select, textarea { font-size: 16px !important; }
+}
+/* Длинные слова и номера не вылезают за карточки */
+.break-anywhere { overflow-wrap: anywhere; }
+
+/* Ячейки сетки не раздвигают карточку длинным текстом (имя клиента, номер) */
+.grid > * { min-width: 0; }
+/* Вкладки на узком экране прокручиваются, а не обрезаются */
+.tabs-scroll { scrollbar-width: none; }
+.tabs-scroll::-webkit-scrollbar { display: none; }

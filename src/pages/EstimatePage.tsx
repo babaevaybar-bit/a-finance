@@ -175,7 +175,7 @@ function EstimateEditor({ id, onBack, onSaved }: { id: string | null; onBack: ()
       </div>
 
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <h2 className="font-semibold flex-1">Фурнитура</h2>
           <span className="text-sm text-muted-foreground mr-2">Итого: <b className="text-foreground tabular-nums">{fmt(t.hardware)}</b></span>
           <Button variant="outline" size="sm" onClick={() => setHwPicker(x => !x)}><Plus size={14} className="mr-1" />Из прайса</Button>

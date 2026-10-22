@@ -283,10 +283,10 @@ export default function ProductionPage() {
               Перетаскивание сохраняется только у нас, саму Trello не меняет.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="relative">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-auto">
               <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по клиенту" className="h-9 pl-7 w-56" />
+              <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по клиенту" className="h-9 pl-7 w-full sm:w-56" />
             </div>
             <Button variant={overdueOnly ? 'default' : 'outline'} size="sm" onClick={() => setOverdueOnly(v => !v)}>
               Просроченные{overdueTotal > 0 ? ` (${overdueTotal})` : ''}

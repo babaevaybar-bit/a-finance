@@ -275,7 +275,7 @@ export default function ApprovalsPage() {
                       <span className="text-muted-foreground text-xs">Клиент</span>
                       <button
                         type="button"
-                        className="truncate text-primary hover:underline text-left block"
+                        className="truncate text-primary hover:underline text-left block w-full max-w-full"
                         onClick={() => setEditDeal(d)}
                         title="Открыть сделку"
                       >

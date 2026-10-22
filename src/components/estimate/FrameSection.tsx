@@ -88,17 +88,17 @@ export default function FrameSection({ o, onChange }: { o: Opening; onChange: (o
             const edited = fr.over?.[l.role] !== undefined;
             return (
               <div key={l.role} className="px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <div className="flex-1 min-w-[220px]">
+                <div className="flex-1 min-w-[200px]">
                   <p className="text-sm"><span className="text-xs text-muted-foreground mr-1.5">{l.label}</span>{l.item?.name ?? <span className="text-destructive">нет в прайсе</span>}</p>
                   <p className="text-xs text-muted-foreground">{[l.item?.spec, l.hint].filter(Boolean).join(' · ')}</p>
                   {l.warn && <p className="text-xs text-amber-600 flex items-center gap-1"><AlertTriangle size={12} />{l.warn}</p>}
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm tabular-nums w-24 text-right">{fmt(l.item?.price ?? 0)}</span>
+                <div className="flex items-center gap-1 sm:gap-1.5 ml-auto">
+                  <span className="text-sm tabular-nums w-[4.5rem] sm:w-24 text-right text-xs sm:text-sm">{fmt(l.item?.price ?? 0)}</span>
                   <span className="text-xs text-muted-foreground">×</span>
-                  <Input type="number" inputMode="decimal" step="0.5" min={0} value={l.qty} onChange={e => setOver(l.role, Math.max(0, Number(e.target.value) || 0))} className={`h-8 w-16 text-right ${edited ? 'border-amber-400' : ''}`} />
-                  <span className="text-xs text-muted-foreground w-10">{l.item?.unit}</span>
-                  <span className="text-sm font-medium tabular-nums w-28 text-right">{fmt(frameLineSum(l) * o.qty)}</span>
+                  <Input type="number" inputMode="decimal" step="0.5" min={0} value={l.qty} onChange={e => setOver(l.role, Math.max(0, Number(e.target.value) || 0))} className={`h-8 w-12 sm:w-16 text-right px-1.5 sm:px-3 ${edited ? 'border-amber-400' : ''}`} />
+                  <span className="text-xs text-muted-foreground w-8 sm:w-10">{l.item?.unit}</span>
+                  <span className="text-sm font-medium tabular-nums w-[5.5rem] sm:w-28 text-right">{fmt(frameLineSum(l) * o.qty)}</span>
                   {edited
                     ? <Button type="button" variant="ghost" size="icon" className="h-8 w-8" title={`Вернуть авто: ${l.autoQty}`} onClick={() => setOver(l.role, undefined)}><RotateCcw size={14} /></Button>
                     : <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" title="Убрать" onClick={() => setOver(l.role, 0)}><X size={14} /></Button>}

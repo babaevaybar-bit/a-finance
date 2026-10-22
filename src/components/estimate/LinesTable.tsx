@@ -24,13 +24,13 @@ export default function LinesTable({ lines, onChange, mult = 1 }: { lines: Line[
               </div>
             )}
           </div>
-          <div className="flex items-center gap-1.5">
-            {l.itemId ? <span className="text-sm tabular-nums w-24 text-right">{fmt(l.price)}</span>
-              : <Input type="number" inputMode="decimal" value={l.price || ''} onChange={e => upd(l.id, { price: Number(e.target.value) || 0 })} className="h-8 w-28 text-right" placeholder="Цена" />}
+          <div className="flex items-center gap-1 sm:gap-1.5 ml-auto">
+            {l.itemId ? <span className="text-sm tabular-nums w-[4.5rem] sm:w-24 text-right text-xs sm:text-sm">{fmt(l.price)}</span>
+              : <Input type="number" inputMode="decimal" value={l.price || ''} onChange={e => upd(l.id, { price: Number(e.target.value) || 0 })} className="h-8 w-20 sm:w-28 text-right" placeholder="Цена" />}
             <span className="text-xs text-muted-foreground">×</span>
-            <Input type="number" inputMode="decimal" min={0} step="any" value={l.qty} onChange={e => upd(l.id, { qty: Number(e.target.value) || 0 })} className="h-8 w-16 text-right" />
-            <span className="text-xs text-muted-foreground w-8">{l.unit}</span>
-            <span className="text-sm font-medium tabular-nums w-28 text-right">{fmt(l.price * l.qty * mult)}</span>
+            <Input type="number" inputMode="decimal" min={0} step="any" value={l.qty} onChange={e => upd(l.id, { qty: Number(e.target.value) || 0 })} className="h-8 w-12 sm:w-16 text-right px-1.5 sm:px-3" />
+            <span className="text-xs text-muted-foreground w-7 sm:w-8">{l.unit}</span>
+            <span className="text-sm font-medium tabular-nums w-[5.5rem] sm:w-28 text-right">{fmt(l.price * l.qty * mult)}</span>
             <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => onChange(lines.filter(x => x.id !== l.id))} aria-label="Удалить"><Trash2 size={14} /></Button>
           </div>
         </div>

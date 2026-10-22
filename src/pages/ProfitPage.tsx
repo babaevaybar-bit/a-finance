@@ -299,7 +299,7 @@ export default function ProfitPage() {
                 <CardContent className="px-2 pb-3">
                   <div className="w-full min-w-0 overflow-hidden h-56">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={monthlyTrend} margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
+                      <LineChart data={monthlyTrend} margin={{ top: 4, right: 24, left: 4, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                         <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={0} />
                         <YAxis tick={{ fontSize: 10 }} width={56}

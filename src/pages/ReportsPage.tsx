@@ -112,7 +112,7 @@ export default function ReportsPage() {
             <h1 className="text-xl font-semibold">Отчёты</h1>
             <p className="text-sm text-muted-foreground mt-0.5">Аналитика продаж и финансов</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <MonthYearPicker value={monthYear} onChange={setMonthYear} />
             {locked && (
               <span className="text-xs px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
