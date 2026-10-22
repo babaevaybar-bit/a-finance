@@ -35,15 +35,28 @@ function amountFromCardName(name: string): number | null {
   return null;
 }
 
-// Последний числовой сегмент номера договора: «26-00-57», «26.57», «57» → «57»
+// Номер договора → ключ: «26-57», «26/57», «26-00-57» → «26:57»; «57» → «:57».
+// Подномер сохраняется: «26/61/1» → «26:61:1» — это другой договор, чем «26/65/1» или «26/61».
+// (Раньше брался только последний сегмент, и «26/61/1» путался с «26-00-65/1».)
 function contractKey(s: string | null | undefined): string | null {
-  if (!s) return null;
-  const parts = s.split(/[^\d]+/).filter(Boolean);
-  if (parts.length === 0) return null;
-  return String(Number(parts[parts.length - 1]));
+  const groups = (s ?? '').match(/\d+/g);
+  if (!groups || groups.length === 0) return null;
+  const nums = groups.map(g => String(parseInt(g, 10)));
+  const parts = nums.filter((n, i) => !(n === '0' && i > 0 && i < nums.length - 1));
+  return parts.length === 1 ? `:${parts[0]}` : parts.join(':');
+}
+// Номер в сделке без года («57», «43/5») совпадает с номером карточки с годом
+// («26-00-57», «26-00-43/5»): у карточки ровно на одну часть больше спереди (год).
+// Только в эту сторону — иначе служебные карточки «1)…5)» совпадали бы с «…/5».
+function contractsMatch(cardKey: string | null, dealKey: string | null): boolean {
+  if (!cardKey || !dealKey) return false;
+  if (cardKey === dealKey) return true;
+  const card = cardKey.split(':').filter(Boolean);
+  const deal = dealKey.split(':').filter(Boolean);
+  return card.length === deal.length + 1 && card.slice(1).join(':') === deal.join(':');
 }
 
-// Код договора в начале названия карточки: «26-00-57 - Клиент - ...»
+// Код договора в начале названия карточки: «26-00-57 - Клиент - ...», «26-00-61/7 - ...»
 function cardContractKey(name: string): string | null {
   const m = name.match(/^\s*(\d[\d.\-/]*\d|\d)\b/);
   return m ? contractKey(m[1]) : null;
@@ -154,7 +167,7 @@ Deno.serve(async (req) => {
       const dContract = contractKey(deal.contract_number);
       let matched: typeof currentCards = [];
       if (dContract) {
-        matched = currentCards.filter(c => c.contract === dContract && (!dPhone || !c.phone || c.phone === dPhone));
+        matched = currentCards.filter(c => contractsMatch(c.contract, dContract) && (!dPhone || !c.phone || c.phone === dPhone));
       }
       if (matched.length === 0 && dPhone) {
         const byPhone = currentCards.filter(c => c.phone === dPhone);
