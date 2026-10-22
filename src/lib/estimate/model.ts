@@ -29,12 +29,15 @@ export interface DoorSpec {
   options: string[];
 }
 
+export interface LeafSize { h: number; w: number }
+
 export interface Opening {
   id: string;
   room: string;
   openType: string;          // Распашная, Купе, Пенал …
   qty: number;               // одинаковых проёмов
   leaves?: number;           // полотен в проёме: 1, для двустворчатой 2 или 4
+  leafSizes?: LeafSize[];    // свои размеры каждого полотна (если не заданы — общий размер двери)
   door?: DoorSpec;
   transom?: { idx: number; area: number }; // верхняя фрамуга-дверь, м²
   lines: Line[];
@@ -79,12 +82,24 @@ export const isDouble = (openType: string) => /двуствор/i.test(openType)
 /** Сколько полотен в одном проёме */
 export const leavesOf = (o: Pick<Opening, 'leaves' | 'openType'>) => o.leaves ?? (isDouble(o.openType) ? 2 : 1);
 
+/** Размеры каждого полотна проёма */
+export function leafSizes(o: Opening): LeafSize[] {
+  const d = o.door;
+  if (!d) return [];
+  const n = leavesOf(o);
+  if (n === 1) return [{ h: d.height, w: d.width }];
+  return Array.from({ length: n }, (_, i) => ({ h: o.leafSizes?.[i]?.h || d.height, w: o.leafSizes?.[i]?.w || d.width }));
+}
+/** Цена каждого полотна по его размеру */
+export function leafUnits(o: Opening) {
+  return leafSizes(o).map(sz => ({ ...sz, calc: doorUnit({ ...o.door!, height: sz.h, width: sz.w }) }));
+}
+
 export function openingTotal(o: Opening): number {
-  const d = doorUnit(o.door);
-  const door = d && d.ok && d.unit ? d.unit : 0;
+  const door = leafUnits(o).reduce((a, l) => a + (l.calc && l.calc.ok && l.calc.unit ? l.calc.unit : 0), 0);
   const tr = transomUnit(o)?.sum ?? 0;
   const lines = o.lines.reduce((s, l) => s + l.price * l.qty, 0);
-  return (door * leavesOf(o) + tr + lines) * (o.qty || 0);
+  return (door + tr + lines) * (o.qty || 0);
 }
 
 export function totals(e: EstimateData) {

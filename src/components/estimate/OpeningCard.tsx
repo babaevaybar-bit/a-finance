@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Copy, Trash2, Plus, AlertTriangle, ChevronDown, ChevronUp, LayoutGrid, Search, Check, Maximize2 } from 'lucide-react';
 import { SERIES, fmt, type Series } from '@/lib/estimate/doors';
-import { OPEN_TYPES, isDouble, leavesOf, doorUnit, transomUnit, openingTotal, seriesById, lineFromCatalog, type Opening, type Line, type DoorSpec } from '@/lib/estimate/model';
+import { OPEN_TYPES, isDouble, leavesOf, leafSizes, leafUnits, doorUnit, transomUnit, openingTotal, seriesById, lineFromCatalog, type Opening, type Line, type DoorSpec, type LeafSize } from '@/lib/estimate/model';
 import usePhotoCatalog from '@/lib/estimate/usePhotoCatalog';
 import { modelEntries, entryPhoto, seriesView, swatchUrl, type ModelEntry, type PhotoCatalog, type ColorDef } from '@/lib/estimate/photos';
 import CatalogPicker from './CatalogPicker';
@@ -77,15 +77,25 @@ function Swatch({ c, cat, on, onClick, size = 30 }: { c: ColorDef; cat: PhotoCat
   );
 }
 
-/** Рисунок двустворчатого проёма: полотна рядом, правая половина зеркально — ручки к центру */
-function OpeningDrawing({ leaves, url, hex }: { leaves: number; url?: string | null; hex?: string }) {
+/** Рисунок двустворчатого проёма в масштабе: полотна рядом, правая половина зеркально — ручки к центру */
+function OpeningDrawing({ sizes, url, hex, maxW, maxH }: { sizes: LeafSize[]; url?: string | null; hex?: string; maxW: number; maxH: number }) {
+  const n = sizes.length;
+  const topH = Math.max(...sizes.map(x => x.h || 1));
+  const sumW = sizes.reduce((a, x) => a + (x.w || 1), 0);
+  const k = Math.min(maxH / topH, maxW / sumW); // пикселей на мм
   return (
-    <div className="h-full flex items-stretch rounded-[3px] border-[5px] border-stone-400/80 bg-stone-100 shadow-md">
-      {Array.from({ length: leaves }, (_, i) => (
-        <div key={i} className={`h-full flex ${i > 0 ? 'border-l border-stone-400/70' : ''}`} style={i >= leaves / 2 ? { transform: 'scaleX(-1)' } : undefined}>
-          <DoorImage url={url} hex={hex} className="h-full max-w-full" />
-        </div>
-      ))}
+    <div className="flex flex-col items-center gap-1">
+      <div className="flex items-end rounded-[3px] border-[5px] border-stone-400/80 bg-stone-100 shadow-md" style={{ height: topH * k + 10 }}>
+        {sizes.map((x, i) => (
+          <div key={i} className={`flex ${i > 0 ? 'border-l border-stone-400/70' : ''}`}
+            style={{ width: (x.w || 1) * k, height: (x.h || 1) * k, transform: i >= n / 2 ? 'scaleX(-1)' : undefined }}>
+            <DoorImage url={url} hex={hex} className="w-full h-full !object-fill" />
+          </div>
+        ))}
+      </div>
+      <div className="flex text-[10px] text-muted-foreground tabular-nums" style={{ paddingLeft: 5, paddingRight: 5 }}>
+        {sizes.map((x, i) => <span key={i} className="text-center border-t border-muted-foreground/40 pt-0.5" style={{ width: (x.w || 1) * k }}>{x.w}</span>)}
+      </div>
     </div>
   );
 }
@@ -177,6 +187,13 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
   const tr = transomUnit(o);
   const total = openingTotal(o);
   const leaves = leavesOf(o);
+  const sizes = leafSizes(o);
+  const units = leafUnits(o);
+  const sameH = sizes.every(x => x.h === sizes[0]?.h);
+  const sameW = sizes.every(x => x.w === sizes[0]?.w);
+  const sameSize = sameH && sameW;
+  const setLeaf = (i: number, p: Partial<LeafSize>) => onChange({ ...o, leafSizes: sizes.map((x, j) => j === i ? { ...x, ...p } : x) });
+  const leafErr = units.map((u, i) => (u.calc && !u.calc.ok ? `Полотно ${i + 1}: ${u.calc.error}` : '')).filter(Boolean);
 
   /** Обновить дверь и пересчитать зависимое: модель для КП, фото, перламутр */
   function setDoor(p: Partial<DoorSpec>) {
@@ -246,19 +263,19 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
                 className="group relative w-full h-[260px] md:h-[340px] rounded-xl bg-gradient-to-b from-muted/30 to-muted/70 flex items-center justify-center p-3">
                 {leaves === 1
                   ? <DoorImage url={photo?.thumb} hex={color?.hex} className="h-full max-w-full drop-shadow-md" />
-                  : <OpeningDrawing leaves={leaves} url={photo?.thumb} hex={color?.hex} />}
+                  : <OpeningDrawing sizes={sizes} url={photo?.thumb} hex={color?.hex} maxW={leaves === 2 ? 240 : 380} maxH={leaves === 2 ? 290 : 270} />}
                 {photo && <Maximize2 size={16} className="absolute top-2 right-2 text-muted-foreground opacity-0 group-hover:opacity-100" />}
               </button>
-              {leaves > 1 && d.width > 0 && (
+              {leaves > 1 && (
                 <div className="w-full flex items-center gap-1 text-[11px] text-muted-foreground">
                   <span className="h-px flex-1 bg-muted-foreground/50" />
-                  <span>проём ≈ {leaves} × {d.width} = {leaves * d.width} мм (без короба)</span>
+                  <span>полотна вместе: {sizes.reduce((a, x) => a + x.w, 0)} мм (без короба)</span>
                   <span className="h-px flex-1 bg-muted-foreground/50" />
                 </div>
               )}
               <div className="text-center leading-tight">
                 <p className="text-sm font-medium">{entry?.name ?? '—'}{leaves > 1 ? ` × ${leaves}` : ''}</p>
-                <p className="text-xs text-muted-foreground">{d.color || 'цвет не выбран'}{leaves > 1 ? ` · ${d.height}×${d.width} каждое` : ''}</p>
+                <p className="text-xs text-muted-foreground">{d.color || 'цвет не выбран'}{leaves > 1 ? (sameSize ? ` · ${sizes[0].h}×${sizes[0].w} каждое` : ' · разные размеры') : ''}</p>
                 {photo && !photo.exact && <p className="text-[11px] text-amber-600">на сайте нет фото в этом цвете</p>}
                 {!view.site && <p className="text-[11px] text-muted-foreground">фото этой серии нет на сайте фабрики</p>}
               </div>
@@ -305,10 +322,29 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
               </div>
 
               {/* Размер */}
+              {leaves > 1 && <p className="text-xs text-muted-foreground -mb-2">Задать всем полотнам сразу:</p>}
               <div className="grid gap-3 sm:grid-cols-2">
-                <SizeField label="Высота" value={d.height} onChange={v => setDoor({ height: v })} quick={H_QUICK} min={hRange[0]} max={hRange[1]} />
-                <SizeField label="Ширина" value={d.width} onChange={v => setDoor({ width: v })} quick={W_QUICK} min={wRange[0]} max={wRange[1]} />
+                <SizeField label="Высота" value={sameH ? sizes[0]?.h ?? d.height : 0} onChange={v => onChange({ ...o, leafSizes: leaves > 1 ? sizes.map(x => ({ ...x, h: v })) : undefined, door: { ...d, height: v } })} quick={H_QUICK} min={hRange[0]} max={hRange[1]} />
+                <SizeField label="Ширина" value={sameW ? sizes[0]?.w ?? d.width : 0} onChange={v => onChange({ ...o, leafSizes: leaves > 1 ? sizes.map(x => ({ ...x, w: v })) : undefined, door: { ...d, width: v } })} quick={W_QUICK} min={wRange[0]} max={wRange[1]} />
               </div>
+              {leaves > 1 && (
+                <div className="rounded-lg border divide-y">
+                  <div className="px-3 py-1.5 text-xs text-muted-foreground flex items-center">
+                    <span className="flex-1">Размер каждого полотна (слева направо)</span>
+                    {!sameSize && <button type="button" className="text-primary hover:underline" onClick={() => onChange({ ...o, leafSizes: undefined, door: { ...d, height: sizes[0].h, width: sizes[0].w } })}>сделать одинаковыми</button>}
+                  </div>
+                  {units.map((u, i) => (
+                    <div key={i} className="px-3 py-1.5 flex flex-wrap items-center gap-2 text-sm">
+                      <span className="w-20 text-muted-foreground">Полотно {i + 1}</span>
+                      <Input type="number" inputMode="numeric" value={u.h || ''} onChange={e => setLeaf(i, { h: Number(e.target.value) || 0 })} className="h-8 w-20 text-right" aria-label={`Высота полотна ${i + 1}`} />
+                      <span className="text-muted-foreground">×</span>
+                      <Input type="number" inputMode="numeric" value={u.w || ''} onChange={e => setLeaf(i, { w: Number(e.target.value) || 0 })} className="h-8 w-20 text-right" aria-label={`Ширина полотна ${i + 1}`} />
+                      <span className="text-xs text-muted-foreground">мм</span>
+                      <span className={`ml-auto tabular-nums ${u.calc && !u.calc.ok ? 'text-destructive text-xs' : 'font-medium'}`}>{u.calc && u.calc.ok ? fmt(u.calc.unit ?? 0) : 'вне прайса'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Опции */}
               {s.options.length > 0 && (
@@ -325,14 +361,22 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
                 </div>
               )}
 
-              <div className={`rounded-lg px-3 py-2 text-sm flex flex-wrap items-center gap-x-4 gap-y-1 ${calc && !calc.ok ? 'bg-destructive/10 text-destructive' : 'bg-primary/5'}`}>
-                {calc && !calc.ok ? <span className="flex items-center gap-1.5"><AlertTriangle size={14} />{calc.error}</span> : calc && (
-                  <>
-                    <span>Полотно: <b className="tabular-nums text-base">{fmt(calc.unit ?? 0)}</b> за шт{leaves > 1 && <> × {leaves} = <b className="tabular-nums text-base">{fmt((calc.unit ?? 0) * leaves)}</b> за проём</>}</span>
-                    <span className="text-xs text-muted-foreground">{calc.breakdown}</span>
-                  </>
-                )}
-              </div>
+              {leaves === 1 ? (
+                <div className={`rounded-lg px-3 py-2 text-sm flex flex-wrap items-center gap-x-4 gap-y-1 ${calc && !calc.ok ? 'bg-destructive/10 text-destructive' : 'bg-primary/5'}`}>
+                  {calc && !calc.ok ? <span className="flex items-center gap-1.5"><AlertTriangle size={14} />{calc.error}</span> : calc && (
+                    <>
+                      <span>Полотно: <b className="tabular-nums text-base">{fmt(calc.unit ?? 0)}</b> за шт</span>
+                      <span className="text-xs text-muted-foreground">{calc.breakdown}</span>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className={`rounded-lg px-3 py-2 text-sm flex flex-wrap items-center gap-x-4 gap-y-1 ${leafErr.length ? 'bg-destructive/10 text-destructive' : 'bg-primary/5'}`}>
+                  {leafErr.length ? leafErr.map(e => <span key={e} className="flex items-center gap-1.5 w-full"><AlertTriangle size={14} />{e}</span>) : (
+                    <span>{leaves} полотна за проём: <b className="tabular-nums text-base">{fmt(units.reduce((a, u) => a + (u.calc && u.calc.ok ? u.calc.unit ?? 0 : 0), 0))}</b></span>
+                  )}
+                </div>
+              )}
 
               <label className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">Название в КП
                 <Input value={d.modelName ?? ''} onChange={e => onChange({ ...o, door: { ...d, modelName: e.target.value } })} className="h-7 w-52 text-xs" placeholder={entry?.name ?? s.models[d.modelIdx]?.model} />

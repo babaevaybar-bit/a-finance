@@ -1,4 +1,4 @@
-import { leavesOf, doorUnit, transomUnit, totals, type EstimateData } from '@/lib/estimate/model';
+import { leafUnits, doorUnit, transomUnit, totals, type EstimateData } from '@/lib/estimate/model';
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 const money = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} ₸`;
@@ -17,16 +17,29 @@ export function openKp(e: EstimateData, meta: KpMeta, photoFor?: (o: EstimateDat
   e.openings.forEach((o, i) => {
     const rows: string[][] = [];
     const d = doorUnit(o.door);
-    if (o.door && d && d.ok && d.unit) {
+    if (o.door && d && 'series' in d) {
       const isV = o.door.options.includes('v');
       const opts = d.series.options.filter(x => o.door!.options.includes(x.id) && x.id !== 'v').map(x => x.label);
       if (o.door.color) colors.add(o.door.color);
       covers.add(d.series.name + (o.door.perl && d.series.perl ? ' (Перламутр/Элегант)' : ''));
       const ph = photoFor?.(o) ?? o.door.photo;
-      const lv = leavesOf(o);
-      rows.push([isV ? 'В-Полотно' : 'Полотно',
-        `${ph ? `<span class="pics">${Array.from({ length: lv }, (_, k) => `<img class="door${k >= lv / 2 && lv > 1 ? ' flip' : ''}" src="${esc(ph)}" referrerpolicy="no-referrer">`).join('')}</span>` : ''}${lv > 1 ? `<b>${lv} полотна в проёме</b><br>` : ''}${esc(o.door.modelName || d.model.model)}${d.model.fill ? `<br><small>${esc(d.model.fill)}</small>` : ''}${opts.length ? `<br><small>${esc(opts.join(', '))}</small>` : ''}`,
-        `${o.door.height}×${o.door.width}${o.door.thickness ? `×${esc(o.door.thickness)}` : ''}`, esc(o.openType), 'шт', money(d.unit), String(o.qty * lv), money(d.unit * o.qty * lv)]);
+      const sizes = leafUnits(o);
+      const lv = sizes.length;
+      const topH = Math.max(...sizes.map(x => x.h || 1));
+      const pics = ph ? `<span class="pics">${sizes.map((x, k) => `<img class="door${k >= lv / 2 && lv > 1 ? ' flip' : ''}" src="${esc(ph)}" referrerpolicy="no-referrer" style="height:${Math.round(80 * x.h / topH)}px;width:${Math.round(80 * x.w / topH)}px">`).join('')}</span>` : '';
+      // одинаковые по размеру полотна — одной строкой
+      const groups = new Map<string, { h: number; w: number; unit: number; n: number }>();
+      for (const x of sizes) {
+        if (!x.calc || !x.calc.ok || !x.calc.unit) continue;
+        const key = `${x.h}×${x.w}`;
+        const g = groups.get(key) ?? { h: x.h, w: x.w, unit: x.calc.unit, n: 0 };
+        g.n++; groups.set(key, g);
+      }
+      [...groups.values()].forEach((g, gi) => {
+        rows.push([isV ? 'В-Полотно' : 'Полотно',
+          gi === 0 ? `${pics}${lv > 1 ? `<b>${lv} полотна в проёме</b><br>` : ''}${esc(o.door!.modelName || d.model.model)}${d.model.fill ? `<br><small>${esc(d.model.fill)}</small>` : ''}${opts.length ? `<br><small>${esc(opts.join(', '))}</small>` : ''}` : `<small>то же, другой размер</small>`,
+          `${g.h}×${g.w}${o.door!.thickness ? `×${esc(o.door!.thickness)}` : ''}`, esc(o.openType), 'шт', money(g.unit), String(o.qty * g.n), money(g.unit * o.qty * g.n)]);
+      });
     }
     const tr = transomUnit(o);
     if (tr && o.transom) rows.push(['Фрамуга-дверь', esc(tr.label), `${o.transom.area} м²`, '', 'м²', money(tr.perm2), String(Math.round(o.transom.area * o.qty * 100) / 100), money(tr.sum * o.qty)]);
@@ -56,7 +69,8 @@ export function openKp(e: EstimateData, meta: KpMeta, photoFor?: (o: EstimateDat
   td.num { text-align: center; font-weight: 700; }
   small { color: #6b7280; }
   .pics { float: left; display: flex; margin: 0 8px 0 0; border: 2px solid #a8a29e; }
-  img.door { height: 80px; display: block; }
+  img.door { height: 80px; display: block; object-fit: fill; }
+  .pics { align-items: flex-end; }
   img.door.flip { transform: scaleX(-1); }
   .sum { display: flex; justify-content: space-between; gap: 16px; margin-top: 6px; }
   .info td { border: none; padding: 2px 6px; }
