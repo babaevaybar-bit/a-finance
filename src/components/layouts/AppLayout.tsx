@@ -98,9 +98,6 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
       {path === '/boards' && (
         <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold shrink-0">бета</span>
       )}
-      {path === '/estimate' && (
-        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold shrink-0">скоро</span>
-      )}
       {path === '/approvals' && pendingCount > 0 && (
         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-semibold shrink-0">{pendingCount}</span>
       )}
