@@ -1,4 +1,4 @@
-import { leafUnits, doorUnit, transomUnit, totals, type EstimateData } from '@/lib/estimate/model';
+import { leafUnits, openingFrame, doorUnit, transomUnit, totals, type EstimateData } from '@/lib/estimate/model';
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 const money = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} ₸`;
@@ -10,7 +10,7 @@ export interface KpMeta {
 }
 
 /** Коммерческое предложение — как лист «КП» в таблице просчёта. Открывается в новом окне для печати / PDF. */
-export function openKp(e: EstimateData, meta: KpMeta, photoFor?: (o: EstimateData['openings'][number]) => string | undefined) {
+export function openKp(e: EstimateData, meta: KpMeta, photoFor?: (o: EstimateData['openings'][number]) => string | undefined, nameFor?: (o: EstimateData['openings'][number]) => string | undefined) {
   const t = totals(e);
   const colors = new Set<string>(); const covers = new Set<string>();
   const doorRows: string[] = [];
@@ -37,12 +37,17 @@ export function openKp(e: EstimateData, meta: KpMeta, photoFor?: (o: EstimateDat
       }
       [...groups.values()].forEach((g, gi) => {
         rows.push([isV ? 'В-Полотно' : 'Полотно',
-          gi === 0 ? `${pics}${lv > 1 ? `<b>${lv} полотна в проёме</b><br>` : ''}${esc(o.door!.modelName || d.model.model)}${d.model.fill ? `<br><small>${esc(d.model.fill)}</small>` : ''}${opts.length ? `<br><small>${esc(opts.join(', '))}</small>` : ''}` : `<small>то же, другой размер</small>`,
+          gi === 0 ? `${pics}${lv > 1 ? `<b>${lv} полотна в проёме</b><br>` : ''}${esc(o.door!.modelName || nameFor?.(o) || d.model.model)}${d.model.fill ? `<br><small>${esc(d.model.fill)}</small>` : ''}${opts.length ? `<br><small>${esc(opts.join(', '))}</small>` : ''}` : `<small>то же, другой размер</small>`,
           `${g.h}×${g.w}${o.door!.thickness ? `×${esc(o.door!.thickness)}` : ''}`, esc(o.openType), 'шт', money(g.unit), String(o.qty * g.n), money(g.unit * o.qty * g.n)]);
       });
     }
     const tr = transomUnit(o);
     if (tr && o.transom) rows.push(['Фрамуга-дверь', esc(tr.label), `${o.transom.area} м²`, '', 'м²', money(tr.perm2), String(Math.round(o.transom.area * o.qty * 100) / 100), money(tr.sum * o.qty)]);
+    for (const l of openingFrame(o)) {
+      if (!l.item || l.qty <= 0) continue;
+      const kind = l.label.startsWith('Наличник') ? 'Наличник' : l.label.startsWith('Добор') || l.label === 'Расширитель' ? 'Добор' : 'Короб';
+      rows.push([kind, esc(l.item.name), esc(l.item.spec ?? ''), '', esc(l.item.unit), money(l.item.price), String(Math.round(l.qty * o.qty * 100) / 100), money(l.item.price * l.qty * o.qty)]);
+    }
     for (const l of o.lines) rows.push([esc(l.kind), esc(l.name), esc(l.spec ?? ''), '', esc(l.unit), money(l.price), String(Math.round(l.qty * o.qty * 100) / 100), money(l.price * l.qty * o.qty)]);
     rows.forEach((r, j) => {
       doorRows.push(`<tr>${j === 0 ? `<td rowspan="${rows.length}" class="num">${i + 1}</td>` : ''}${r.map((c, k) => `<td class="${k >= 5 ? 'r' : ''}">${c}</td>`).join('')}${j === 0 ? `<td rowspan="${rows.length}">${esc(o.room)}</td>` : ''}</tr>`);

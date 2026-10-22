@@ -6,10 +6,36 @@ import { CATALOG, type CatalogItem } from '@/lib/estimate/accessories';
 import { fmt } from '@/lib/estimate/doors';
 
 /** Поиск позиции в прайсе комплектующих / фурнитуры */
-export default function CatalogPicker({ kp, onPick, onClose, hint }: {
-  kp: 'door' | 'hw'; onPick: (c: CatalogItem) => void; onClose: () => void; hint?: string;
+const CODES = ['PD.O', 'P.O', 'ND.O', 'N.O', 'PE.O', 'NE.O', 'PD', 'PM', 'PE'];
+const SERIES_CODE: Record<string, string> = {
+  PD: 'PD', PM: 'PM', PDO_IE: 'PD.O', PDO_UN: 'PD.O', PO_IE: 'P.O', PO_UN: 'P.O', NDO: 'ND.O', NO_T: 'N.O', NO_NT: 'N.O',
+  PE: 'PE', PEO_IE: 'PE.O', PEO_UN: 'PE.O', NEO_T: 'NE.O', NEO_NT: 'NE.O', PAINT: 'PE.O',
+};
+const UNILACK = new Set(['PDO_UN', 'PO_UN', 'NO_NT', 'PEO_UN', 'NEO_NT']);
+const hasCode = (name: string, code: string) => new RegExp(`(^|[\\s,(])${code.replace('.', '\\.')}(?![.\\w])`).test(name);
+const isPerl = (c: CatalogItem) => /Перламутр/.test(c.spec ?? '');
+const baseSpec = (c: CatalogItem) => (c.spec ?? '').replace(/,?\s*Перламутр(\/Элегант)?/, '');
+
+/** Подходит ли позиция к серии и цвету полотна */
+function fits(c: CatalogItem, seriesId: string, perl: boolean, all: CatalogItem[]) {
+  const code = SERIES_CODE[seriesId];
+  if (code && CODES.some(k => hasCode(c.name, k)) && !hasCode(c.name, code)) return false;
+  if (code && /Unilack|без Текстур|Ин\.Эм\.|Текстура/.test(c.name)) {
+    const un = /Unilack|без Текстур/.test(c.name), ie = /Ин\.Эм\.|Текстура/.test(c.name);
+    if (UNILACK.has(seriesId) ? !un : !ie) return false;
+  }
+  if (perl) return isPerl(c) || !all.some(z => z !== c && z.name === c.name && isPerl(z) && baseSpec(z) === baseSpec(c));
+  return !isPerl(c);
+}
+
+export default function CatalogPicker({ kp, onPick, onClose, hint, seriesId, perl }: {
+  kp: 'door' | 'hw'; onPick: (c: CatalogItem) => void; onClose: () => void; hint?: string; seriesId?: string; perl?: boolean;
 }) {
-  const pool = useMemo(() => CATALOG.filter(c => c.kp === kp), [kp]);
+  const [onlyFit, setOnlyFit] = useState(!!seriesId);
+  const pool = useMemo(() => {
+    const base = CATALOG.filter(c => c.kp === kp && !(kp === 'door' && ['Короб', 'Наличник', 'Добор', 'Скрытый короб', 'Моноблок'].includes(c.section) && seriesId));
+    return onlyFit && seriesId ? base.filter(c => fits(c, seriesId, !!perl, base)) : base;
+  }, [kp, onlyFit, seriesId, perl]);
   const sections = useMemo(() => [...new Set(pool.map(c => c.section))], [pool]);
   const [section, setSection] = useState<string>('');
   // Подсказка (серия полотна) подставляется, только если по ней что-то находится
@@ -27,7 +53,8 @@ export default function CatalogPicker({ kp, onPick, onClose, hint }: {
         </div>
         <Button type="button" variant="ghost" size="icon" className="h-9 w-9" onClick={onClose} aria-label="Закрыть"><X size={16} /></Button>
       </div>
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap gap-1 items-center">
+        {seriesId && <label className="flex items-center gap-1.5 text-xs mr-2 cursor-pointer"><input type="checkbox" checked={onlyFit} onChange={e => setOnlyFit(e.target.checked)} />только к этой серии{perl ? ' (перламутр)' : ''}</label>}
         <button type="button" onClick={() => setSection('')} className={`h-7 px-2.5 rounded-full text-xs border ${!section ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted/50'}`}>Все</button>
         {sections.map(s => (
           <button key={s} type="button" onClick={() => setSection(s === section ? '' : s)}

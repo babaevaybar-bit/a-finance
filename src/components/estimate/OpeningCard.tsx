@@ -4,49 +4,18 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Copy, Trash2, Plus, AlertTriangle, ChevronDown, ChevronUp, LayoutGrid, Search, Check, Maximize2 } from 'lucide-react';
 import { SERIES, fmt, type Series } from '@/lib/estimate/doors';
-import { OPEN_TYPES, isDouble, leavesOf, leafSizes, leafUnits, doorUnit, transomUnit, openingTotal, seriesById, lineFromCatalog, type Opening, type Line, type DoorSpec, type LeafSize } from '@/lib/estimate/model';
+import { OPEN_TYPES, isDouble, leavesOf, leafSizes, leafUnits, doorUnit, transomUnit, openingTotal, seriesById, type Opening, type DoorSpec, type LeafSize } from '@/lib/estimate/model';
 import usePhotoCatalog from '@/lib/estimate/usePhotoCatalog';
 import { modelEntries, entryPhoto, seriesView, swatchUrl, type ModelEntry, type PhotoCatalog, type ColorDef } from '@/lib/estimate/photos';
-import CatalogPicker from './CatalogPicker';
+import LinesTable from './LinesTable';
+import FrameSection from './FrameSection';
+import { fitFrame } from '@/lib/estimate/frame';
 
 const groups = [...new Set(SERIES.map(s => s.group))];
 const sel = 'h-9 w-full rounded-md border border-input bg-background px-2 text-sm';
 const pill = (on: boolean) => `h-8 px-3 rounded-full text-sm border transition-colors ${on ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted/60'}`;
 
-export function LinesTable({ lines, onChange, mult = 1 }: { lines: Line[]; onChange: (l: Line[]) => void; mult?: number }) {
-  if (!lines.length) return null;
-  const upd = (id: string, p: Partial<Line>) => onChange(lines.map(l => l.id === id ? { ...l, ...p } : l));
-  return (
-    <div className="divide-y rounded-lg border">
-      {lines.map(l => (
-        <div key={l.id} className="px-3 py-2 flex flex-wrap items-center gap-2">
-          <div className="flex-1 min-w-[200px]">
-            {l.itemId ? (
-              <>
-                <p className="text-sm"><span className="text-xs text-muted-foreground mr-1.5">{l.kind}</span>{l.name}</p>
-                {(l.spec || l.maker) && <p className="text-xs text-muted-foreground">{[l.spec, l.maker].filter(Boolean).join(' · ')}</p>}
-              </>
-            ) : (
-              <div className="flex gap-2">
-                <Input value={l.kind} onChange={e => upd(l.id, { kind: e.target.value })} className="h-8 w-28" placeholder="Тип" />
-                <Input value={l.name} onChange={e => upd(l.id, { name: e.target.value })} className="h-8" placeholder="Название" />
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5">
-            {l.itemId ? <span className="text-sm tabular-nums w-24 text-right">{fmt(l.price)}</span>
-              : <Input type="number" inputMode="decimal" value={l.price || ''} onChange={e => upd(l.id, { price: Number(e.target.value) || 0 })} className="h-8 w-28 text-right" placeholder="Цена" />}
-            <span className="text-xs text-muted-foreground">×</span>
-            <Input type="number" inputMode="decimal" min={0} step="any" value={l.qty} onChange={e => upd(l.id, { qty: Number(e.target.value) || 0 })} className="h-8 w-16 text-right" />
-            <span className="text-xs text-muted-foreground w-8">{l.unit}</span>
-            <span className="text-sm font-medium tabular-nums w-28 text-right">{fmt(l.price * l.qty * mult)}</span>
-            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => onChange(lines.filter(x => x.id !== l.id))} aria-label="Удалить"><Trash2 size={14} /></Button>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+export { LinesTable };
 
 // ── Картинка двери ──────────────────────────────────────────────────────────
 function DoorSilhouette({ hex = '#e5e7eb' }: { hex?: string }) {
@@ -183,7 +152,6 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
   o: Opening; n: number; onChange: (o: Opening) => void; onCopy: () => void; onRemove: () => void;
 }) {
   const cat = usePhotoCatalog();
-  const [picker, setPicker] = useState(false);
   const [gallery, setGallery] = useState(false);
   const [zoom, setZoom] = useState(false);
   const [open, setOpen] = useState(true);
@@ -217,7 +185,7 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
     if (c) { nd.color = c.name; nd.perl = !!c.perl && !!ns?.perl; }
     if (e) { nd.modelKey = e.key; if (!e.rows.includes(nd.modelIdx)) nd.modelIdx = e.rows[0]; if (e.photos) nd.modelName = e.name; }
     nd.photo = entryPhoto(e, c?.id)?.thumb;
-    onChange({ ...o, door: nd });
+    onChange({ ...o, door: nd, frame: o.frame && nd.seriesId !== d.seriesId ? fitFrame(o.frame, nd.seriesId) : o.frame });
   }
   function pickSeries(id: string) {
     if (id === d.seriesId) return;
@@ -262,6 +230,7 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
 
       {open && s && (
         <div className="p-4 space-y-5">
+          <h3 className="font-medium -mb-2">Полотно</h3>
           <div className={`grid gap-5 ${leaves === 1 ? 'md:grid-cols-[200px_1fr]' : leaves === 2 ? 'md:grid-cols-[280px_1fr]' : 'md:grid-cols-[420px_1fr]'}`}>
             {/* Фото / рисунок проёма */}
             <div className="flex flex-col items-center gap-2">
@@ -419,15 +388,9 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
             </div>
           )}
 
-          {/* Комплектующие */}
-          <div className="space-y-2 border-t pt-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-medium flex-1">Короб, наличники, доборы <span className="text-xs text-muted-foreground font-normal">— на один проём</span></p>
-              <Button type="button" variant="outline" size="sm" onClick={() => setPicker(x => !x)}><Plus size={14} className="mr-1" />Из прайса</Button>
-              <Button type="button" variant="ghost" size="sm" onClick={() => onChange({ ...o, lines: [...o.lines, { id: Math.random().toString(36).slice(2), kind: 'Другое', name: '', unit: 'шт', price: 0, qty: 1 }] })}>Своя позиция</Button>
-            </div>
-            {picker && <CatalogPicker kp="door" hint={s.name.split(' ')[0]} onClose={() => setPicker(false)} onPick={c => onChange({ ...o, lines: [...o.lines, lineFromCatalog(c)] })} />}
-            <LinesTable lines={o.lines} mult={o.qty} onChange={lines => onChange({ ...o, lines })} />
+          {/* Короб и наличники */}
+          <div className="border-t pt-4">
+            <FrameSection o={o} onChange={onChange} />
           </div>
         </div>
       )}

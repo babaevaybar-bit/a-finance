@@ -13,7 +13,7 @@ import OpeningCard, { LinesTable } from '@/components/estimate/OpeningCard';
 import CatalogPicker from '@/components/estimate/CatalogPicker';
 import { openKp } from '@/components/estimate/kpPrint';
 import usePhotoCatalog from '@/lib/estimate/usePhotoCatalog';
-import { doorPhoto } from '@/lib/estimate/photos';
+import { doorPhoto, doorModelName } from '@/lib/estimate/photos';
 import { seriesById } from '@/lib/estimate/model';
 
 interface EstimateRow {
@@ -64,6 +64,14 @@ function EstimateList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: 
       </div>
     </div>
   );
+}
+
+/** Новый проём с теми же дверью и коробом, что у последнего (без доп. позиций и своих размеров полотен) */
+function likeLast(list: Opening[]): Opening {
+  const n = newOpening(list.length + 1);
+  const last = list[list.length - 1];
+  if (!last?.door) return n;
+  return { ...n, openType: last.openType, leaves: last.leaves, door: { ...last.door }, frame: last.frame ? { ...last.frame, over: {} } : n.frame };
 }
 
 // ─── Редактор ────────────────────────────────────────────────────────────────
@@ -121,7 +129,7 @@ function EstimateEditor({ id, onBack, onSaved }: { id: string | null; onBack: ()
     const ok = openKp(data, {
       managerName: author || profile?.name || '', managerPhone: profile?.phone || '+7 701 073 2022',
       clientName: client.name, clientPhone: client.phone, clientAddress: client.address, date: data.date || today(),
-    }, o => doorPhoto(photoCat, seriesById(o.door?.seriesId), o.door));
+    }, o => doorPhoto(photoCat, seriesById(o.door?.seriesId), o.door), o => doorModelName(photoCat, seriesById(o.door?.seriesId), o.door));
     if (!ok) toast.error('Браузер заблокировал новое окно — разрешите всплывающие окна для сайта');
   }
 
@@ -160,7 +168,10 @@ function EstimateEditor({ id, onBack, onSaved }: { id: string | null; onBack: ()
             onCopy={() => { const c = JSON.parse(JSON.stringify(o)) as Opening; c.id = uid(); c.lines = c.lines.map(l => ({ ...l, id: uid() })); const arr = [...data.openings]; arr.splice(i + 1, 0, c); upd({ openings: arr }); }}
             onRemove={() => { if (o.door && !confirm('Удалить проём?')) return; upd({ openings: data.openings.filter(x => x.id !== o.id) }); }} />
         ))}
-        <Button variant="outline" onClick={() => upd({ openings: [...data.openings, newOpening(data.openings.length + 1)] })}><Plus size={15} className="mr-1.5" />Добавить проём</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => upd({ openings: [...data.openings, likeLast(data.openings)] })}><Plus size={15} className="mr-1.5" />Добавить проём</Button>
+          {data.openings.length > 0 && <span className="text-xs text-muted-foreground">новый проём берёт серию, модель, цвет и короб из предыдущего — останется поменять размер</span>}
+        </div>
       </div>
 
       <div className="space-y-3">

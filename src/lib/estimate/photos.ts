@@ -161,3 +161,11 @@ export function doorPhoto(cat: PhotoCatalog | null, s: Series | undefined, d: { 
   const e = list.find(x => x.key === d.modelKey) ?? list.find(x => x.rows.includes(d.modelIdx));
   return entryPhoto(e, d.colorId)?.thumb ?? d.photo;
 }
+
+/** Точное название модели (по каталогу сайта), если в прайсе строка-диапазон */
+export function doorModelName(cat: PhotoCatalog | null, s: Series | undefined, d: { modelKey?: string; modelIdx: number } | undefined): string | undefined {
+  if (!d || !s) return undefined;
+  const list = modelEntries(s, cat);
+  const e = list.find(x => x.key === d.modelKey) ?? list.find(x => x.rows.includes(d.modelIdx));
+  return e?.photos ? e.name : undefined;
+}

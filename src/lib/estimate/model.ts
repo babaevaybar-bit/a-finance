@@ -1,5 +1,6 @@
 import { SERIES, calcDoor, type Series } from './doors';
 import { CATALOG, type CatalogItem } from './accessories';
+import { frameLines, frameLineSum, defaultFrame, type FrameSpec, type FrameCtx } from './frame';
 
 /** Строка комплектующих / фурнитуры (цена фиксируется в момент выбора) */
 export interface Line {
@@ -39,6 +40,7 @@ export interface Opening {
   leaves?: number;           // полотен в проёме: 1, для двустворчатой 2 или 4
   leafSizes?: LeafSize[];    // свои размеры каждого полотна (если не заданы — общий размер двери)
   door?: DoorSpec;
+  frame?: FrameSpec;          // короб, наличники, доборы — подбираются автоматически
   transom?: { idx: number; area: number }; // верхняя фрамуга-дверь, м²
   lines: Line[];
 }
@@ -58,7 +60,7 @@ export const seriesById = (id: string | undefined): Series | undefined => SERIES
 export const catalogById = (id: string | undefined): CatalogItem | undefined => CATALOG.find(c => c.id === id);
 
 export function newOpening(n: number): Opening {
-  return { id: uid(), room: `Проём ${n}`, openType: 'Распашная', qty: 1, lines: [],
+  return { id: uid(), room: `Проём ${n}`, openType: 'Распашная', qty: 1, lines: [], frame: defaultFrame('PDO_IE'),
     door: { seriesId: 'PDO_IE', modelIdx: 0, perl: false, color: 'Вайт', colorId: 'white', height: 2000, width: 800, options: [] } };
 }
 
@@ -95,11 +97,23 @@ export function leafUnits(o: Opening) {
   return leafSizes(o).map(sz => ({ ...sz, calc: doorUnit({ ...o.door!, height: sz.h, width: sz.w }) }));
 }
 
+export function frameCtx(o: Opening): FrameCtx {
+  const sizes = leafSizes(o);
+  return {
+    seriesId: o.door?.seriesId ?? '', perl: !!o.door?.perl,
+    doorH: Math.max(0, ...sizes.map(x => x.h)), leavesW: sizes.reduce((a, x) => a + x.w, 0),
+    double: sizes.length > 1, reverse: /reverse/i.test(o.openType),
+  };
+}
+/** Короб, наличники, доборы проёма */
+export const openingFrame = (o: Opening) => frameLines(o.frame, frameCtx(o));
+
 export function openingTotal(o: Opening): number {
   const door = leafUnits(o).reduce((a, l) => a + (l.calc && l.calc.ok && l.calc.unit ? l.calc.unit : 0), 0);
   const tr = transomUnit(o)?.sum ?? 0;
   const lines = o.lines.reduce((s, l) => s + l.price * l.qty, 0);
-  return (door + tr + lines) * (o.qty || 0);
+  const frame = openingFrame(o).reduce((s, l) => s + frameLineSum(l), 0);
+  return (door + tr + frame + lines) * (o.qty || 0);
 }
 
 export function totals(e: EstimateData) {
