@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Copy, Trash2, Plus, AlertTriangle, ChevronDown, ChevronUp, LayoutGrid, Search, Check, Maximize2 } from 'lucide-react';
 import { SERIES, fmt, type Series } from '@/lib/estimate/doors';
-import { openTypesFor, EDGE_COLORS, hasEdge, isDouble, leavesOf, leafSizes, leafUnits, doorUnit, transomUnit, openingTotal, seriesById, type Opening, type DoorSpec, type LeafSize } from '@/lib/estimate/model';
+import { leafChoices, openingWarnings, openTypesFor, EDGE_COLORS, hasEdge, isDouble, leavesOf, leafSizes, leafUnits, doorUnit, transomUnit, openingTotal, seriesById, type Opening, type DoorSpec, type LeafSize } from '@/lib/estimate/model';
 import usePhotoCatalog from '@/lib/estimate/usePhotoCatalog';
 import { modelEntries, entryPhoto, seriesView, swatchUrl, type ModelEntry, type PhotoCatalog, type ColorDef } from '@/lib/estimate/photos';
 import LinesTable from './LinesTable';
@@ -206,7 +206,7 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
       <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b">
         <span className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold">{n}</span>
         <Input value={o.room} onChange={e => onChange({ ...o, room: e.target.value })} className="h-8 w-40 font-medium" placeholder="Помещение" />
-        <select className={`${sel} !w-44 h-8`} value={o.openType} onChange={e => onChange({ ...o, openType: e.target.value, leaves: isDouble(e.target.value) ? (isDouble(o.openType) ? leavesOf(o) : 2) : 1 })}>
+        <select className={`${sel} !w-44 h-8`} value={o.openType} onChange={e => onChange({ ...o, openType: e.target.value, leaves: leafChoices(e.target.value).includes(leavesOf(o)) ? leavesOf(o) : leafChoices(e.target.value)[0] })}>
           {openTypesFor(d?.seriesId, o.openType).map(t => <option key={t}>{t}</option>)}
         </select>
         <div className="flex items-center gap-1">
@@ -235,9 +235,9 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
           <div className={`grid gap-5 ${leaves === 1 ? 'md:grid-cols-[200px_1fr]' : leaves === 2 ? 'md:grid-cols-[280px_1fr]' : 'md:grid-cols-[420px_1fr]'}`}>
             {/* Фото / рисунок проёма */}
             <div className="flex flex-col items-center gap-2">
-              {leaves > 1 && (
+              {leafChoices(o.openType).length > 1 && (
                 <div className="flex gap-1.5 self-stretch justify-center">
-                  {[2, 4].map(n => <button key={n} type="button" onClick={() => onChange({ ...o, leaves: n })} className={pill(leaves === n)}>{n} полотна</button>)}
+                  {leafChoices(o.openType).map(n => <button key={n} type="button" onClick={() => onChange({ ...o, leaves: n })} className={pill(leaves === n)}>{n === 1 ? '1 полотно' : `${n} полотна`}</button>)}
                 </div>
               )}
               <button type="button" onClick={() => photo ? setZoom(true) : setGallery(true)}
@@ -340,19 +340,55 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
               )}
 
               {/* Опции */}
-              {s.options.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {s.options.map(op => {
-                    const on = d.options.includes(op.id);
-                    return (
-                      <button key={op.id} type="button" className={pill(on)}
-                        onClick={() => setDoor({ options: on ? d.options.filter(x => x !== op.id) : [...d.options, op.id] })}>
-                        {on ? '✓ ' : '+ '}{op.label} <span className={`text-xs ${on ? 'opacity-80' : 'text-muted-foreground'}`}>{op.pct ? `+${op.pct}%` : `+${fmt(op.add ?? 0)}`}</span>
-                      </button>
-                    );
-                  })}
+              {(() => {
+                const locks = s.options.filter(op => op.group === 'lock');
+                const extraIds = ['closer', 'noise', 'vent', 'hinge', 'cable', 'panelFabric', 'panelStone'];
+                const main = s.options.filter(op => !op.group && !extraIds.includes(op.id) && !(op.id === 'v' && leaves > 1 && isDouble(o.openType)));
+                const extras = s.options.filter(op => extraIds.includes(op.id));
+                const curLock = locks.find(op => d.options.includes(op.id))?.id ?? '';
+                const toggle = (id: string) => setDoor({ options: d.options.includes(id) ? d.options.filter(x => x !== id) : [...d.options, id] });
+                const chip = (op: typeof s.options[number]) => {
+                  const on = d.options.includes(op.id);
+                  return (
+                    <button key={op.id} type="button" className={pill(on)} onClick={() => toggle(op.id)}>
+                      {on ? '✓ ' : '+ '}{op.label} <span className={`text-xs ${on ? 'opacity-80' : 'text-muted-foreground'}`}>{op.pct ? `+${op.pct}%` : `+${fmt(op.add ?? 0)}`}</span>
+                    </button>
+                  );
+                };
+                const extrasOn = extras.filter(op => d.options.includes(op.id)).length;
+                return (
+                  <div className="space-y-2">
+                    {(main.length > 0 || leaves > 1) && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {main.map(chip)}
+                        {leaves > 1 && isDouble(o.openType) && <span className="text-xs text-muted-foreground">B-полотно (ответное) добавлено автоматически</span>}
+                      </div>
+                    )}
+                    {locks.length > 0 && (
+                      <label className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="text-xs text-muted-foreground">Замок</span>
+                        <select className={`${sel} !w-auto h-8`} value={curLock}
+                          onChange={e => setDoor({ options: [...d.options.filter(x => !x.startsWith('lk_')), ...(e.target.value ? [e.target.value] : [])] })}>
+                          <option value="">Стандартная врезка — замок отдельно</option>
+                          {locks.map(op => <option key={op.id} value={op.id}>{op.label} +{fmt(op.add ?? 0)}</option>)}
+                        </select>
+                      </label>
+                    )}
+                    {extras.length > 0 && (
+                      <details className="group" open={extrasOn > 0}>
+                        <summary className="text-xs text-muted-foreground cursor-pointer select-none hover:text-foreground">Ещё опции полотна{extrasOn ? ` (${extrasOn})` : ''}</summary>
+                        <div className="flex flex-wrap gap-1.5 mt-2">{extras.map(chip)}</div>
+                      </details>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {(() => { const ws = openingWarnings(o, entry?.name, color?.id); return ws.length > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 space-y-0.5">
+                  {ws.map(x => <p key={x} className="flex gap-1.5"><AlertTriangle size={13} className="shrink-0 mt-px" />{x}</p>)}
                 </div>
-              )}
+              ); })()}
 
               {leaves === 1 ? (
                 <div className={`rounded-lg px-3 py-2 text-sm flex flex-wrap items-center gap-x-4 gap-y-1 ${calc && !calc.ok ? 'bg-destructive/10 text-destructive' : 'bg-primary/5'}`}>

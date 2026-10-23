@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Plus, X, RotateCcw, AlertTriangle, Minus } from 'lucide-react';
 import { fmt } from '@/lib/estimate/doors';
 import { openingFrame, lineFromCatalog, type Opening } from '@/lib/estimate/model';
-import { frameTypes, nalStyles, defaultFrame, INVISIBLE_KINDS, MONO_NAL, frameLineSum, familyOf, type FrameSpec, type FrameLine } from '@/lib/estimate/frame';
+import { frameTypes, nalStyles, defaultFrame, INVISIBLE_KINDS, MONO_NAL, frameLineSum, boxDepth as boxDepthOf, type FrameSpec, type FrameLine } from '@/lib/estimate/frame';
 import CatalogPicker from './CatalogPicker';
 import LinesTable from './LinesTable';
 
@@ -40,7 +40,7 @@ export default function FrameSection({ o, onChange }: { o: Opening; onChange: (o
   const reverse = /reverse/i.test(o.openType);
   const showWall = fr.type === 'tele' || fr.type === 'copl' || fr.type === 'mono';
   const showNal = (fr.type === 'tele' || fr.type === 'copl') && styles.length > 0;
-  const boxDepth = familyOf(sid) === 'PD_PM' ? 85 : familyOf(sid) === 'EO' ? 76 : 80;
+  const boxDepth = boxDepthOf(sid);
   const step = (l: FrameLine, d: number) => setOver(l.role, Math.max(0, Math.round((l.qty + d) * 2) / 2));
 
   return (

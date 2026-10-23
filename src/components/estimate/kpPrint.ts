@@ -28,15 +28,15 @@ export function openKp(e: EstimateData, meta: KpMeta, photoFor?: (o: EstimateDat
       const topH = Math.max(...sizes.map(x => x.h || 1));
       const pics = ph ? `<span class="pics">${sizes.map((x, k) => `<img class="door${k >= lv / 2 && lv > 1 ? ' flip' : ''}" src="${esc(ph)}" referrerpolicy="no-referrer" style="height:${Math.round(80 * x.h / topH)}px;width:${Math.round(80 * x.w / topH)}px">`).join('')}</span>` : '';
       // одинаковые по размеру полотна — одной строкой
-      const groups = new Map<string, { h: number; w: number; unit: number; n: number }>();
+      const groups = new Map<string, { h: number; w: number; unit: number; n: number; isB: boolean }>();
       for (const x of sizes) {
         if (!x.calc || !x.calc.ok || !x.calc.unit) continue;
-        const key = `${x.h}×${x.w}`;
-        const g = groups.get(key) ?? { h: x.h, w: x.w, unit: x.calc.unit, n: 0 };
+        const key = `${x.h}×${x.w}${x.isB ? 'B' : ''}`;
+        const g = groups.get(key) ?? { h: x.h, w: x.w, unit: x.calc.unit, n: 0, isB: x.isB };
         g.n++; groups.set(key, g);
       }
       [...groups.values()].forEach((g, gi) => {
-        rows.push([isV ? 'В-Полотно' : 'Полотно',
+        rows.push([g.isB || (isV && lv === 1) ? 'В-Полотно' : 'Полотно',
           gi === 0 ? `${pics}${lv > 1 ? `<b>${lv} полотна в проёме</b><br>` : ''}${esc(o.door!.modelName || nameFor?.(o) || d.model.model)}${d.model.fill ? `<br><small>${esc(d.model.fill)}</small>` : ''}${o.door!.edgeColor ? `<br><small>Кромка: ${esc(o.door!.edgeColor)}</small>` : ''}${opts.length ? `<br><small>${esc(opts.join(', '))}</small>` : ''}` : `<small>то же, другой размер</small>`,
           `${g.h}×${g.w}${o.door!.thickness ? `×${esc(o.door!.thickness)}` : ''}`, esc(o.openType), 'шт', money(g.unit), String(o.qty * g.n), money(g.unit * o.qty * g.n)]);
       });
@@ -45,7 +45,7 @@ export function openKp(e: EstimateData, meta: KpMeta, photoFor?: (o: EstimateDat
     if (tr && o.transom) rows.push(['Фрамуга-дверь', esc(tr.label), `${o.transom.area} м²`, '', 'м²', money(tr.perm2), String(Math.round(o.transom.area * o.qty * 100) / 100), money(tr.sum * o.qty)]);
     for (const l of openingFrame(o)) {
       if (!l.item || l.qty <= 0) continue;
-      const kind = l.label.startsWith('Наличник') ? 'Наличник' : l.label.startsWith('Добор') || l.label === 'Расширитель' ? 'Добор' : 'Короб';
+      const kind = l.role.startsWith('sys') ? 'Система' : l.label.startsWith('Наличник') ? 'Наличник' : l.label.startsWith('Добор') || l.label === 'Расширитель' ? 'Добор' : 'Короб';
       rows.push([kind, esc(l.item.name), esc(l.item.spec ?? ''), '', esc(l.item.unit), money(l.item.price), String(Math.round(l.qty * o.qty * 100) / 100), money(l.item.price * l.qty * o.qty)]);
     }
     for (const l of o.lines) rows.push([esc(l.kind), esc(l.name), esc(l.spec ?? ''), '', esc(l.unit), money(l.price), String(Math.round(l.qty * o.qty * 100) / 100), money(l.price * l.qty * o.qty)]);

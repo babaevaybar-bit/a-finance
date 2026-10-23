@@ -16,7 +16,7 @@ export interface SizeGrid {
 }
 export type PerlRule = { kind: 'mul'; k: number } | { kind: 'add'; amount: number };
 
-export interface DoorOption { id: string; label: string; add?: number; pct?: number }
+export interface DoorOption { id: string; label: string; add?: number; pct?: number; group?: 'lock' }
 export interface ModelPrice { model: string; fill?: string; price: number }
 export interface Transom { label: string; base: number; perl?: number }
 
@@ -54,17 +54,18 @@ const G_O = grid(
 );
 const G_EO = grid(
   [['1800–2100', 1800, 2100, 1], ['2105–2400', 2101, 2400, 1.2], ['2405–3000', 2401, 3000, 1.4]],
-  [['600–800', 600, 800, 1], ['810–900', 801, 900, 1.1], ['910–1000', 901, 1000, 1.2]],
+  // по прайсу: ширина от 300 мм (отдельные модели), свыше 1000 до 1200 мм — только раздвижные (+30%)
+  [['300–800', 300, 800, 1], ['810–900', 801, 900, 1.1], ['910–1000', 901, 1000, 1.2], ['1010–1200 (раздвижные)', 1001, 1200, 1.3]],
 );
 const G_PE = grid(
   [['1800–2100', 1800, 2100, 1], ['2101–2400', 2101, 2400, 1.2], ['2401–3000', 2401, 3000, 1.3]],
-  [['600–800', 600, 800, 1], ['805–900', 801, 900, 1.1], ['905–1000', 901, 1000, 1.2]],
+  [['300–800', 300, 800, 1], ['805–900', 801, 900, 1.1], ['905–1000', 901, 1000, 1.2], ['1005–1200 (раздвижные)', 1001, 1200, 1.3]],
 );
 // Алюминиевые AP.O / AV.O / AX.O — коэффициенты в таблице не перемножаются
 const G_AL: SizeGrid = {
   heights: [{ label: '1800–2100', min: 1800, max: 2100 }, { label: '2105–2800', min: 2101, max: 2800 }],
-  widths: [{ label: '400–800', min: 400, max: 800 }, { label: '850–900', min: 801, max: 900 }, { label: '950–1000', min: 901, max: 1000 }],
-  k: [[1, 1.1, 1.2], [1.2, 1.3, 1.4]],
+  widths: [{ label: '400–800', min: 400, max: 800 }, { label: '850–900', min: 801, max: 900 }, { label: '950–1000', min: 901, max: 1000 }, { label: '1050–1200 (раздвижные)', min: 1001, max: 1200 }],
+  k: [[1, 1.1, 1.2, 1.3], [1.2, 1.3, 1.4, 1.5]],
 };
 
 const BASE = 'Вайт, Крем Вайт, Кремовая Магнолия, Сэнд, Лайт Грей, Смоки, Графит, Блэк';
@@ -87,6 +88,30 @@ const opt = {
   rev8489: { id: 'rev', label: 'Полотно REVERSE', add: 8489 } as DoorOption,
   revInf16957: { id: 'revinf', label: 'Полотно REVERSE INFINITY', add: 16957 } as DoorOption,
 };
+
+// Комплектации замка (прайс май 2026) — выбирается одна
+const LK = {
+  touch: { id: 'lk_touch', label: 'AGB TOUCH', add: 66482, group: 'lock' } as DoorOption,
+  touchWc: { id: 'lk_touchwc', label: 'AGB TOUCH WC', add: 92509, group: 'lock' } as DoorOption,
+  wave: { id: 'lk_wave', label: 'AGB WAVE (скрытая ручка)', add: 195888, group: 'lock' } as DoorOption,
+  waveWc: { id: 'lk_wavewc', label: 'AGB WAVE WC (скрытая ручка)', add: 231769, group: 'lock' } as DoorOption,
+  vitra: { id: 'lk_vitra', label: 'AGB VITRA', add: 60676, group: 'lock' } as DoorOption,
+  vitraWc: { id: 'lk_vitrawc', label: 'AGB VITRA WC', add: 60676, group: 'lock' } as DoorOption,
+};
+const LOCK36 = [LK.touch, LK.touchWc, LK.wave, LK.waveWc];
+const LOCK44 = [LK.touch, LK.touchWc, LK.vitra, LK.vitraWc, LK.wave, LK.waveWc];
+// Доп. опции каркасных полотен 44 мм
+const EXTRA44: DoorOption[] = [
+  { id: 'closer', label: 'Усиление под доводчик', add: 29088 },
+  { id: 'noise', label: 'Шумоизоляция', add: 99009 },
+  { id: 'vent', label: 'Вентрешётка', add: 33780 },
+  { id: 'hinge', label: 'Под доп. петлю', add: 7333 },
+  { id: 'cable', label: 'Под кабель-канал', add: 22014 },
+];
+const PANEL_PE: DoorOption[] = [
+  { id: 'panelFabric', label: 'Сторонняя тканевая панель', add: 100038 },
+  { id: 'panelStone', label: 'Сторонняя панель из керамогранита', add: 100038 },
+];
 
 // Наборы «Филенка / Стекло 1-3» — удобная запись строк прайса
 const f = (model: string, price: number): ModelPrice => ({ model, fill: 'Филенка', price });
@@ -175,12 +200,12 @@ const AV_LO = [341116, 446029, 446029, 518919];
 export const SERIES: Series[] = [
   // Царговые в однотонном покрытии
   { id: 'PD', name: 'PD', group: 'Царговые', colors: BASE, perlColors: PERL, perl: { kind: 'mul', k: 1.15 }, grid: G_PD,
-    options: [opt.v21], models: PD_MODELS, fillNote: GLASS, transoms: PD_TRANSOMS },
+    options: [opt.v21, ...LOCK36], models: PD_MODELS, fillNote: GLASS, transoms: PD_TRANSOMS },
   { id: 'PM', name: 'PM', group: 'Царговые', colors: BASE, perlColors: PERL, perl: { kind: 'mul', k: 1.15 }, grid: G_PD,
-    options: [opt.v21], models: PM_MODELS, fillNote: GLASS + '. Модели 3.5.1, 3.5.2, 3.6.1 — ширина 600–1000 мм', transoms: PD_TRANSOMS },
+    options: [opt.v21, ...LOCK36], models: PM_MODELS, fillNote: GLASS + '. Модели 3.5.1, 3.5.2, 3.6.1 — ширина 600–1000 мм', transoms: PD_TRANSOMS },
   { id: 'PDO_IE', name: 'PD.O Ин.Эм.', group: 'Царговые', colors: BASE, perlColors: PERL, perl: { kind: 'add', amount: 38956 }, grid: G_O,
-    options: [opt.v19], models: pdo('PD.O'), fillNote: GLASS, transoms: O_TRANSOMS_IE },
-  { id: 'PDO_UN', name: 'PD.O Unilack', group: 'Царговые', colors: UNILACK, grid: G_O, options: [opt.v19],
+    options: [opt.v19, ...LOCK36], models: pdo('PD.O'), fillNote: GLASS, transoms: O_TRANSOMS_IE },
+  { id: 'PDO_UN', name: 'PD.O Unilack', group: 'Царговые', colors: UNILACK, grid: G_O, options: [opt.v19, ...LOCK36],
     models: [
       f('9.1.1 PD.O – 9.3.1 PD.O', 102847), ...g('9.1.2 PD.O – 9.3.2 PD.O', 102847, 114291, 137173),
       f('10.1.1 PD.O – 10.3.1 PD.O', 102847), ...g('10.1.2 PD.O – 10.3.2 PD.O', 102847, 114291, 137173),
@@ -188,40 +213,40 @@ export const SERIES: Series[] = [
     ], fillNote: GLASS,
     transoms: [{ label: 'Филенка / Стекло 1', base: 82227 }, { label: 'Стекло 2', base: 92369 }, { label: 'Стекло 3', base: 112694 }] },
   { id: 'PO_IE', name: 'P.O Ин.Эм.', group: 'Царговые', colors: BASE, perlColors: ELEG, perl: { kind: 'add', amount: 38956 }, grid: G_O,
-    options: [opt.v19], models: po('P.O', { a: 134645, b: 148107, c: 154844, d: 154844, t: 269276 }),
+    options: [opt.v19, ...LOCK36], models: po('P.O', { a: 134645, b: 148107, c: 154844, d: 154844, t: 269276 }),
     transoms: [{ label: 'К моделям 1.1–1.12 P.O', base: 101614, perl: 142259.6 }, { label: 'К модели 1.13 P.O', base: 176711, perl: 247395.4 }] },
-  { id: 'PO_UN', name: 'P.O Unilack', group: 'Царговые', colors: UNILACK, grid: G_O, options: [opt.v19],
+  { id: 'PO_UN', name: 'P.O Unilack', group: 'Царговые', colors: UNILACK, grid: G_O, options: [opt.v19, ...LOCK36],
     models: po('P.O', { a: 125288, b: 138749, c: 145487, t: 259918 }),
     transoms: [{ label: 'К моделям 1.1–1.9 P.O', base: 95451 }, { label: 'К модели 1.13 P.O', base: 170575 }] },
   // Царговые в древесном покрытии
-  { id: 'NDO', name: 'ND.O Текстура', group: 'Царговые древесные', colors: TEXT, grid: G_O, options: [opt.v19], models: pdo('ND.O'), fillNote: GLASS,
+  { id: 'NDO', name: 'ND.O Текстура', group: 'Царговые древесные', colors: TEXT, grid: G_O, options: [opt.v19, ...LOCK36], models: pdo('ND.O'), fillNote: GLASS,
     transoms: [{ label: 'Филенка / Стекло 1', base: 101614 }, { label: 'Стекло 2', base: 111770 }, { label: 'Стекло 3', base: 132095 }] },
-  { id: 'NO_T', name: 'N.O Текстура', group: 'Царговые древесные', colors: TEXT, grid: G_O, options: [opt.v19],
+  { id: 'NO_T', name: 'N.O Текстура', group: 'Царговые древесные', colors: TEXT, grid: G_O, options: [opt.v19, ...LOCK36],
     models: po('N.O', { a: 134645, b: 148107, c: 154844, d: 154844, t: 269276 }),
     transoms: [{ label: 'К моделям 1.1–1.12 N.O', base: 101614 }, { label: 'К модели 1.13 N.O', base: 176711 }] },
-  { id: 'NO_NT', name: 'N.O без Текстур', group: 'Царговые древесные', colors: NOTEXT, grid: G_O, options: [opt.v19],
+  { id: 'NO_NT', name: 'N.O без Текстур', group: 'Царговые древесные', colors: NOTEXT, grid: G_O, options: [opt.v19, ...LOCK36],
     models: po('N.O', { a: 115944, b: 129406, c: 136130, t: 250589 }),
     transoms: [{ label: 'К моделям 1.1–1.9 N.O', base: 89343 }, { label: 'К модели 1.13 N.O', base: 164440 }] },
   // Каркасные
   { id: 'PAINT', name: 'Под покраску', group: 'Каркасные', colors: 'Под покраску (PW — алюминиевый каркас, PE — деревянный каркас с АБС кромкой)', grid: G_EO,
-    options: [opt.v21, opt.mirror127, opt.rev5, opt.revInf10],
+    options: [opt.v21, opt.mirror127, opt.rev5, opt.revInf10, ...LOCK44, ...EXTRA44],
     models: [{ model: '0 PE.O', price: 130057 }, { model: '0 PE.O Reverse', price: 136557 }] },
   { id: 'PE', name: 'PE', group: 'Каркасные', colors: `${BASE}. ${ALU}`, perlColors: ELEG, perl: { kind: 'mul', k: 1.15 }, grid: G_PE,
-    options: [opt.v25, opt.mirror156, opt.rev8489, opt.revInf16957],
+    options: [opt.v25, opt.mirror156, opt.rev8489, opt.revInf16957, ...LOCK44, ...EXTRA44, ...PANEL_PE],
     models: PE_PRICES.map(([n, price]) => ({ model: `${n} PE`, price })),
     transoms: [{ label: 'Верхняя фрамуга', base: 131430, perl: 151145 }] },
   { id: 'PEO_IE', name: 'PE.O Ин.Эм.', group: 'Каркасные', colors: `${BASE}. ${ALU}`, perlColors: ELEG, perl: { kind: 'add', amount: 38956 }, grid: G_EO,
-    options: [opt.v21, opt.mirror127, opt.rev5, opt.revInf10], models: eo('PE.O'),
+    options: [opt.v21, opt.mirror127, opt.rev5, opt.revInf10, ...LOCK44, ...EXTRA44], models: eo('PE.O'),
     transoms: [{ label: 'Верхняя фрамуга', base: 120483, perl: 159439 }] },
   { id: 'PEO_UN', name: 'PE.O Unilack', group: 'Каркасные', colors: `${UNILACK}. ${ALU}`, grid: G_EO,
-    options: [opt.v21, opt.mirror127, opt.rev5, opt.revInf10],
+    options: [opt.v21, opt.mirror127, opt.rev5, opt.revInf10, ...LOCK44, ...EXTRA44],
     models: [[1, 143666], [11, 177061], [12, 235208], [13, 190523], [14, 190523], [18, 190523], [19, 235208]].map(([n, price]) => ({ model: `${n} PE.O`, price })),
     transoms: [{ label: 'Верхняя фрамуга', base: 120483 }] },
   { id: 'NEO_T', name: 'NE.O Текстура', group: 'Каркасные древесные', colors: `${TEXT}. ${ALU}`, grid: G_EO,
-    options: [opt.v21, opt.mirror127, opt.rev5, opt.revInf10], models: eo('NE.O'),
+    options: [opt.v21, opt.mirror127, opt.rev5, opt.revInf10, ...LOCK44, ...EXTRA44], models: eo('NE.O'),
     transoms: [{ label: 'Верхняя фрамуга', base: 120483 }] },
   { id: 'NEO_NT', name: 'NE.O без Текстур', group: 'Каркасные древесные', colors: `${NOTEXT}. ${ALU}`, grid: G_EO,
-    options: [opt.v21, opt.mirror127, opt.rev5, opt.revInf10],
+    options: [opt.v21, opt.mirror127, opt.rev5, opt.revInf10, ...LOCK44, ...EXTRA44],
     models: [[1, 134309], [11, 158346], [12, 225865], [13, 181165], [14, 181165], [18, 181165], [19, 225865]].map(([n, price]) => ({ model: `${n} NE.O`, price })),
     transoms: [{ label: 'Верхняя фрамуга', base: 118886 }] },
   // Алюминиевые

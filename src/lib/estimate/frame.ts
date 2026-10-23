@@ -33,23 +33,30 @@ export interface FrameCtx {
   leavesW: number;            // ширина всех полотен вместе
   double: boolean;            // распашной (2 и более полотна)
   reverse: boolean;
+  openType?: string;
+  leafPrices?: number[];      // цена каждого полотна (для COMPACK: +70% второго полотна)
+  leafWidths?: number[];
 }
 
 // ── Семейства серий в прайсе комплектующих ──────────────────────────────────
-type Family = 'PD_PM' | 'IE' | 'UN' | 'EO' | 'ALU';
+type Family = 'PD_PM' | 'IE' | 'UN' | 'EO' | 'EO_UN' | 'ALU';
 const FAMILY: Record<string, Family> = {
   PD: 'PD_PM', PM: 'PD_PM',
   PDO_IE: 'IE', PO_IE: 'IE', NDO: 'IE', NO_T: 'IE',
   PDO_UN: 'UN', PO_UN: 'UN', NO_NT: 'UN',
-  PE: 'EO', PEO_IE: 'EO', PEO_UN: 'EO', NEO_T: 'EO', NEO_NT: 'EO', PAINT: 'EO',
+  // PE (без .O) по прайсу комплектуется погонажем PD/PM: короб 46×85, наличники 16×90, доборы 16 мм
+  PE: 'PD_PM', PEO_IE: 'EO', PEO_UN: 'EO_UN', NEO_T: 'EO', NEO_NT: 'EO_UN', PAINT: 'EO',
   APO: 'ALU', AVO: 'ALU', AXO: 'ALU',
 };
 const TAG: Record<Family, string> = {
-  PD_PM: 'PD, PM', IE: 'Ин.Эм. PD.O, P.O, Текстура ND.O, N.O', UN: 'Unilack PD.O, P.O, без Текстур N.O', EO: 'PE.O, NE.O', ALU: '§',
+  PD_PM: 'PD, PM, PE', IE: 'Ин.Эм. PD.O, P.O, Текстура ND.O, N.O', UN: 'Unilack PD.O, P.O, без Текстур N.O', EO: ' PE.O, NE.O', EO_UN: 'Unilack PE.O, без Текстур NE.O', ALU: '§',
 };
 export const familyOf = (seriesId: string) => FAMILY[seriesId] ?? 'IE';
-const BOX_DEPTH: Record<Family, number> = { PD_PM: 85, IE: 80, UN: 80, EO: 76, ALU: 0 };
-const BOX_TH: Record<Family, number> = { PD_PM: 46, IE: 36, UN: 36, EO: 36, ALU: 0 };
+const isEO = (f: Family) => f === 'EO' || f === 'EO_UN';
+export const boxDepth = (seriesId: string) => BOX_DEPTH[familyOf(seriesId)];
+// Телескопический короб 46×85 по прайсу закрывает стену от 79 до 102 мм; у остальных — по глубине короба
+const BOX_DEPTH: Record<Family, number> = { PD_PM: 102, IE: 80, UN: 80, EO: 76, EO_UN: 76, ALU: 0 };
+const BOX_TH: Record<Family, number> = { PD_PM: 46, IE: 36, UN: 36, EO: 36, EO_UN: 36, ALU: 0 };
 
 const isPerl = (c: CatalogItem) => /Перламутр/.test(c.spec ?? '');
 /** Выбрать вариант позиции: перламутр, если есть такой, иначе обычный */
@@ -62,10 +69,10 @@ const famItems = (f: Family, section: CatalogItem['section']) => CATALOG.filter(
 export function frameTypes(seriesId: string): { id: FrameType; label: string; hint: string }[] {
   const f = familyOf(seriesId);
   const out: { id: FrameType; label: string; hint: string }[] = [];
-  if (f === 'EO') out.push({ id: 'copl', label: 'Компланарный', hint: 'короб 36×76, дверь в одной плоскости со стеной' });
-  else if (f !== 'ALU') out.push({ id: 'tele', label: 'Телескопический', hint: f === 'PD_PM' ? 'короб 46×85' : 'короб 36×80' });
+  if (isEO(f)) out.push({ id: 'copl', label: 'Компланарный', hint: 'короб 36×76, дверь в одной плоскости со стеной' });
+  else if (f !== 'ALU') out.push({ id: 'tele', label: 'Телескопический', hint: f === 'PD_PM' ? 'короб 46×85, стена 79–102 мм' : 'короб 36×80' });
   // По сайту фабрики: скрытый короб Invisible — только у каркасных PE.O / NE.O; Моноблок EXPORT — у всех
-  if (f === 'EO') out.push({ id: 'invisible', label: 'Скрытый Invisible', hint: 'без наличников, под покраску стены' });
+  if (isEO(f)) out.push({ id: 'invisible', label: 'Скрытый Invisible', hint: 'без наличников, под покраску стены' });
   if (f !== 'ALU') out.push({ id: 'mono', label: 'Моноблок EXPORT', hint: 'короб с наличниками в сборе' });
   out.push({ id: 'none', label: 'Без короба', hint: 'добавить позиции вручную' });
   return out;
@@ -79,7 +86,7 @@ export function nalStyles(seriesId: string): NalStyle[] {
     { id: 'pd80', label: 'Тип 5 · 80 мм', width: 80, face: 'Наличник Тип 5' },
     { id: 'pd120', label: 'Прямой широкий · 120 мм', width: 120, face: 'Наличник Прямой PD' },
   ];
-  if (f === 'EO') return [
+  if (isEO(f)) return [
     { id: 'eoS', label: 'Прямой · 80 мм', width: 80, face: 'компланарный (лицевой) Прямой', back: 'телескопический (тыльный) Прямой' },
     { id: 'eoK', label: 'Каннелюр · 80 мм', width: 80, face: 'компланарный (лицевой) Каннелюр', back: 'телескопический (тыльный) Каннелюр' },
   ];
@@ -211,3 +218,45 @@ export function frameLines(fr: FrameSpec | undefined, x: FrameCtx): FrameLine[] 
 }
 
 export const frameLineSum = (l: FrameLine) => (l.item?.price ?? 0) * l.qty;
+
+// ── Системы открывания (прайс май 2026) ────────────────────────────────────
+const sys = (name: string, spec: string, price: number): CatalogItem => ({ id: `sys:${name}:${spec}`, section: 'Прочее', name, spec, unit: 'компл', price, kp: 'door' });
+
+/** Комплект системы открывания для выбранного вида открывания */
+export function systemLines(fr: FrameSpec | undefined, x: FrameCtx): FrameLine[] {
+  const t = (x.openType ?? '').toLowerCase();
+  const n = x.leafPrices?.length ?? 1;
+  const out: FrameLine[] = [];
+  const put = (l: Omit<FrameLine, 'qty'>) => out.push({ ...l, qty: fr?.over?.[l.role] ?? l.autoQty });
+  const maxW = Math.max(0, ...(x.leafWidths ?? [0]));
+  if (t === 'купе') {
+    put(n > 1
+      ? { role: 'sys', label: 'Раздвижная система', item: sys('Комплект раздвижной Тип 2/5', 'трек 4000 мм на стену, два активных полотна', 341641), autoQty: 1 }
+      : { role: 'sys', label: 'Раздвижная система', item: sys('Комплект раздвижной Тип 2', 'трек 2000 мм на стену, одно активное полотно', 227763), autoQty: 1 });
+  } else if (t === 'купе invisible') {
+    put(n > 1
+      ? { role: 'sys', label: 'Раздвижная система', item: sys('Комплект раздвижной Тип 3/2', 'трек 2000 мм, два активных полотна', 417557), autoQty: 1, hint: 'уточните длину трека и крепление' }
+      : { role: 'sys', label: 'Раздвижная система', item: sys('Комплект раздвижной Тип 3/1', 'трек 2000 мм, одно активное полотно', 227763), autoQty: 1, hint: 'уточните длину трека и крепление' });
+  } else if (t.startsWith('пенал')) {
+    const h = x.doorH;
+    const [price, spec] = h <= 2300 ? [385521, 'полотно 2000–2300'] : h <= 2600 ? [477701, 'полотно 2400–2600'] : [569908, 'полотно 2700–3000'];
+    const wide = maxW > 900;
+    put({ role: 'sys', label: 'Система «Пенал K-PUSH»', item: sys('Система «Пенал K-PUSH»', spec + (wide ? ', ширина 1000 (+10%)' : ''), price * (wide ? 1.1 : 1)), autoQty: n > 1 ? n : 1 });
+    const [fp, fs] = h <= 2300 ? [234669, 'полотно 2000–2300'] : [251423, 'полотно 2400–3000'];
+    const k = (wide ? 1.1 : 1) * (n > 1 ? 1.4 : 1);
+    put({ role: 'sys-frame', label: 'Обрамление пенала', item: sys('Обрамление для системы «Пенал K-PUSH»', fs + (n > 1 ? ', двустворчатое (+40%)' : '') + (wide ? ', ширина 1000 (+10%)' : ''), Math.round(fp * k)), autoQty: 1 });
+  } else if (t === 'книжка') {
+    put({ role: 'sys', label: 'Складная система', item: sys('Комплект складной «Книжка Тип 2»', 'короб и наличники — отдельно', 66440), autoQty: 1 });
+  } else if (t === 'compack') {
+    const second = x.leafPrices?.[1] ?? x.leafPrices?.[0] ?? 0;
+    // по прайсу: система + первое полотно + 70% второго; оба полотна уже в цене проёма — вычитаем 30% второго
+    put({ role: 'sys', label: 'Складная система', item: sys('Комплект складной «COMPACK»', `система 467 888 ₸, второе полотно по прайсу считается 70% (−${Math.round(second * 0.3).toLocaleString('ru-RU')} ₸)`, 467888 - Math.round(second * 0.3)), autoQty: 1 });
+  } else if (t === 'magic') {
+    put({ role: 'sys', label: 'Раздвижная система', item: sys('Система MAGIC', 'комплект', 465934), autoQty: 1 });
+  } else if (t.startsWith('рото')) {
+    put({ role: 'sys', label: 'Поворотная система', item: sys('Дверной блок «РОТО»', 'комплект', 509303), autoQty: 1 });
+  } else if (t === 'pivot') {
+    put({ role: 'sys', label: 'Поворотная система', item: sys('Дверной блок «PIVOT»', 'комплект', 598639), autoQty: 1 });
+  }
+  return out;
+}
