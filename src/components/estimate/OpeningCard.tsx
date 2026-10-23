@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Copy, Trash2, Plus, AlertTriangle, ChevronDown, ChevronUp, LayoutGrid, Search, Check, Maximize2 } from 'lucide-react';
 import { SERIES, fmt, type Series } from '@/lib/estimate/doors';
-import { OPEN_TYPES, isDouble, leavesOf, leafSizes, leafUnits, doorUnit, transomUnit, openingTotal, seriesById, type Opening, type DoorSpec, type LeafSize } from '@/lib/estimate/model';
+import { openTypesFor, EDGE_COLORS, hasEdge, isDouble, leavesOf, leafSizes, leafUnits, doorUnit, transomUnit, openingTotal, seriesById, type Opening, type DoorSpec, type LeafSize } from '@/lib/estimate/model';
 import usePhotoCatalog from '@/lib/estimate/usePhotoCatalog';
 import { modelEntries, entryPhoto, seriesView, swatchUrl, type ModelEntry, type PhotoCatalog, type ColorDef } from '@/lib/estimate/photos';
 import LinesTable from './LinesTable';
@@ -193,6 +193,7 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
     const nv = seriesView(id);
     const keepColor = nv.colors.find(c => c.id === d.colorId) ?? nv.colors[0];
     const first = modelEntries(ns, cat)[0];
+    if (!openTypesFor(id).includes(o.openType)) o = { ...o, openType: 'Распашная', leaves: 1 };
     setDoor({ seriesId: id, modelKey: first?.key, modelIdx: first?.rows[0] ?? 0, modelName: '', options: [], colorId: keepColor?.id, color: keepColor?.name ?? '' });
   }
   const pickColor = (c: ColorDef) => setDoor({ colorId: c.id });
@@ -206,7 +207,7 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
         <span className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold">{n}</span>
         <Input value={o.room} onChange={e => onChange({ ...o, room: e.target.value })} className="h-8 w-40 font-medium" placeholder="Помещение" />
         <select className={`${sel} !w-44 h-8`} value={o.openType} onChange={e => onChange({ ...o, openType: e.target.value, leaves: isDouble(e.target.value) ? (isDouble(o.openType) ? leavesOf(o) : 2) : 1 })}>
-          {OPEN_TYPES.map(t => <option key={t}>{t}</option>)}
+          {openTypesFor(d?.seriesId, o.openType).map(t => <option key={t}>{t}</option>)}
         </select>
         <div className="flex items-center gap-1">
           <span className="text-muted-foreground text-xs">шт</span>
@@ -304,6 +305,15 @@ export default function OpeningCard({ o, n, onChange, onCopy, onRemove }: {
 
               </div>
               <div className="space-y-4 min-w-0">
+              {hasEdge(s.id) && (
+                <div className="space-y-1.5">
+                  <span className="text-xs text-muted-foreground">Цвет кромки (алюминиевый профиль){d.edgeColor ? <>: <b className="text-foreground font-medium">{d.edgeColor}</b></> : <span className="text-amber-600"> — не выбран</span>}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {EDGE_COLORS.map(c => <button key={c} type="button" onClick={() => setDoor({ edgeColor: c })} className={pill(d.edgeColor === c)}>{c}</button>)}
+                  </div>
+                </div>
+              )}
+
               {/* Размер */}
               {leaves > 1 && <p className="text-xs text-muted-foreground -mb-2">Задать всем полотнам сразу:</p>}
               <div className="grid gap-3 sm:grid-cols-2">

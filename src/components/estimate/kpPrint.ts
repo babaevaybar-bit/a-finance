@@ -37,7 +37,7 @@ export function openKp(e: EstimateData, meta: KpMeta, photoFor?: (o: EstimateDat
       }
       [...groups.values()].forEach((g, gi) => {
         rows.push([isV ? 'В-Полотно' : 'Полотно',
-          gi === 0 ? `${pics}${lv > 1 ? `<b>${lv} полотна в проёме</b><br>` : ''}${esc(o.door!.modelName || nameFor?.(o) || d.model.model)}${d.model.fill ? `<br><small>${esc(d.model.fill)}</small>` : ''}${opts.length ? `<br><small>${esc(opts.join(', '))}</small>` : ''}` : `<small>то же, другой размер</small>`,
+          gi === 0 ? `${pics}${lv > 1 ? `<b>${lv} полотна в проёме</b><br>` : ''}${esc(o.door!.modelName || nameFor?.(o) || d.model.model)}${d.model.fill ? `<br><small>${esc(d.model.fill)}</small>` : ''}${o.door!.edgeColor ? `<br><small>Кромка: ${esc(o.door!.edgeColor)}</small>` : ''}${opts.length ? `<br><small>${esc(opts.join(', '))}</small>` : ''}` : `<small>то же, другой размер</small>`,
           `${g.h}×${g.w}${o.door!.thickness ? `×${esc(o.door!.thickness)}` : ''}`, esc(o.openType), 'шт', money(g.unit), String(o.qty * g.n), money(g.unit * o.qty * g.n)]);
       });
     }

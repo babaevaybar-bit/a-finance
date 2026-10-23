@@ -24,6 +24,7 @@ export interface DoorSpec {
   color: string;             // название цвета для КП
   colorId?: string;          // код цвета (white, graphite …)
   photo?: string;            // ссылка на фото для КП
+  edgeColor?: string;        // цвет алюминиевой кромки (PE.O / NE.O)
   height: number;
   width: number;
   thickness?: string;
@@ -53,7 +54,24 @@ export interface EstimateData {
   date?: string;
 }
 
-export const OPEN_TYPES = ['Распашная', 'Распашная двустворчатая', 'Купе', 'Пенал K-PUSH', 'Книжка', 'Compack', 'Magic', 'Поворотная', 'Pivot', 'Скрытая (Invisible)', 'Reverse'];
+export const OPEN_TYPES = ['Распашная', 'Распашная двустворчатая', 'Reverse', 'Купе', 'Купе Invisible', 'Пенал K-PUSH', 'Книжка', 'Рото (поворотная)', 'Compack', 'Magic', 'Pivot'];
+/** Системы открывания, которые фабрика указывает для серии (profildoors.ru, вкладка «Системы открывания») */
+const OPEN_BY_SERIES: Record<string, string[]> = {
+  PD: ['Распашная', 'Распашная двустворчатая', 'Купе', 'Пенал K-PUSH', 'Книжка', 'Рото (поворотная)'],
+  EO: ['Распашная', 'Распашная двустворчатая', 'Reverse', 'Купе', 'Купе Invisible', 'Пенал K-PUSH'],
+  O: ['Распашная', 'Распашная двустворчатая'],
+};
+const OPEN_GROUP: Record<string, string> = {
+  PD: 'PD', PM: 'PD', PE: 'EO', PEO_IE: 'EO', PEO_UN: 'EO', NEO_T: 'EO', NEO_NT: 'EO', PAINT: 'EO',
+  PDO_IE: 'O', PDO_UN: 'O', PO_IE: 'O', PO_UN: 'O', NDO: 'O', NO_T: 'O', NO_NT: 'O',
+};
+export function openTypesFor(seriesId: string | undefined, current?: string): string[] {
+  const list = OPEN_BY_SERIES[OPEN_GROUP[seriesId ?? ''] ?? ''] ?? OPEN_TYPES;
+  return current && !list.includes(current) ? [...list, current] : list;
+}
+/** Цвет алюминиевой кромки (профиля) у каркасных PE.O / NE.O — по сайту фабрики */
+export const EDGE_COLORS = ['Вайт', 'Серебро', 'Черный', 'Никель', 'Шампань'];
+export const hasEdge = (seriesId: string | undefined) => ['PEO_IE', 'PEO_UN', 'NEO_T', 'NEO_NT', 'PE', 'PAINT'].includes(seriesId ?? '');
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
 export const seriesById = (id: string | undefined): Series | undefined => SERIES.find(s => s.id === id);

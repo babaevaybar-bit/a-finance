@@ -64,10 +64,9 @@ export function frameTypes(seriesId: string): { id: FrameType; label: string; hi
   const out: { id: FrameType; label: string; hint: string }[] = [];
   if (f === 'EO') out.push({ id: 'copl', label: 'Компланарный', hint: 'короб 36×76, дверь в одной плоскости со стеной' });
   else if (f !== 'ALU') out.push({ id: 'tele', label: 'Телескопический', hint: f === 'PD_PM' ? 'короб 46×85' : 'короб 36×80' });
-  if (f !== 'ALU') {
-    out.push({ id: 'invisible', label: 'Скрытый Invisible', hint: 'без наличников, под покраску стены' });
-    out.push({ id: 'mono', label: 'Моноблок', hint: 'короб с наличниками в сборе' });
-  }
+  // По сайту фабрики: скрытый короб Invisible — только у каркасных PE.O / NE.O; Моноблок EXPORT — у всех
+  if (f === 'EO') out.push({ id: 'invisible', label: 'Скрытый Invisible', hint: 'без наличников, под покраску стены' });
+  if (f !== 'ALU') out.push({ id: 'mono', label: 'Моноблок EXPORT', hint: 'короб с наличниками в сборе' });
   out.push({ id: 'none', label: 'Без короба', hint: 'добавить позиции вручную' });
   return out;
 }
@@ -131,7 +130,8 @@ export function frameLines(fr: FrameSpec | undefined, x: FrameCtx): FrameLine[] 
     const boxes = famItems(f, 'Короб').filter(c => c.spec?.includes(pairWord) && (c.name.includes('компланарный') === (fr.type === 'copl')));
     const len = tall && boxes.some(c => c.spec?.includes('2750')) ? '2750' : '2440';
     const box = pickPerl(boxes.filter(c => c.spec?.includes(len)), x.perl);
-    put({ role: 'box', label: x.double ? 'Короб распашной' : 'Короб', item: box, autoQty: 1,
+    put({ role: 'box', label: (x.double ? 'Короб распашной' : 'Короб') + (fr.type === 'copl' && x.reverse ? ' Reverse' : ''), item: box, autoQty: 1,
+      hint: fr.type === 'copl' && x.reverse ? 'для Reverse — компланарный короб Reverse, цена по прайсу как у обычного, уточните' : undefined,
       warn: tall && len === '2440' ? 'полотно выше 2350 мм — короб 2440 может не подойти, уточните' : undefined });
 
     // Наличники
@@ -199,7 +199,7 @@ export function frameLines(fr: FrameSpec | undefined, x: FrameCtx): FrameLine[] 
     const base = [...rows].reverse().find(r => r <= wall) ?? 95;
     const pick = (t: string, wallTxt: string) => pickPerl(CATALOG.filter(c => c.section === 'Моноблок' && c.name === t && c.spec?.startsWith(`стена ${wallTxt}, полотно ${hb}, ${pair}`)), x.perl);
     const item = pick(title, `${base} мм`);
-    put({ role: 'box', label: 'Моноблок', item, autoQty: 1, hint: `под стену ${base} мм`,
+    put({ role: 'box', label: reverse ? 'Моноблок EXPORT Reverse' : 'Моноблок EXPORT', item, autoQty: 1, hint: `под стену ${base} мм`,
       warn: !item ? 'нет в прайсе для такой высоты' : x.doorH > 2600 ? 'полотно выше 2600 мм — моноблока нет в прайсе' : undefined });
     const rest = wall - base;
     if (rest > 10) {
