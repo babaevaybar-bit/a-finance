@@ -148,10 +148,10 @@ export function frameLines(fr: FrameSpec | undefined, x: FrameCtx): FrameLine[] 
       const face = byLen(nalList(st.face));
       const per = piecesPerSide(topLen, barLength(face));
       if (st.back) {
-        put({ role: 'nal-face', label: 'Наличник лицевой', item: face, autoQty: per, hint: `${per} шт на сторону` });
-        if (sides === 2) put({ role: 'nal-back', label: 'Наличник тыльный', item: byLen(nalList(st.back)), autoQty: per, hint: `${per} шт на сторону` });
+        put({ role: 'nal-face', label: `Наличник ${st.label.split(' · ')[0]}, лицевой`, item: face, autoQty: per, hint: `${per} шт на сторону` });
+        if (sides === 2) put({ role: 'nal-back', label: `Наличник ${st.label.split(' · ')[0]}, тыльный`, item: byLen(nalList(st.back)), autoQty: per, hint: `${per} шт на сторону` });
       } else {
-        put({ role: 'nal-face', label: sides === 2 ? 'Наличник, с двух сторон' : 'Наличник, с одной стороны', item: face, autoQty: per * sides, hint: `${per} шт на сторону` });
+        put({ role: 'nal-face', label: `Наличник ${st.label.split(' · ')[0]}`, item: face, autoQty: per * sides, hint: `${per} шт на сторону × ${sides}` });
       }
     }
 
