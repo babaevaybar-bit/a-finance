@@ -49,7 +49,7 @@ export default function CatalogPicker({ kp, onPick, onClose, hint, seriesId, per
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input autoFocus type="search" autoComplete="off" value={q} onChange={e => setQ(e.target.value)} placeholder="Поиск: «наличник 2440», «Invisible», «GOCCIA»…" className="pl-8 h-9" />
+          <Input autoFocus={typeof window !== 'undefined' && !window.matchMedia('(pointer: coarse)').matches} type="search" autoComplete="off" value={q} onChange={e => setQ(e.target.value)} placeholder="Поиск: «наличник 2440», «Invisible», «GOCCIA»…" className="pl-8 h-9" />
         </div>
         <Button type="button" variant="ghost" size="icon" className="h-9 w-9" onClick={onClose} aria-label="Закрыть"><X size={16} /></Button>
       </div>

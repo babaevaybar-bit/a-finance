@@ -91,7 +91,7 @@ function ModelGallery({ open, onClose, s, entries, current, colorId, onColor, on
   const shown = entries.filter(e => !q || e.name.toLowerCase().includes(q.toLowerCase().trim()));
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-5xl w-[calc(100vw-1.5rem)] max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
+      <DialogContent className="max-w-5xl w-[calc(100vw-1.5rem)] h-[calc(100dvh-1.5rem)] sm:h-auto max-h-[calc(100dvh-1.5rem)] sm:max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
         <DialogHeader className="px-5 pt-5 pb-3 border-b space-y-3 text-left">
           <DialogTitle>Модели {s.name}</DialogTitle>
           <div className="flex flex-wrap items-center gap-3">
@@ -105,7 +105,7 @@ function ModelGallery({ open, onClose, s, entries, current, colorId, onColor, on
             {color && <span className="text-sm text-muted-foreground">{color.name}</span>}
           </div>
         </DialogHeader>
-        <div className="overflow-y-auto p-4">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-4">
           {shown.length === 0 && <p className="text-sm text-muted-foreground p-4">Ничего не найдено</p>}
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
             {shown.map(e => {
