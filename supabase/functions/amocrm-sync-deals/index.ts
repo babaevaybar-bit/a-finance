@@ -108,6 +108,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // mode: 'all' — предложить все текущие расхождения (а не только новые правки), 'dry' — только показать их
+    let mode = '';
+    try { mode = (await req.clone().json())?.mode ?? ''; } catch { /* пустое тело */ }
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
@@ -370,13 +373,16 @@ Deno.serve(async (req) => {
       snapUpserts.push({ source: 'amoCRM', ext_id: String(leadId), field, value: v, updated_at: new Date().toISOString() });
       return had;
     }
+    const dry: any[] = [];
     async function propose(deal: any, field: string, value: unknown, source = 'amoCRM') {
-      if (!changedInAmo(curLeadId, field, value)) return;
+      const changed = changedInAmo(curLeadId, field, value);
+      if (!changed && mode !== 'all' && mode !== 'dry') return;
       const isNum = field === 'total_amount' || field === 'paid_amount';
       const oldV = deal[field];
       if (isNum ? Math.abs(Number(value) - Number(oldV ?? 0)) < 1 : normText(value).toLowerCase() === normText(oldV).toLowerCase()) return;
       if (field === 'client_phone' && normPhone(String(value ?? '')) === normPhone(String(oldV ?? ''))) return;
       const newValue = isNum ? String(Math.round(Number(value))) : normText(value);
+      if (mode === 'dry') { dry.push({ client: deal.client_name, status: deal.status, field, old: oldV, new: newValue }); return; }
       // более старое предложение по этому полю больше не актуально
       await supabaseAdmin.from('deal_change_requests').update({ status: 'superseded' })
         .eq('deal_id', deal.id).eq('field', field).eq('status', 'pending').neq('new_value', newValue);
@@ -481,6 +487,7 @@ Deno.serve(async (req) => {
       if (ch && !CHANNELS.includes(deal.payment_method) && deal.payment_method !== 'Несколько способов') await propose(deal, 'payment_method', ch);
     }
 
+    if (mode === 'dry') return new Response(JSON.stringify({ dry }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     for (let i = 0; i < snapUpserts.length; i += 500) {
       await supabaseAdmin.from('external_field_snapshots').upsert(snapUpserts.slice(i, i + 500), { onConflict: 'source,ext_id,field' });
     }

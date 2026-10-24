@@ -91,6 +91,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // mode: 'all' — предложить и уже существующие расхождения карточки с A-Finance
+    let mode = '';
+    try { mode = (await req.clone().json())?.mode ?? ''; } catch { /* пустое тело */ }
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
@@ -174,16 +177,31 @@ Deno.serve(async (req) => {
       }
       return null;
     };
+    // «г Шымкент ЖК Шахристан» = «ЖК Шахристан», «мкр Тұран» = «мкр Туран», «проезд Бектау 23» ⊃ «проезд Бектау»
+    const KZ: Record<string, string> = { 'ә': 'а', 'ғ': 'г', 'қ': 'к', 'ң': 'н', 'ө': 'о', 'ұ': 'у', 'ү': 'у', 'һ': 'х', 'і': 'и', 'ё': 'е' };
+    const addrNorm = (s: string) => s.toLowerCase().replace(/[әғқңөұүһіё]/g, ch => KZ[ch] ?? ch)
+      .replace(/(^|[\s,.])(г|город|гор)\.?\s*(шымкент|сарыагаш|туркестан|тараз)?(?=[\s,.]|$)/g, ' ')
+      .replace(/[^a-zа-я0-9]+/g, ' ').trim();
+    const sameAddress = (a: string, b: string) => {
+      const x = addrNorm(a), y = addrNorm(b);
+      if (!y) return true;
+      return !!x && (x === y || x.includes(y) || y.includes(x));
+    };
+    const dry: any[] = [];
     async function proposeFromCard(deal: any, cardId: string, field: 'client_phone' | 'address', value: string | null) {
       const key = `${cardId}|${field}`;
       const had = snap.has(key);
-      if (had && snap.get(key) === value) return;
-      snap.set(key, value);
-      snapUpserts.push({ source: 'Trello', ext_id: cardId, field, value, updated_at: new Date().toISOString() });
-      if (!had || !value) return; // первое знакомство с карточкой — не изменение
+      const fresh = !(had && snap.get(key) === value);
+      if (fresh) {
+        snap.set(key, value);
+        snapUpserts.push({ source: 'Trello', ext_id: cardId, field, value, updated_at: new Date().toISOString() });
+      }
+      if (!value) return;
+      if (mode !== 'all' && mode !== 'dry' && (!fresh || !had)) return; // первое знакомство с карточкой — не изменение
       const cur = deal[field] ?? '';
-      const same = field === 'client_phone' ? normalizePhone(String(cur)) === normalizePhone(value) : String(cur).trim().toLowerCase() === value.trim().toLowerCase();
+      const same = field === 'client_phone' ? normalizePhone(String(cur)) === normalizePhone(value) : sameAddress(String(cur), value);
       if (same) return;
+      if (mode === 'dry') { dry.push({ client: deal.client_name, field, old: cur, new: value }); return; }
       await supabaseAdmin.from('deal_change_requests').update({ status: 'superseded' })
         .eq('deal_id', deal.id).eq('field', field).eq('status', 'pending').neq('new_value', value);
       const { error } = await supabaseAdmin.from('deal_change_requests').insert({
@@ -214,6 +232,13 @@ Deno.serve(async (req) => {
         if (byPhone.length === 1 && (dealsByPhone.get(dPhone)?.length ?? 0) === 1) matched = byPhone;
       }
       if (matched.length === 0) continue;
+      if (mode === 'dry') {
+        if (matched.length === 1 && dContract && !dContract.startsWith(':') && matched[0].contract === dContract) {
+          await proposeFromCard(deal, matched[0].id, 'client_phone', matched[0].phone ? '+7' + matched[0].phone : null);
+          await proposeFromCard(deal, matched[0].id, 'address', cardAddress(matched[0].name));
+        }
+        continue;
+      }
 
       // Только надёжное совпадение по полному номеру договора с одной карточкой
       if (matched.length === 1 && dContract && !dContract.startsWith(':') && matched[0].contract === dContract) {
@@ -269,6 +294,8 @@ Deno.serve(async (req) => {
         notified += 1;
       }
     }
+
+    if (mode === 'dry') return new Response(JSON.stringify({ dry }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     // ── Смена этапа в производстве ──
     // Сначала запоминаем новый этап, потом шлём WhatsApp — чтобы сбой отправки не давал повторов

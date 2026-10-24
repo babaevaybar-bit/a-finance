@@ -46,8 +46,8 @@ export default function ChangeRequests({ managerName, onCount, onOpenDeal, refre
   if (!rows.length) return (
     <Card><CardContent className="py-14 text-center text-muted-foreground">
       <CheckCheck size={34} className="mx-auto mb-3 opacity-40" />
-      <p>Новых изменений из amoCRM и Trello нет</p>
-      <p className="text-xs mt-1">Когда менеджер поменяет данные клиента в amoCRM или Trello, изменение появится здесь и попадёт в A-Finance только после вашего подтверждения.</p>
+      <p>Расхождений с amoCRM и Trello нет</p>
+      <p className="text-xs mt-1">Если данные клиента в amoCRM или Trello отличаются от A-Finance, отличие появится здесь и попадёт в A-Finance только после вашего подтверждения. Сверка — каждые 30 минут или по кнопке «Обновить из CRM и Trello».</p>
     </CardContent></Card>
   );
 

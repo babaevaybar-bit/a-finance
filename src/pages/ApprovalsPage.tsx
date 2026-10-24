@@ -77,8 +77,8 @@ export default function ApprovalsPage() {
       const { data: { session } } = await supabase.auth.getSession();
       const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined;
       const [amo, trello] = await Promise.allSettled([
-        supabase.functions.invoke('amocrm-sync-deals', { body: {}, headers }),
-        supabase.functions.invoke('notify-stage-changes', { body: {}, headers }),
+        supabase.functions.invoke('amocrm-sync-deals', { body: { mode: 'all' }, headers }),
+        supabase.functions.invoke('notify-stage-changes', { body: { mode: 'all' }, headers }),
       ]);
       const a = amo.status === 'fulfilled' && !amo.value.error ? amo.value.data as { synced?: number; updated?: number; filled?: number } : null;
       const tr = trello.status === 'fulfilled' && !trello.value.error ? trello.value.data as { stagesUpdated?: number } : null;
