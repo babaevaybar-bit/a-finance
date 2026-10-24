@@ -11,7 +11,7 @@ import {
 import { toast } from 'sonner';
 import { CheckCircle, XCircle, Clock, ShieldOff, RotateCcw, RefreshCw } from 'lucide-react';
 import { supabase } from '@/db/supabase';
-import { getPendingDeals, getRejectedDeals, approveDeal, rejectDeal, restoreDeal, getManagers, notifyCountersChanged, updateDeal, getContractIndex, contractDuplicates } from '@/lib/api';
+import { countPendingChanges, getPendingDeals, getRejectedDeals, approveDeal, rejectDeal, restoreDeal, getManagers, notifyCountersChanged, updateDeal, getContractIndex, contractDuplicates } from '@/lib/api';
 import type { ContractIndex } from '@/lib/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
@@ -20,12 +20,14 @@ import type { Deal, Manager } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { CHANNELS, SPLIT_PAYMENT_METHOD } from '@/types/types';
 import TrelloLookup from '@/components/trello/TrelloLookup';
+import ChangeRequests from '@/components/approvals/ChangeRequests';
 import DealFormDialog from '@/components/sales/DealFormDialog';
 import DealCompleteness from '@/components/sales/DealCompleteness';
 
 export default function ApprovalsPage() {
   const { canApprove } = useAuth();
-  const [tab, setTab] = useState<'pending' | 'rejected'>('pending');
+  const [tab, setTab] = useState<'pending' | 'rejected' | 'changes'>('pending');
+  const [changesCount, setChangesCount] = useState(0);
   const [deals, setDeals]       = useState<Deal[]>([]);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
   const [managers, setManagers] = useState<Manager[]>([]);
@@ -41,6 +43,8 @@ export default function ApprovalsPage() {
   // Скелетон — только при первой загрузке/смене вкладки; дальше обновляем тихо
   const load = useCallback(async (silent = false) => {
     if (!canApprove) return;
+    countPendingChanges().then(setChangesCount).catch(() => {});
+    if (tab === 'changes') { if (!managers.length) getManagers().then(setManagers).catch(() => {}); setLoading(false); return; }
     if (!silent) setLoading(true);
     try {
       const [list, mgrs] = await Promise.all([
@@ -156,10 +160,10 @@ export default function ApprovalsPage() {
           <div>
             <h1 className="text-xl font-semibold">Подтверждение сделок</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {tab === 'pending' ? 'Сделки, ожидающие вашего подтверждения' : 'Отклонённые сделки — можно вернуть на проверку'}
+              {tab === 'pending' ? 'Сделки, ожидающие вашего подтверждения' : tab === 'changes' ? 'Изменения данных клиента из amoCRM и Trello — попадут в A-Finance после подтверждения' : 'Отклонённые сделки — можно вернуть на проверку'}
             </p>
           </div>
-          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto min-w-0">
           <div className="flex flex-col items-stretch sm:items-end flex-1 sm:flex-none">
             <Button variant="outline" size="sm" onClick={syncNow} disabled={syncing}>
               <RefreshCw size={14} className={`mr-1.5 ${syncing ? 'animate-spin' : ''}`} />
@@ -167,11 +171,11 @@ export default function ApprovalsPage() {
             </Button>
             {syncedAt && <span className="text-[11px] text-muted-foreground mt-0.5">обновлено в {syncedAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>}
           </div>
-          <div className="flex gap-1.5 rounded-lg border border-border p-1">
+          <div className="tabs-scroll flex gap-1.5 rounded-lg border border-border p-1 max-w-full overflow-x-auto">
             <Button
               variant={tab === 'pending' ? 'default' : 'ghost'}
               size="sm"
-              className="h-7 text-xs"
+              className="h-7 text-xs shrink-0"
               onClick={() => setTab('pending')}
             >
               Ожидающие
@@ -179,16 +183,28 @@ export default function ApprovalsPage() {
             <Button
               variant={tab === 'rejected' ? 'default' : 'ghost'}
               size="sm"
-              className="h-7 text-xs"
+              className="h-7 text-xs shrink-0"
               onClick={() => setTab('rejected')}
             >
               Отклонённые
+            </Button>
+            <Button
+              variant={tab === 'changes' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-7 text-xs shrink-0"
+              onClick={() => setTab('changes')}
+            >
+              Изменения из CRM/Trello
+              {changesCount > 0 && <span className="ml-1.5 text-[10px] px-1.5 rounded-full bg-amber-500 text-white font-semibold">{changesCount}</span>}
             </Button>
           </div>
           </div>
         </div>
 
-        {loading ? (
+        {tab === 'changes' ? (
+          <ChangeRequests managerName={managerName} onCount={setChangesCount} refreshKey={trelloTick}
+            onOpenDeal={async id => { const { data } = await supabase.from('deals').select('*').eq('id', id).maybeSingle(); if (data) setEditDeal(data as Deal); }} />
+        ) : loading ? (
           <div className="space-y-3">
             {[1, 2, 3].map(i => <div key={i} className="h-20 rounded-lg bg-muted animate-pulse" />)}
           </div>

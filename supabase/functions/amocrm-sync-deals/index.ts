@@ -351,10 +351,59 @@ Deno.serve(async (req) => {
       );
     }
 
+    // ── Изменения из amoCRM не применяются сразу: они ждут подтверждения в разделе «Подтверждения» ──
+    let proposed = 0;
+    let curLeadId = 0;
+    const normText = (v: unknown) => (v == null ? '' : String(v).trim().replace(/\s+/g, ' '));
+    // Последние увиденные значения в amoCRM: предлагаем изменение, только если его поменяли в amoCRM
+    const { data: snapRows } = await supabaseAdmin.from('external_field_snapshots').select('ext_id, field, value').eq('source', 'amoCRM');
+    const snap = new Map((snapRows ?? []).map((r: any) => [`${r.ext_id}|${r.field}`, r.value as string | null]));
+    const snapUpserts: { source: string; ext_id: string; field: string; value: string | null; updated_at: string }[] = [];
+    /** true — значение в amoCRM изменилось с прошлой проверки (первое знакомство — не изменение) */
+    function changedInAmo(leadId: number, field: string, value: unknown): boolean {
+      const key = `${leadId}|${field}`;
+      const v = value == null ? null : normText(value);
+      const had = snap.has(key);
+      const prev = snap.get(key) ?? null;
+      if (had && prev === v) return false;
+      snap.set(key, v);
+      snapUpserts.push({ source: 'amoCRM', ext_id: String(leadId), field, value: v, updated_at: new Date().toISOString() });
+      return had;
+    }
+    async function propose(deal: any, field: string, value: unknown, source = 'amoCRM') {
+      if (!changedInAmo(curLeadId, field, value)) return;
+      const isNum = field === 'total_amount' || field === 'paid_amount';
+      const oldV = deal[field];
+      if (isNum ? Math.abs(Number(value) - Number(oldV ?? 0)) < 1 : normText(value).toLowerCase() === normText(oldV).toLowerCase()) return;
+      if (field === 'client_phone' && normPhone(String(value ?? '')) === normPhone(String(oldV ?? ''))) return;
+      const newValue = isNum ? String(Math.round(Number(value))) : normText(value);
+      // более старое предложение по этому полю больше не актуально
+      await supabaseAdmin.from('deal_change_requests').update({ status: 'superseded' })
+        .eq('deal_id', deal.id).eq('field', field).eq('status', 'pending').neq('new_value', newValue);
+      const { error } = await supabaseAdmin.from('deal_change_requests').insert({
+        deal_id: deal.id, source, field, old_value: oldV == null ? null : String(oldV), new_value: newValue,
+      });
+      if (!error) proposed += 1; // 23505 — такое предложение уже было (ждёт или отклонено)
+    }
+
+    // Телефоны основных контактов — одним запросом на 250 контактов
+    const contactPhone = new Map<number, string>();
+    const contactIds = [...new Set(syncedLeads.map((l: any) => ((l._embedded?.contacts ?? []).find((c: any) => c.is_main) ?? l._embedded?.contacts?.[0])?.id).filter(Boolean))];
+    for (let i = 0; i < contactIds.length; i += 250) {
+      const q = contactIds.slice(i, i + 250).map(id => `filter[id][]=${id}`).join('&');
+      const data = await amoGet(`/api/v4/contacts?${q}&limit=250`);
+      for (const c of data?._embedded?.contacts ?? []) {
+        const ph = (c.custom_fields_values ?? []).find((f: any) => f.field_code === 'PHONE')?.values?.[0]?.value;
+        if (ph) contactPhone.set(c.id, ph);
+      }
+    }
+    const mainContactId = (l: any) => ((l._embedded?.contacts ?? []).find((c: any) => c.is_main) ?? l._embedded?.contacts?.[0])?.id;
+
     for (const lead of syncedLeads) {
       const deal = dealById.get(dealIdByLead.get(lead.id));
       if (!deal) continue;
       if (deal.status === 'rejected') continue;
+      curLeadId = lead.id;
 
       // Дозаполняем пустые поля (не перезаписываем) — для любых сделок, в т.ч. подтверждённых
       const fill: Record<string, unknown> = {};
@@ -381,11 +430,22 @@ Deno.serve(async (req) => {
       const prepayment = getCF(lead, CF.PREPAYMENT);
       const newPaid = prepayment != null ? Number(prepayment) : null;
 
+      // Данные клиента (для любых сделок, кроме отклонённых) — на подтверждение
+      {
+        const ph = contactPhone.get(mainContactId(lead));
+        if (ph) await propose(deal, 'client_phone', normPhone(ph) ?? ph);
+        if (lead.name && !/^Сделка #\d+$/.test(lead.name)) await propose(deal, 'client_name', lead.name);
+        const a = getCF(lead, CF.ADDRESS); if (a) await propose(deal, 'address', a);
+        const dt = getCF(lead, CF.DOOR_TYPE); if (dt) await propose(deal, 'door_model', dt);
+        if (contractNum) await propose(deal, 'contract_number', contractNum);
+        if (newTotal > 0) await propose(deal, 'total_amount', newTotal);
+      }
+
       if (deal.status !== 'pending') {
         // Подтверждённая: суммы не переписываем (оплаты ведутся в A-Finance и связаны с «Финансами»),
         // но сообщаем о расхождении, чтобы его исправили вручную
         const paidDiff = newPaid != null ? Math.round(newPaid - Number(deal.paid_amount)) : 0;
-        const totalDiff = newTotal > 0 ? Math.round(newTotal - Number(deal.total_amount)) : 0;
+        const totalDiff = 0; // сумма сделки теперь приходит на подтверждение (см. выше)
         if (Math.abs(paidDiff) < 100 && Math.abs(totalDiff) < 100) {
           if (deal.amo_mismatch) await supabaseAdmin.from('deals').update({ amo_mismatch: null }).eq('id', deal.id);
           continue;
@@ -415,26 +475,20 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const update: Record<string, unknown> = {};
-      if (newTotal > 0 && newTotal !== Number(deal.total_amount)) update.total_amount = newTotal;
-      if (newPaid != null && newPaid !== Number(deal.paid_amount)) update.paid_amount = newPaid;
-      const doorType = getCF(lead, CF.DOOR_TYPE);
-      const address = getCF(lead, CF.ADDRESS);
-      if (doorType && doorType !== deal.door_model) update.door_model = doorType;
-      if (address && address !== deal.address) update.address = address;
-      if (contractNum && contractNum !== deal.contract_number) update.contract_number = contractNum;
+      // Сделка ещё на проверке: оплата и способ оплаты — тоже на подтверждение
+      if (newPaid != null) await propose(deal, 'paid_amount', newPaid);
       const ch = amoPaymentChannel(lead);
-      if (ch && !CHANNELS.includes(deal.payment_method) && deal.payment_method !== 'Несколько способов') update.payment_method = ch;
+      if (ch && !CHANNELS.includes(deal.payment_method) && deal.payment_method !== 'Несколько способов') await propose(deal, 'payment_method', ch);
+    }
 
-      if (Object.keys(update).length > 0) {
-        await writeUpdate(deal, update, 'amoCRM (синхронизация)');
-        updatedCount += 1;
-      }
+    for (let i = 0; i < snapUpserts.length; i += 500) {
+      await supabaseAdmin.from('external_field_snapshots').upsert(snapUpserts.slice(i, i + 500), { onConflict: 'source,ext_id,field' });
     }
 
     return new Response(JSON.stringify({
       synced: syncedCount,
       updated: updatedCount,
+      proposed,
       filled: filledCount,
       approvedMismatch,
       notified,

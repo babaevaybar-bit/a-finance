@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
 
     const { data: deals } = await supabaseAdmin
       .from('deals')
-      .select('id, manager_id, client_phone, client_name, total_amount, paid_amount, next_payment_date, status, contract_number, production_stage, created_at')
+      .select('id, manager_id, client_phone, client_name, address, total_amount, paid_amount, next_payment_date, status, contract_number, production_stage, created_at')
       .neq('status', 'rejected')
       .order('created_at', { ascending: true });
     const dealsByPhone = new Map<string, any[]>();
@@ -161,6 +161,36 @@ Deno.serve(async (req) => {
     let paymentDue = 0;
     let stagesUpdated = 0;
     const today = kzToday();
+
+    // ── Данные клиента из карточки Trello: если их там поменяли — изменение ждёт подтверждения в A-Finance ──
+    const { data: snapRows } = await supabaseAdmin.from('external_field_snapshots').select('ext_id, field, value').eq('source', 'Trello');
+    const snap = new Map((snapRows ?? []).map((r: any) => [`${r.ext_id}|${r.field}`, r.value as string | null]));
+    const snapUpserts: any[] = [];
+    let proposed = 0;
+    const ADDRESS_HINT = /(^|\s)(г\.?|город|ЖК|ул\.?|улица|проезд|мкр|микрорайон|пр\.?|проспект|район|с\.|село|пос)(\s|\.|,|$)/i;
+    const cardAddress = (name: string) => {
+      for (const p of name.split(/\s+-\s+/).map(x => x.trim()).filter(Boolean).slice(1)) {
+        if (ADDRESS_HINT.test(p) && p.replace(/\D/g, '').length < 10) return p.replace(/[.\s]+$/, '');
+      }
+      return null;
+    };
+    async function proposeFromCard(deal: any, cardId: string, field: 'client_phone' | 'address', value: string | null) {
+      const key = `${cardId}|${field}`;
+      const had = snap.has(key);
+      if (had && snap.get(key) === value) return;
+      snap.set(key, value);
+      snapUpserts.push({ source: 'Trello', ext_id: cardId, field, value, updated_at: new Date().toISOString() });
+      if (!had || !value) return; // первое знакомство с карточкой — не изменение
+      const cur = deal[field] ?? '';
+      const same = field === 'client_phone' ? normalizePhone(String(cur)) === normalizePhone(value) : String(cur).trim().toLowerCase() === value.trim().toLowerCase();
+      if (same) return;
+      await supabaseAdmin.from('deal_change_requests').update({ status: 'superseded' })
+        .eq('deal_id', deal.id).eq('field', field).eq('status', 'pending').neq('new_value', value);
+      const { error } = await supabaseAdmin.from('deal_change_requests').insert({
+        deal_id: deal.id, source: 'Trello', field, old_value: deal[field] ?? null, new_value: value,
+      });
+      if (!error) proposed += 1;
+    }
 
     for (const deal of deals ?? []) {
       const dPhone = deal.client_phone ? normalizePhone(deal.client_phone) : null;
@@ -184,6 +214,13 @@ Deno.serve(async (req) => {
         if (byPhone.length === 1 && (dealsByPhone.get(dPhone)?.length ?? 0) === 1) matched = byPhone;
       }
       if (matched.length === 0) continue;
+
+      // Только надёжное совпадение по полному номеру договора с одной карточкой
+      if (matched.length === 1 && dContract && !dContract.startsWith(':') && matched[0].contract === dContract) {
+        const c = matched[0];
+        await proposeFromCard(deal, c.id, 'client_phone', c.phone ? '+7' + c.phone : null);
+        await proposeFromCard(deal, c.id, 'address', cardAddress(c.name));
+      }
 
       // ── Этап производства сделки и доплата при поступлении на «Склад Альянс» ──
       const stage = [...matched].sort((a, b) => (stageOrder.get(a.stage) ?? 0) - (stageOrder.get(b.stage) ?? 0))[0].stage;
@@ -261,7 +298,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ checked: currentCards.length, notified, seeded, mismatches, stagesUpdated, paymentDue }), {
+    for (let i = 0; i < snapUpserts.length; i += 500) {
+      await supabaseAdmin.from('external_field_snapshots').upsert(snapUpserts.slice(i, i + 500), { onConflict: 'source,ext_id,field' });
+    }
+
+    return new Response(JSON.stringify({ checked: currentCards.length, notified, seeded, mismatches, stagesUpdated, paymentDue, proposed }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 

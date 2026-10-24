@@ -955,7 +955,34 @@ export function contractDuplicates(idx: ContractIndex | null, dealId: string | u
 export async function countPendingDeals(): Promise<number> {
   const { count, error } = await supabase.from('deals').select('id', { count: 'exact', head: true }).eq('status', 'pending');
   if (error) throw error;
+  return (count ?? 0) + await countPendingChanges().catch(() => 0);
+}
+
+// ── Изменения из amoCRM / Trello, ждущие подтверждения ──
+export interface DealChange {
+  id: string; deal_id: string; source: string; field: string;
+  old_value: string | null; new_value: string | null; created_at: string;
+  deal?: { client_name: string | null; manager_id: string; contract_number: string | null; status: string } | null;
+}
+export const CHANGE_FIELD_LABEL: Record<string, string> = {
+  client_name: 'Клиент', client_phone: 'Телефон', address: 'Адрес', contract_number: 'Договор',
+  door_model: 'Модель', total_amount: 'Сумма сделки', paid_amount: 'Оплачено', payment_method: 'Способ оплаты',
+};
+export async function countPendingChanges(): Promise<number> {
+  const { count, error } = await supabase.from('deal_change_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+  if (error) throw error;
   return count ?? 0;
+}
+export async function getPendingChanges(): Promise<DealChange[]> {
+  const { data, error } = await supabase.from('deal_change_requests')
+    .select('id, deal_id, source, field, old_value, new_value, created_at, deal:deals(client_name, manager_id, contract_number, status)')
+    .eq('status', 'pending').order('created_at', { ascending: false }).limit(300);
+  if (error) throw error;
+  return (data ?? []) as unknown as DealChange[];
+}
+export async function decideChange(id: string, approve: boolean): Promise<void> {
+  const { error } = await supabase.rpc('decide_deal_change', { p_id: id, p_approve: approve });
+  if (error) throw error;
 }
 export async function countUnreadNotifications(managerId: string | null): Promise<number> {
   let q = supabase.from('notifications').select('id', { count: 'exact', head: true }).eq('is_read', false);
