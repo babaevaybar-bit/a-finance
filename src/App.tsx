@@ -1,4 +1,5 @@
 import React, { Suspense, lazy } from 'react';
+import TestEnvBadge from '@/components/common/TestEnvBadge';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import IntersectObserver from '@/components/common/IntersectObserver';
 import { Toaster } from '@/components/ui/sonner';
@@ -156,6 +157,7 @@ const App: React.FC = () => {
           </main>
         </div>
         <Toaster />
+        <TestEnvBadge />
       </AuthProvider>
     </Router>
   );
