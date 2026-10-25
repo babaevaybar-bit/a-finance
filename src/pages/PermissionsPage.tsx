@@ -17,7 +17,8 @@ import {
 import { getManagers, getAllPermissions, upsertPermission, getAllProfiles, updateProfile } from '@/lib/api';
 import type { Manager, EmployeePermission, Profile } from '@/types/types';
 import { PERMISSION_PAGES } from '@/types/types';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth, MANAGER_POLICY, IN_DEVELOPMENT } from '@/contexts/AuthContext';
+import { navItems } from '@/components/layouts/AppLayout';
 
 const ROLE_LABELS: Record<Profile['role'], string> = {
   director: 'Главный админ',
@@ -159,12 +160,14 @@ export default function PermissionsPage() {
   const [permMap, setPermMap]       = useState<PermMap>({});
   const [saving, setSaving]         = useState<Record<string, boolean>>({});
   const [loading, setLoading]       = useState(true);
+  const [roleByManager, setRoleByManager] = useState<Record<string, Profile['role']>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [mgrs, perms] = await Promise.all([getManagers(), getAllPermissions()]);
+      const [mgrs, perms, profs] = await Promise.all([getManagers(), getAllPermissions(), getAllProfiles().catch(() => [] as Profile[])]);
       setManagers(mgrs);
+      setRoleByManager(Object.fromEntries(profs.filter(p => p.manager_id).map(p => [p.manager_id!, p.role])));
       const map: PermMap = {};
       (perms as EmployeePermission[]).forEach(p => {
         if (!map[p.manager_id]) map[p.manager_id] = {};
@@ -273,6 +276,34 @@ export default function PermissionsPage() {
               });
               const isBatching = PERMISSION_PAGES.some(({ key }) =>
                 saving[`${m.id}:${key}:batch`]
+              );
+
+              // Менеджер и лидоруб: доступ задан ролью — показываем его, галочки не нужны
+              const role = roleByManager[m.id];
+              if (role === 'manager' || role === 'lidorub') return (
+                <Card key={m.id} className="border border-border">
+                  <CardHeader className="pb-2 pt-4 px-4">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <CardTitle className="text-sm font-medium truncate">{m.name}</CardTitle>
+                      <Badge variant="secondary" className="text-xs shrink-0">{m.role || '—'}</Badge>
+                      <Badge variant="outline" className="text-xs shrink-0">доступ по роли «{ROLE_LABELS[role]}»</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4">
+                    <div className="flex flex-wrap gap-1.5">
+                      {navItems.filter(i => i.group !== 'hidden').map(i => {
+                        const a = MANAGER_POLICY[i.pageKey] ?? 'none';
+                        const cls = a === 'edit' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : a === 'view' ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-muted text-muted-foreground line-through';
+                        return (
+                          <span key={i.pageKey} className={`text-xs px-2 py-1 rounded-md border ${cls}`}>
+                            {i.label}{a === 'view' ? ' · просмотр' : ''}{a !== 'none' && IN_DEVELOPMENT.has(i.pageKey) ? ' · в разработке' : ''}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">Зелёным — полный доступ, синим — только просмотр, зачёркнуто — скрыто. Одинаково для всех менеджеров по продажам.</p>
+                  </CardContent>
+                </Card>
               );
 
               return (

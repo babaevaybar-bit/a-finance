@@ -15,7 +15,7 @@ const DEFAULT_ITEMS = ['Замер', 'Договор подписан', 'Опл�
  * Свой чек-лист по карточке производства — живёт только у нас, не зависит
  * от Trello вообще. Удобно для внутренних пунктов, которых нет на доске.
  */
-export default function ProductionChecklist({ trelloCardId }: { trelloCardId: string }) {
+export default function ProductionChecklist({ trelloCardId, readOnly = false }: { trelloCardId: string; readOnly?: boolean }) {
   const [items, setItems] = useState<ProductionChecklistItem[] | null>(null);
   const [newLabel, setNewLabel] = useState('');
   const [adding, setAdding] = useState(false);
@@ -65,7 +65,9 @@ export default function ProductionChecklist({ trelloCardId }: { trelloCardId: st
 
   return (
     <div className="space-y-2">
-      {items.length === 0 ? (
+      {items.length === 0 && readOnly ? (
+        <p className="text-xs text-muted-foreground">Чек-лист не заполнен</p>
+      ) : items.length === 0 ? (
         <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleAddDefaults} disabled={adding}>
           <ListChecks size={12} className="mr-1.5" />Добавить стандартный чек-лист
         </Button>
@@ -75,17 +77,17 @@ export default function ProductionChecklist({ trelloCardId }: { trelloCardId: st
           <div className="space-y-1.5">
             {items.map(item => (
               <div key={item.id} className="flex items-center gap-2 group">
-                <Checkbox checked={item.checked} onCheckedChange={() => handleToggle(item)} />
+                <Checkbox checked={item.checked} disabled={readOnly} onCheckedChange={() => handleToggle(item)} />
                 <span className={`text-sm flex-1 ${item.checked ? 'line-through text-muted-foreground' : ''}`}>{item.label}</span>
-                <button onClick={() => handleDelete(item.id)} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity">
+                {!readOnly && <button onClick={() => handleDelete(item.id)} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity">
                   <X size={13} />
-                </button>
+                </button>}
               </div>
             ))}
           </div>
         </>
       )}
-      <div className="flex gap-1.5 pt-1">
+      {!readOnly && <div className="flex gap-1.5 pt-1">
         <Input
           value={newLabel}
           onChange={e => setNewLabel(e.target.value)}
@@ -96,7 +98,7 @@ export default function ProductionChecklist({ trelloCardId }: { trelloCardId: st
         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 shrink-0" onClick={() => handleAdd(newLabel)} disabled={adding || !newLabel.trim()}>
           <Plus size={13} />
         </Button>
-      </div>
+      </div>}
     </div>
   );
 }

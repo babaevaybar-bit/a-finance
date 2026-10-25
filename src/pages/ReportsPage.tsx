@@ -21,7 +21,9 @@ import {
 } from '@/components/ui/alert-dialog';
 
 export default function ReportsPage() {
-  const { isDirector } = useAuth();
+  const { isDirector, isManager, isLidorub, profile } = useAuth();
+  // Менеджер видит отчёт только по своим сделкам (просмотр), без финансов компании
+  const own = isManager || isLidorub;
   const [searchParams, setSearchParams] = useSearchParams();
   // Открытие по ссылке с дашборда (?month=YYYY-MM) — сразу нужный месяц
   const [monthYear, setMonthYear] = useState(searchParams.get('month') || getCurrentMonthYear());
@@ -45,11 +47,11 @@ export default function ReportsPage() {
     try {
       const [dls, exps, incs, mgrs, plns, trs, lockStatus] = await Promise.all([
         getAllDealsForMonth(monthYear),
-        getExpenses(),
-        getIncome(),
+        own ? Promise.resolve([] as Expense[]) : getExpenses(),
+        own ? Promise.resolve([] as Income[]) : getIncome(),
         getManagers(),
         getSalesPlans(monthYear),
-        getTransfers(),
+        own ? Promise.resolve([] as Transfer[]) : getTransfers(),
         isMonthLocked(monthYear),
       ]);
       const [py, pm] = monthYear.split('-').map(Number);
@@ -58,7 +60,7 @@ export default function ReportsPage() {
       setDeals(dls); setExpenses(exps); setIncome(incs); setManagers(mgrs); setPlans(plns); setTransfers(trs);
       setLocked(lockStatus);
     } catch { /* silent */ } finally { setLoading(false); }
-  }, [monthYear]);
+  }, [monthYear, own]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -82,7 +84,7 @@ export default function ReportsPage() {
 
   // Per-manager summary for the selected month
   // Только продавцы; но если у кого-то другого вдруг есть сделки за месяц — тоже показываем
-  const managerSummary = managers.filter(m => SALES_ROLES.includes(m.role) || deals.some(d => d.manager_id === m.id)).map(m => {
+  const managerSummary = managers.filter(m => !own || m.id === profile?.manager_id).filter(m => SALES_ROLES.includes(m.role) || deals.some(d => d.manager_id === m.id)).map(m => {
     const mDeals = deals.filter(d => d.manager_id === m.id);
     const revenue = mDeals.reduce((s, d) => s + Number(d.total_amount), 0);
     const paid = mDeals.reduce((s, d) => s + Number(d.paid_amount), 0);
@@ -110,7 +112,7 @@ export default function ReportsPage() {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold">Отчёты</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Аналитика продаж и финансов</p>
+            <p className="text-sm text-muted-foreground mt-0.5">{own ? 'Ваши продажи за месяц' : 'Аналитика продаж и финансов'}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <MonthYearPicker value={monthYear} onChange={setMonthYear} />
@@ -143,10 +145,12 @@ export default function ReportsPage() {
                 </AlertDialogContent>
               </AlertDialog>
             )}
-            <Button variant="outline" onClick={handleExport} disabled={loading}>
-              <Download size={14} className="mr-1.5" />
-              Excel
-            </Button>
+            {!own && (
+              <Button variant="outline" onClick={handleExport} disabled={loading}>
+                <Download size={14} className="mr-1.5" />
+                Excel
+              </Button>
+            )}
           </div>
         </div>
 
@@ -248,7 +252,7 @@ export default function ReportsPage() {
             </Card>
 
             {/* ── Overall finance summary ── */}
-            <Card>
+            {!own && <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Сводный финансовый итог</CardTitle>
               </CardHeader>
@@ -269,7 +273,7 @@ export default function ReportsPage() {
                   ))}
                 </div>
               </CardContent>
-            </Card>
+            </Card>}
           </>
         )}
       </div>

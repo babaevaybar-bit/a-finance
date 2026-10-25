@@ -11,7 +11,7 @@ import {
   Menu, Settings, Activity, ChevronDown, GraduationCap, Calculator, LayoutDashboard, TrendingUp, Wallet, BarChart2,
   Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell, HandCoins, KanbanSquare,
 } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth, IN_DEVELOPMENT } from '@/contexts/AuthContext';
 import { countPendingDeals, countUnreadNotifications } from '@/lib/api';
 import { supabase } from '@/db/supabase';
 import { UserAvatar } from '@/components/common/UserAvatar';
@@ -81,7 +81,7 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
     });
   }
 
-  const renderItem = ({ path, label, icon: Icon }: typeof navItems[number]) => (
+  const renderItem = ({ path, label, icon: Icon, pageKey }: typeof navItems[number]) => (
     <Link
       key={path}
       to={path}
@@ -95,6 +95,9 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
     >
       <Icon size={16} className="shrink-0" />
       <span className="flex-1">{label}</span>
+      {IN_DEVELOPMENT.has(pageKey) && (
+        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold shrink-0 whitespace-nowrap">в разработке</span>
+      )}
       {path === '/boards' && (
         <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold shrink-0">бета</span>
       )}

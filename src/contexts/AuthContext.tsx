@@ -30,6 +30,31 @@ interface AuthContextType {
   refreshProfile: () => Promise<void>;
 }
 
+/** Разделы «в разработке»: менеджеры видят заглушку, руководители работают как обычно */
+export const IN_DEVELOPMENT = new Set(['estimate', 'training']);
+
+export const MANAGER_POLICY: Record<string, 'edit' | 'view' | 'none'> = {
+  dashboard: 'edit',
+  sales: 'edit',
+  debtors: 'edit',
+  approvals: 'view',       // только статус своих сделок
+  estimate: 'edit',        // пока «в разработке»
+  finance: 'none',
+  reports: 'view',
+  salary: 'view',          // только своя зарплата
+  profit: 'none',
+  production: 'view',
+  boards: 'edit',
+  amocrm: 'edit',
+  'daily-report': 'none',
+  managers: 'none',
+  activity: 'none',
+  permissions: 'none',
+  training: 'view',        // пока «в разработке»
+  messages: 'edit',
+  search: 'edit',
+};
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -80,7 +105,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Provide a fake user/profile for local development to bypass auth
       const fakeUser = { id: 'dev-user', email: 'dev@local' } as unknown as User;
       setUser(fakeUser);
-      setProfile({ id: 'dev-user', name: 'Dev User', role: 'director', manager_id: null } as any);
+      // ?as=manager — посмотреть сайт глазами менеджера (только локально)
+      const asRole = new URLSearchParams(window.location.search).get('as');
+      setProfile(asRole
+        ? { id: 'dev-user', name: 'Dev Manager', role: asRole, manager_id: 'm1' } as any
+        : { id: 'dev-user', name: 'Dev User', role: 'director', manager_id: null } as any);
       setPermissions([]);
       setLoading(false);
       return;
@@ -209,6 +238,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPermissions([]);
   };
 
+  // Менеджер по продажам (и лидоруб): права заданы ролью, а не галочками в «Доступе».
+  // edit — полный доступ, view — только просмотр, none — раздел скрыт.
+  const salesPolicy = isManager || isLidorub;
+
   // Разделы, полностью закрытые для всех кроме Директора (финансы, ФОТ, права доступа).
   const DIRECTOR_ONLY_PAGES = new Set(['finance', 'profit', 'salary', 'managers', 'permissions']);
   // Разделы надзора за продажами: по умолчанию видны Директору и РОП, менеджеру — по явному разрешению.
@@ -225,6 +258,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function canView(page: string): boolean {
     if (isDirector || isDirectorView) return true;
+    if (salesPolicy) return (MANAGER_POLICY[page] ?? 'none') !== 'none';
     if (isRop && ROP_PAGES.has(page)) return true;
     const perm = permissions.find(p => p.page === page);
     if (perm) return perm.can_view;
@@ -233,6 +267,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function canEdit(page: string): boolean {
     if (isDirector) return true;
+    if (salesPolicy) return MANAGER_POLICY[page] === 'edit';
     if (isDirectorView) return !DIRECTOR_ONLY_EDIT_PAGES.has(page);
     if (isRop && ROP_PAGES.has(page)) return true;
     const perm = permissions.find(p => p.page === page);

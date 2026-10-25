@@ -12,6 +12,7 @@ import { supabase } from '@/db/supabase';
 import { getProductionOverrides, setProductionOverride, clearProductionOverride } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import ProductionCardDetail from './ProductionCardDetail';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface TrelloLabel { name: string; color: string; }
 interface TrelloCard {
@@ -133,6 +134,8 @@ interface PlacedCard extends TrelloCard {
 interface Column { name: string; isPlanned: boolean; cards: PlacedCard[]; }
 
 export default function ProductionPage() {
+  const { canEdit } = useAuth();
+  const readOnly = !canEdit('production');  // менеджер — только просмотр
   const [rawLists, setRawLists] = useState<TrelloList[]>([]);
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -234,6 +237,7 @@ export default function ProductionPage() {
   const totalCards = columns.reduce((s, c) => s + c.cards.length, 0);
 
   async function moveCard(cardId: string, columnName: string) {
+    if (readOnly) return;
     const card = columns.flatMap(c => c.cards).find(c => c.id === cardId);
     if (!card || card.effectiveStage === columnName) return;
     try {
@@ -262,6 +266,7 @@ export default function ProductionPage() {
   }
 
   async function handleReset(card: PlacedCard) {
+    if (readOnly) return;
     try {
       await clearProductionOverride(card.id);
       setOverrides(prev => {
@@ -280,7 +285,7 @@ export default function ProductionPage() {
             <h1 className="text-xl font-semibold">Производство</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               Доска «Продажа Otau Mart ProfilDoors» — без захода в Trello ({totalCards} карточек).
-              Перетаскивание сохраняется только у нас, саму Trello не меняет.
+              {readOnly ? 'Только просмотр.' : 'Перетаскивание сохраняется только у нас, саму Trello не меняет.'}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -346,11 +351,11 @@ export default function ProductionPage() {
                       return (
                         <div
                           key={card.id}
-                          draggable
+                          draggable={!readOnly}
                           onDragStart={() => { draggedCardId.current = card.id; }}
                           onDragEnd={() => { draggedCardId.current = null; setDragOverColumn(null); }}
                           onClick={() => setSelectedCard(card)}
-                          className={`group rounded-lg border bg-background p-3 shadow-sm hover:shadow-md hover:border-primary/40 transition-all cursor-grab active:cursor-grabbing ${
+                          className={`group rounded-lg border bg-background p-3 shadow-sm hover:shadow-md hover:border-primary/40 transition-all ${readOnly ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'} ${
                             overdue ? 'border-l-4 border-l-destructive border-border' : 'border-border'
                           }`}
                         >
@@ -386,7 +391,7 @@ export default function ProductionPage() {
                             )}
                           </div>
 
-                          {card.isOverridden && (
+                          {card.isOverridden && !readOnly && (
                             <button
                               type="button"
                               onClick={e => { e.stopPropagation(); handleReset(card); }}
@@ -431,6 +436,7 @@ export default function ProductionPage() {
         }}
         open={!!selectedCard}
         onClose={() => setSelectedCard(null)}
+        readOnly={readOnly}
       />
     </AppLayout>
   );

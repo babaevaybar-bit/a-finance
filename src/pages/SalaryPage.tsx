@@ -17,6 +17,8 @@ import {
   formatCurrency, getCurrentMonthYear, getAvailableMonths, monthYearToLabel,
 } from '@/lib/utils';
 import MonthYearPicker from '@/components/common/MonthYearPicker';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/db/supabase';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import type { Manager, SalarySetting, Deal } from '@/types/types';
@@ -147,7 +149,76 @@ function ManagerSalaryRow({ manager, setting, revenue, companyRevenue, onSaved, 
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
+/** Менеджер видит только свою зарплату, остальные — расчёт по всем сотрудникам */
 export default function SalaryPage() {
+  const { isManager, isLidorub } = useAuth();
+  return isManager || isLidorub ? <MySalary /> : <SalaryAdmin />;
+}
+
+interface MySalaryRow { manager_name: string; base_salary: number; commission_pct: number; use_personal: boolean; revenue_base: number; deals_count: number; commission: number; total: number; paid: number }
+
+function MySalary() {
+  const [monthYear, setMonthYear] = useState(getCurrentMonthYear());
+  const [row, setRow] = useState<MySalaryRow | null | undefined>(undefined);
+  useEffect(() => {
+    setRow(undefined);
+    supabase.rpc('my_salary', { p_month: monthYear }).then(({ data, error }) => {
+      if (error) { toast.error('Не удалось загрузить зарплату'); setRow(null); return; }
+      setRow(((data as MySalaryRow[] | null) ?? [])[0] ?? null);
+    });
+  }, [monthYear]);
+  const left = row ? Number(row.total) - Number(row.paid) : 0;
+  const item = (label: string, value: string, sub?: string, strong = false) => (
+    <div className="rounded-xl border border-border p-4">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={`mt-1 tabular-nums ${strong ? 'text-2xl font-semibold text-primary' : 'text-lg font-semibold'}`}>{value}</p>
+      {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+    </div>
+  );
+  return (
+    <AppLayout>
+      <div className="space-y-6 max-w-3xl">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold">Моя зарплата</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">{monthYearToLabel(monthYear)}</p>
+          </div>
+          <MonthYearPicker value={monthYear} onChange={setMonthYear} className="shrink-0" />
+        </div>
+        {row === undefined ? (
+          <div className="grid grid-cols-2 gap-3">{[1, 2, 3, 4].map(i => <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />)}</div>
+        ) : row === null ? (
+          <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">Ваш профиль не привязан к сотруднику — обратитесь к руководителю</CardContent></Card>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {item('Начислено', formatCurrency(Number(row.total)), 'оклад + комиссия', true)}
+              {item('Выплачено', formatCurrency(Number(row.paid)), 'авансы и выплаты')}
+              {item(left > 0 ? 'К выплате' : 'Остаток', left > 0 ? formatCurrency(left) : 'Выплачено полностью')}
+            </div>
+            <Card>
+              <CardContent className="p-0 divide-y text-sm">
+                {[
+                  ['Оклад', formatCurrency(Number(row.base_salary))],
+                  [row.use_personal ? 'Мои подтверждённые сделки' : 'Выручка компании (подтверждённые)', `${formatCurrency(Number(row.revenue_base))}${row.use_personal ? ` · ${row.deals_count} сд.` : ''}`],
+                  ['Процент', `${Number(row.commission_pct)}%`],
+                  ['Комиссия', formatCurrency(Number(row.commission))],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <span className="text-muted-foreground">{k}</span><span className="font-medium tabular-nums text-right">{v}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+            <p className="text-xs text-muted-foreground">Комиссия считается только с подтверждённых сделок. Если сделки нет в расчёте — проверьте её статус в «Подтверждениях».</p>
+          </>
+        )}
+      </div>
+    </AppLayout>
+  );
+}
+
+function SalaryAdmin() {
   const [managers, setManagers]   = useState<Manager[]>([]);
   const [settings, setSettings]   = useState<SalarySetting[]>([]);
   const [deals, setDeals]         = useState<Deal[]>([]);

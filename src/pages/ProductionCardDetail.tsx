@@ -152,8 +152,9 @@ function CreateDealInline({ card, parsed, onCreated }: {
 }
 
 export default function ProductionCardDetail({
-  card, effectiveStage, allStages, onStageChange, open, onClose,
+  card, effectiveStage, allStages, onStageChange, open, onClose, readOnly = false,
 }: {
+  readOnly?: boolean;  // менеджер: только просмотр
   card: CardLike | null;
   effectiveStage: string;
   allStages: string[];
@@ -242,7 +243,7 @@ export default function ProductionCardDetail({
           </dl>
 
           <div className="flex items-center gap-3 mt-3">
-            <Select value={effectiveStage} onValueChange={v => onStageChange(card.id, v)}>
+            <Select value={effectiveStage} onValueChange={v => onStageChange(card.id, v)} disabled={readOnly}>
               <SelectTrigger className="h-8 text-xs w-auto"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {allStages.map(s => <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>)}
@@ -294,9 +295,9 @@ export default function ProductionCardDetail({
                 ) : (
                   <div className="space-y-2">
                     <p className="text-xs text-muted-foreground">
-                      Сделка ещё не подтверждена в «Продажи» (или пока не заведена).
+                      {readOnly ? 'Сделка другого менеджера или ещё не заведена в «Продажи».' : 'Сделка ещё не подтверждена в «Продажи» (или пока не заведена).'}
                     </p>
-                    {parsed.phone && (
+                    {parsed.phone && !readOnly && (
                       <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowCreateDeal(true)}>
                         <Plus size={12} className="mr-1" />Создать сделку
                       </Button>
@@ -313,13 +314,13 @@ export default function ProductionCardDetail({
                     <span>Оплачено: {formatCurrency(deal.paid_amount)}</span>
                     <span>Остаток: {formatCurrency(Math.max(0, deal.total_amount - deal.paid_amount))}</span>
                   </div>
-                  <DealPayments
+                  {!readOnly && <DealPayments
                     scheduleOpen
                     deal={deal}
                     onChanged={() => extractedPhone && getDealByPhone(extractedPhone).then(setDeal)}
                     suggestedAmount={extractPaymentSuggestion(comments)?.amount}
                     suggestedChannel={extractPaymentSuggestion(comments)?.channel}
-                  />
+                  />}
                   <Button
                     variant="ghost" size="sm" className="h-7 text-xs w-full mt-1"
                     onClick={() => navigate(`/sales?manager=${deal.manager_id}&month=${deal.month_year}`)}
@@ -339,7 +340,7 @@ export default function ProductionCardDetail({
           </TabsContent>
 
           <TabsContent value="checklist" className="flex-1 overflow-y-auto px-5 py-4">
-            <ProductionChecklist trelloCardId={card.id} />
+            <ProductionChecklist trelloCardId={card.id} readOnly={readOnly} />
           </TabsContent>
 
           <TabsContent value="comments" className="flex-1 overflow-y-auto px-5 py-4">

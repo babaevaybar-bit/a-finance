@@ -21,6 +21,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { CHANNELS, SPLIT_PAYMENT_METHOD } from '@/types/types';
 import TrelloLookup from '@/components/trello/TrelloLookup';
 import ChangeRequests from '@/components/approvals/ChangeRequests';
+import MyDealStatuses from '@/components/approvals/MyDealStatuses';
 import DealFormDialog from '@/components/sales/DealFormDialog';
 import DealCompleteness from '@/components/sales/DealCompleteness';
 
@@ -142,13 +143,11 @@ export default function ApprovalsPage() {
   }
 
   // Нет права — показываем заглушку вместо пустой страницы
+  // Без права подтверждать — только статусы своих сделок
   if (!canApprove) {
     return (
       <AppLayout>
-        <div className="flex flex-col items-center justify-center min-h-[50vh] gap-3 text-muted-foreground">
-          <ShieldOff size={40} className="opacity-30" />
-          <p className="text-sm">У вас нет доступа к подтверждению сделок</p>
-        </div>
+        <MyDealStatuses />
       </AppLayout>
     );
   }
