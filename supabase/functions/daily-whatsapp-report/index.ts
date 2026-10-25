@@ -229,15 +229,32 @@ Deno.serve(async (req) => {
 
     const { data: coreManagers } = await supabaseAdmin
       .from('managers')
-      .select('name, amocrm_user_id')
+      .select('id, name, amocrm_user_id')
       .not('amocrm_user_id', 'is', null)
       .eq('is_active', true);
+
+    // Офлайн‑лиды из салона (менеджеры вносят их в A-Finance кнопкой «Добавить офлайн‑лида»)
+    const { data: offRows } = await supabaseAdmin.from('offline_leads').select('manager_id, qualified')
+      .gte('created_at', new Date(leadDayStart * 1000).toISOString()).lt('created_at', new Date(leadDayEnd * 1000).toISOString());
+    const offline = offRows ?? [];
+    const offQual = offline.filter((r: any) => r.qualified).length;
+    const offByMgr = new Map<string, { all: number; q: number }>();
+    for (const r of offline as any[]) {
+      const o = offByMgr.get(r.manager_id) ?? { all: 0, q: 0 };
+      o.all += 1; if (r.qualified) o.q += 1;
+      offByMgr.set(r.manager_id, o);
+    }
+    const { data: offMgrs } = offByMgr.size
+      ? await supabaseAdmin.from('managers').select('id, name').in('id', [...offByMgr.keys()])
+      : { data: [] as any[] };
+    const offName = new Map((offMgrs ?? []).map((m: any) => [m.id, m.name]));
 
     const lines: string[] = [];
     lines.push(`*Ежедневный отчёт — ${kzDateLabel(leadDayEnd - 1)}*`);
     lines.push(`_период: с ${kzShortLabel(leadDayStart)} до ${kzShortLabel(leadDayEnd)}_`);
     lines.push('');
     lines.push(`Новых лидов: *${leadsToday.length}* (на сумму ${leadsTodaySum.toLocaleString('ru-RU')} ₸)`);
+    lines.push(`Офлайн‑лидов (салон): *${offline.length}* (квал ${offQual} / не квал ${offline.length - offQual})`);
     lines.push(`Звонков: *${callsIn + callsOut}* (вход ${callsIn} / исход ${callsOut})`);
     lines.push(`Чатов обработано: *${chatsTotal}*`);
     lines.push(`Переходов по этапам: *${transitionsToday}*`);
@@ -246,7 +263,13 @@ Deno.serve(async (req) => {
     lines.push('*По сотрудникам:*');
     for (const m of coreManagers ?? []) {
       const s = byUser[String(m.amocrm_user_id)] ?? { leads: 0, callsIn: 0, callsOut: 0, chats: 0 };
-      lines.push(`${m.name}: лидов ${s.leads}, звонков ${s.callsIn + s.callsOut}, чатов ${s.chats}`);
+      const o = offByMgr.get(m.id);
+      lines.push(`${m.name}: лидов ${s.leads}, офлайн ${o ? `${o.all} (квал ${o.q})` : 0}, звонков ${s.callsIn + s.callsOut}, чатов ${s.chats}`);
+    }
+    // Офлайн‑лиды у сотрудников, которых нет в списке выше (например, без привязки к amoCRM)
+    const coreIds = new Set((coreManagers ?? []).map((m: any) => m.id));
+    for (const [id, o] of offByMgr) {
+      if (!coreIds.has(id)) lines.push(`${offName.get(id) ?? 'Сотрудник'}: офлайн ${o.all} (квал ${o.q})`);
     }
     if (!snapshotDate) {   // воронка — это текущее состояние, для прошлых дней её не восстановить
       lines.push('');
@@ -261,13 +284,18 @@ Deno.serve(async (req) => {
     // Запись в историю отчётов (раздел «Ежедневный отчёт» → «Отчёты по дням»)
     const managerRows = (coreManagers ?? []).map((m: any) => {
       const s = byUser[String(m.amocrm_user_id)] ?? { leads: 0, callsIn: 0, callsOut: 0, chats: 0 };
-      return { name: m.name, amocrm_user_id: String(m.amocrm_user_id), ...s };
+      const o = offByMgr.get(m.id);
+      return { name: m.name, amocrm_user_id: String(m.amocrm_user_id), ...s, offline: o?.all ?? 0, offlineQualified: o?.q ?? 0 };
     });
     const coreSet = new Set(managerRows.map((r: any) => r.amocrm_user_id));
     for (const [uid, s] of Object.entries(byUser)) {
       if (coreSet.has(uid)) continue;
       if (!(s.leads || s.callsIn || s.callsOut || s.chats)) continue;
       managerRows.push({ name: userMap[uid] ?? `Пользователь ${uid}`, amocrm_user_id: uid, ...s });
+    }
+    for (const [id, o] of offByMgr) {
+      if (coreIds.has(id)) continue;
+      managerRows.push({ name: offName.get(id) ?? 'Сотрудник', amocrm_user_id: '', leads: 0, callsIn: 0, callsOut: 0, chats: 0, offline: o.all, offlineQualified: o.q });
     }
     async function saveHistory(sent: boolean | null) {
       const { error } = await supabaseAdmin.from('amo_daily_reports').upsert({
@@ -276,6 +304,8 @@ Deno.serve(async (req) => {
         period_to: new Date(leadDayEnd * 1000).toISOString(),
         leads: leadsToday.length,
         leads_sum: leadsTodaySum,
+        offline_leads: offline.length,
+        offline_qualified: offQual,
         calls_in: callsIn,
         calls_out: callsOut,
         chats: chatsTotal,

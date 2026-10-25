@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CalendarDays, ChevronRight, Download, MessageSquare, Phone, UserPlus, ArrowRightLeft, Trophy, Copy } from 'lucide-react';
+import { Store, CalendarDays, ChevronRight, Download, MessageSquare, Phone, UserPlus, ArrowRightLeft, Trophy, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -15,13 +15,15 @@ export interface AmoDailyReport {
   period_to: string;
   leads: number;
   leads_sum: number;
+  offline_leads?: number | null;
+  offline_qualified?: number | null;
   calls_in: number;
   calls_out: number;
   chats: number;
   transitions: number;
   won_count: number;
   won_sum: number;
-  by_user: { name: string; amocrm_user_id: string; leads: number; callsIn: number; callsOut: number; chats: number }[];
+  by_user: { name: string; amocrm_user_id: string; leads: number; callsIn: number; callsOut: number; chats: number; offline?: number; offlineQualified?: number }[];
   funnel: { stage: string; count: number }[];
   report_text: string | null;
   sent: boolean | null;
@@ -69,21 +71,21 @@ export default function AmoDailyHistory() {
   }, [from, to]);
 
   const totals = useMemo(() => rows.reduce((t, r) => ({
-    leads: t.leads + r.leads, calls: t.calls + r.calls_in + r.calls_out, chats: t.chats + r.chats,
+    leads: t.leads + r.leads, off: t.off + (r.offline_leads ?? 0), offQ: t.offQ + (r.offline_qualified ?? 0), calls: t.calls + r.calls_in + r.calls_out, chats: t.chats + r.chats,
     won: t.won + r.won_count, wonSum: t.wonSum + Number(r.won_sum || 0),
-  }), { leads: 0, calls: 0, chats: 0, won: 0, wonSum: 0 }), [rows]);
+  }), { leads: 0, off: 0, offQ: 0, calls: 0, chats: 0, won: 0, wonSum: 0 }), [rows]);
 
   const chartData = useMemo(() => [...rows].reverse().map(r => ({
-    day: shortDay(r.report_date), Лиды: r.leads, Звонки: r.calls_in + r.calls_out, Чаты: r.chats,
+    day: shortDay(r.report_date), Лиды: r.leads, Салон: r.offline_leads ?? 0, Звонки: r.calls_in + r.calls_out, Чаты: r.chats,
   })), [rows]);
 
   // Итоги по сотрудникам за выбранный период
   const byManager = useMemo(() => {
-    const m = new Map<string, { name: string; leads: number; calls: number; chats: number; days: number }>();
+    const m = new Map<string, { name: string; leads: number; off: number; offQ: number; calls: number; chats: number; days: number }>();
     for (const r of rows) for (const u of r.by_user ?? []) {
       const k = u.amocrm_user_id || u.name;
-      const cur = m.get(k) ?? { name: u.name, leads: 0, calls: 0, chats: 0, days: 0 };
-      cur.leads += u.leads; cur.calls += u.callsIn + u.callsOut; cur.chats += u.chats;
+      const cur = m.get(k) ?? { name: u.name, leads: 0, off: 0, offQ: 0, calls: 0, chats: 0, days: 0 };
+      cur.leads += u.leads; cur.off += u.offline ?? 0; cur.offQ += u.offlineQualified ?? 0; cur.calls += u.callsIn + u.callsOut; cur.chats += u.chats;
       if (u.leads || u.callsIn || u.callsOut || u.chats) cur.days += 1;
       m.set(k, cur);
     }
@@ -94,12 +96,13 @@ export default function AmoDailyHistory() {
     const XLSX = await import('xlsx');
     const data = [...rows].reverse().map(r => {
       const row: Record<string, string | number> = {
-        'Дата': r.report_date, 'Период': periodLabel(r), 'Новых лидов': r.leads, 'Сумма лидов': Number(r.leads_sum),
+        'Дата': r.report_date, 'Период': periodLabel(r), 'Новых лидов': r.leads, 'Сумма лидов': Number(r.leads_sum), 'Офлайн‑лидов': r.offline_leads ?? 0, 'Офлайн квал': r.offline_qualified ?? 0,
         'Звонков вход': r.calls_in, 'Звонков исход': r.calls_out, 'Чатов': r.chats, 'Переходов': r.transitions,
         'Успешно': r.won_count, 'Сумма успешных': Number(r.won_sum),
       };
       for (const u of r.by_user ?? []) {
         row[`${u.name}: лиды`] = u.leads;
+        row[`${u.name}: офлайн`] = u.offline ?? 0;
         row[`${u.name}: звонки`] = u.callsIn + u.callsOut;
         row[`${u.name}: чаты`] = u.chats;
       }
@@ -136,9 +139,10 @@ export default function AmoDailyHistory() {
         Каждый вечер в 20:00 отчёт из WhatsApp автоматически записывается сюда. День считается с 20:00 до 20:00.
       </p>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         {[
           { icon: UserPlus, label: 'Новых лидов', v: totals.leads },
+          { icon: Store, label: 'Офлайн (салон)', v: totals.off ? `${totals.off} · квал ${totals.offQ}` : 0 },
           { icon: Phone, label: 'Звонков', v: totals.calls },
           { icon: MessageSquare, label: 'Чатов', v: totals.chats },
           { icon: Trophy, label: 'Успешно', v: totals.won },
@@ -163,6 +167,7 @@ export default function AmoDailyHistory() {
                 <Tooltip />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="Лиды" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="Салон" fill="#d97706" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="Звонки" fill="#f59e0b" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="Чаты" fill="#10b981" radius={[3, 3, 0, 0]} />
               </BarChart>
@@ -189,8 +194,9 @@ export default function AmoDailyHistory() {
                       {r.source === 'backfill' ? 'восстановлен из amoCRM' : r.sent ? 'отправлен в WhatsApp' : r.sent === false ? 'не отправлен в WhatsApp' : ''}
                     </div>
                   </div>
-                  <div className="flex-1 grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-1 text-sm">
+                  <div className="flex-1 grid grid-cols-2 sm:grid-cols-6 gap-x-4 gap-y-1 text-sm">
                     <span><span className="text-muted-foreground">Лиды</span> <b>{r.leads}</b></span>
+                    <span><span className="text-muted-foreground">Салон</span> <b>{r.offline_leads ?? '—'}</b></span>
                     <span><span className="text-muted-foreground">Звонки</span> <b>{r.calls_in + r.calls_out}</b></span>
                     <span><span className="text-muted-foreground">Чаты</span> <b>{r.chats}</b></span>
                     <span><span className="text-muted-foreground">Переходы</span> <b>{r.transitions}</b></span>
@@ -213,6 +219,7 @@ export default function AmoDailyHistory() {
                 <tr>
                   <th className="text-left font-medium px-4 py-2">Сотрудник</th>
                   <th className="text-right font-medium px-4 py-2">Лиды</th>
+                  <th className="text-right font-medium px-4 py-2">Салон (квал)</th>
                   <th className="text-right font-medium px-4 py-2">Звонки</th>
                   <th className="text-right font-medium px-4 py-2">Чаты</th>
                   <th className="text-right font-medium px-4 py-2">Активных дней</th>
@@ -223,6 +230,7 @@ export default function AmoDailyHistory() {
                   <tr key={m.name} className="border-t border-border">
                     <td className="px-4 py-2">{m.name}</td>
                     <td className="px-4 py-2 text-right">{m.leads}</td>
+                    <td className="px-4 py-2 text-right">{m.off}{m.off ? <span className="text-muted-foreground"> ({m.offQ})</span> : null}</td>
                     <td className="px-4 py-2 text-right">{m.calls}</td>
                     <td className="px-4 py-2 text-right">{m.chats}</td>
                     <td className="px-4 py-2 text-right text-muted-foreground">{m.days}</td>
@@ -244,22 +252,24 @@ export default function AmoDailyHistory() {
               </DialogHeader>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="rounded-md border p-2"><div className="text-xs text-muted-foreground flex items-center gap-1"><UserPlus size={12} />Новых лидов</div><b>{open.leads}</b> <span className="text-xs text-muted-foreground">на {money(open.leads_sum)}</span></div>
+                <div className="rounded-md border p-2"><div className="text-xs text-muted-foreground flex items-center gap-1"><Store size={12} />Офлайн‑лидов (салон)</div><b>{open.offline_leads ?? '—'}</b> {open.offline_leads ? <span className="text-xs text-muted-foreground">квал {open.offline_qualified ?? 0} / не квал {open.offline_leads - (open.offline_qualified ?? 0)}</span> : null}</div>
                 <div className="rounded-md border p-2"><div className="text-xs text-muted-foreground flex items-center gap-1"><Phone size={12} />Звонков</div><b>{open.calls_in + open.calls_out}</b> <span className="text-xs text-muted-foreground">вход {open.calls_in} / исход {open.calls_out}</span></div>
                 <div className="rounded-md border p-2"><div className="text-xs text-muted-foreground flex items-center gap-1"><MessageSquare size={12} />Чатов</div><b>{open.chats}</b></div>
                 <div className="rounded-md border p-2"><div className="text-xs text-muted-foreground flex items-center gap-1"><ArrowRightLeft size={12} />Переходов по этапам</div><b>{open.transitions}</b></div>
-                <div className="rounded-md border p-2 col-span-2"><div className="text-xs text-muted-foreground flex items-center gap-1"><Trophy size={12} />Успешно реализовано</div><b>{open.won_count}</b> <span className="text-xs text-muted-foreground">на {money(open.won_sum)}</span></div>
+                <div className="rounded-md border p-2"><div className="text-xs text-muted-foreground flex items-center gap-1"><Trophy size={12} />Успешно реализовано</div><b>{open.won_count}</b> <span className="text-xs text-muted-foreground">на {money(open.won_sum)}</span></div>
               </div>
               <div>
                 <p className="text-sm font-medium mb-1.5">По сотрудникам</p>
                 <table className="w-full text-sm">
                   <thead className="text-muted-foreground text-xs">
-                    <tr><th className="text-left font-medium py-1">Сотрудник</th><th className="text-right font-medium">Лиды</th><th className="text-right font-medium">Звонки</th><th className="text-right font-medium">Чаты</th></tr>
+                    <tr><th className="text-left font-medium py-1">Сотрудник</th><th className="text-right font-medium">Лиды</th><th className="text-right font-medium">Салон</th><th className="text-right font-medium">Звонки</th><th className="text-right font-medium">Чаты</th></tr>
                   </thead>
                   <tbody>
                     {(open.by_user ?? []).map(u => (
                       <tr key={u.amocrm_user_id || u.name} className="border-t border-border">
                         <td className="py-1.5">{u.name}</td>
                         <td className="text-right">{u.leads}</td>
+                        <td className="text-right">{u.offline ?? 0}</td>
                         <td className="text-right">{u.callsIn + u.callsOut}</td>
                         <td className="text-right">{u.chats}</td>
                       </tr>

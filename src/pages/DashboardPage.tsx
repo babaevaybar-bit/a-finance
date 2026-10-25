@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import MonthYearPicker from '@/components/common/MonthYearPicker';
 import DealFormDialog from '@/components/sales/DealFormDialog';
+import OfflineLeadsCard from '@/components/leads/OfflineLeads';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -179,6 +180,8 @@ export default function DashboardPage() {
             <MonthYearPicker value={currentMonth} onChange={setCurrentMonth} />
           </div>
         </div>
+
+        <OfflineLeadsCard />
 
         {/* KPI cards */}
         {loading ? (

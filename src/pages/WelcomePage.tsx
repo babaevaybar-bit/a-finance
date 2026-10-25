@@ -6,6 +6,7 @@ import { supabase } from '@/db/supabase';
 import { countPendingDeals, countUnreadNotifications, getDeals } from '@/lib/api';
 import { formatCurrency, getCurrentMonthYear } from '@/lib/utils';
 import { waitingForWarehouse } from '@/lib/payments';
+import OfflineLeadsCard from '@/components/leads/OfflineLeads';
 import { Sunrise, Sun, Sunset, Moon, ArrowRight, ArrowUpRight, TrendingUp, CheckSquare, HandCoins, Bell, ClipboardList, Sparkles } from 'lucide-react';
 import '@fontsource/petit-formal-script/latin-400.css';
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
@@ -241,6 +242,8 @@ export default function WelcomePage() {
             </div>
           </div>
         </section>
+
+        <OfflineLeadsCard />
 
         {/* ── Коротко на сегодня ── */}
         <section className="grid gap-3 grid-cols-2 lg:grid-cols-4">
