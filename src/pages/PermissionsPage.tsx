@@ -8,7 +8,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { ShieldCheck, Eye, EyeOff, UserCog, Trash2 } from 'lucide-react';
+import { ShieldCheck, Eye, EyeOff, UserCog, Trash2, RotateCcw } from 'lucide-react';
 import { supabase } from '@/db/supabase';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -17,8 +17,7 @@ import {
 import { getManagers, getAllPermissions, upsertPermission, getAllProfiles, updateProfile } from '@/lib/api';
 import type { Manager, EmployeePermission, Profile } from '@/types/types';
 import { PERMISSION_PAGES } from '@/types/types';
-import { useAuth, MANAGER_POLICY, IN_DEVELOPMENT } from '@/contexts/AuthContext';
-import { navItems } from '@/components/layouts/AppLayout';
+import { useAuth, MANAGER_POLICY, MANAGER_LOCKED, IN_DEVELOPMENT } from '@/contexts/AuthContext';
 
 const ROLE_LABELS: Record<Profile['role'], string> = {
   director: 'Главный админ',
@@ -150,8 +149,18 @@ function RolesSection() {
 // ─── Типы ─────────────────────────────────────────────────────────────────────
 type PermMap = Record<string, Record<string, { can_view: boolean; can_edit: boolean; can_approve: boolean }>>;
 
-function getPerm(map: PermMap, managerId: string, page: string) {
-  return map[managerId]?.[page] ?? { can_view: true, can_edit: true, can_approve: false };
+const isSalesRole = (r?: Profile['role']) => r === 'manager' || r === 'lidorub';
+
+/** Права сотрудника на раздел: заданные вручную, иначе — по умолчанию (для менеджера — права его роли) */
+function getPerm(map: PermMap, managerId: string, page: string, role?: Profile['role']) {
+  const row = map[managerId]?.[page];
+  if (isSalesRole(role)) {
+    if (MANAGER_LOCKED.has(page)) return { can_view: false, can_edit: false, can_approve: false };
+    if (row) return row;
+    const a = MANAGER_POLICY[page] ?? 'none';
+    return { can_view: a !== 'none', can_edit: a === 'edit', can_approve: false };
+  }
+  return row ?? { can_view: true, can_edit: true, can_approve: false };
 }
 
 export default function PermissionsPage() {
@@ -188,7 +197,7 @@ export default function PermissionsPage() {
   ) {
     const key = `${managerId}:${page}:${field}`;
     setSaving(s => ({ ...s, [key]: true }));
-    const current = getPerm(permMap, managerId, page);
+    const current = getPerm(permMap, managerId, page, roleByManager[managerId]);
     const next = { ...current, [field]: value };
     // Логика зависимостей
     if (field === 'can_view' && !value) { next.can_edit = false; next.can_approve = false; }
@@ -209,6 +218,14 @@ export default function PermissionsPage() {
     } finally {
       setSaving(s => { const n = { ...s }; delete n[key]; return n; });
     }
+  }
+
+  // Убрать ручные изменения менеджера — снова действуют права роли
+  async function resetToRole(managerId: string) {
+    const { error } = await supabase.from('employee_permissions').delete().eq('manager_id', managerId);
+    if (error) { toast.error('Не удалось сбросить'); return; }
+    setPermMap(prev => { const n = { ...prev }; delete n[managerId]; return n; });
+    toast.success('Вернули права роли');
   }
 
   // Дать/забрать доступ ко ВСЕМ разделам для одного сотрудника
@@ -250,7 +267,7 @@ export default function PermissionsPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Настройте видимость разделов и права на редактирование для каждого сотрудника.
-            По умолчанию все разделы открыты.
+            У менеджеров по умолчанию — права их роли; переключатели поднимают или убирают доступ конкретному человеку.
           </p>
         </div>
 
@@ -267,44 +284,20 @@ export default function PermissionsPage() {
             {managers.map(m => {
               const managerPerms = permMap[m.id] ?? {};
               const hasRestrictions = PERMISSION_PAGES.some(({ key }) => {
-                const p = getPerm(permMap, m.id, key);
+                const p = getPerm(permMap, m.id, key, roleByManager[m.id]);
                 return !p.can_view || !p.can_edit;
               });
               const allGranted = PERMISSION_PAGES.every(({ key }) => {
-                const p = getPerm(permMap, m.id, key);
+                const p = getPerm(permMap, m.id, key, roleByManager[m.id]);
                 return p.can_view && p.can_edit;
               });
               const isBatching = PERMISSION_PAGES.some(({ key }) =>
                 saving[`${m.id}:${key}:batch`]
               );
 
-              // Менеджер и лидоруб: доступ задан ролью — показываем его, галочки не нужны
               const role = roleByManager[m.id];
-              if (role === 'manager' || role === 'lidorub') return (
-                <Card key={m.id} className="border border-border">
-                  <CardHeader className="pb-2 pt-4 px-4">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <CardTitle className="text-sm font-medium truncate">{m.name}</CardTitle>
-                      <Badge variant="secondary" className="text-xs shrink-0">{m.role || '—'}</Badge>
-                      <Badge variant="outline" className="text-xs shrink-0">доступ по роли «{ROLE_LABELS[role]}»</Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="px-4 pb-4">
-                    <div className="flex flex-wrap gap-1.5">
-                      {navItems.filter(i => i.group !== 'hidden').map(i => {
-                        const a = MANAGER_POLICY[i.pageKey] ?? 'none';
-                        const cls = a === 'edit' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : a === 'view' ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-muted text-muted-foreground line-through';
-                        return (
-                          <span key={i.pageKey} className={`text-xs px-2 py-1 rounded-md border ${cls}`}>
-                            {i.label}{a === 'view' ? ' · просмотр' : ''}{a !== 'none' && IN_DEVELOPMENT.has(i.pageKey) ? ' · в разработке' : ''}
-                          </span>
-                        );
-                      })}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">Зелёным — полный доступ, синим — только просмотр, зачёркнуто — скрыто. Одинаково для всех менеджеров по продажам.</p>
-                  </CardContent>
-                </Card>
-              );
+              const sales = isSalesRole(role);
+              const hasOverrides = sales && Object.keys(managerPerms).length > 0;
 
               return (
                 <Card key={m.id} className="border border-border">
@@ -313,13 +306,20 @@ export default function PermissionsPage() {
                       <div className="flex items-center gap-2 flex-wrap min-w-0">
                         <CardTitle className="text-sm font-medium truncate">{m.name}</CardTitle>
                         <Badge variant="secondary" className="text-xs shrink-0">{m.role || '—'}</Badge>
-                        {hasRestrictions && (
+                        {sales && <Badge variant="outline" className="text-xs shrink-0">права роли «{ROLE_LABELS[role!]}»{hasOverrides ? ' + изменения' : ''}</Badge>}
+                        {!sales && hasRestrictions && (
                           <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 shrink-0">
                             Есть ограничения
                           </Badge>
                         )}
                       </div>
                       <div className="flex gap-2 shrink-0">
+                        {sales ? (
+                          <Button variant="outline" size="sm" className="text-xs gap-1 h-7" disabled={!isDirector || isBatching || !hasOverrides}
+                            onClick={() => resetToRole(m.id)}>
+                            <RotateCcw size={12} />Вернуть права роли
+                          </Button>
+                        ) : (<>
                         <Button
                           variant="outline"
                           size="sm"
@@ -340,6 +340,7 @@ export default function PermissionsPage() {
                           <EyeOff size={12} />
                           Закрыть всё
                         </Button>
+                        </>)}
                       </div>
                     </div>
                   </CardHeader>
@@ -356,7 +357,12 @@ export default function PermissionsPage() {
                         </thead>
                         <tbody>
                           {PERMISSION_PAGES.map(({ key, label }) => {
-                            const perm = getPerm(permMap, m.id, key);
+                            const perm = getPerm(permMap, m.id, key, role);
+                            const locked = sales && MANAGER_LOCKED.has(key);
+                            const changed = sales && !locked && !!managerPerms[key] && (() => {
+                              const a = MANAGER_POLICY[key] ?? 'none';
+                              return managerPerms[key].can_view !== (a !== 'none') || managerPerms[key].can_edit !== (a === 'edit') || managerPerms[key].can_approve;
+                            })();
                             const savingView    = saving[`${m.id}:${key}:can_view`]    || saving[`${m.id}:${key}:batch`];
                             const savingEdit    = saving[`${m.id}:${key}:can_edit`]    || saving[`${m.id}:${key}:batch`];
                             const savingApprove = saving[`${m.id}:${key}:can_approve`] || saving[`${m.id}:${key}:batch`];
@@ -364,18 +370,23 @@ export default function PermissionsPage() {
                             const showApprove = key === 'approvals';
                             return (
                               <tr key={key} className="border-b border-border last:border-0">
-                                <td className="py-3 pr-6 whitespace-nowrap">{label}</td>
+                                <td className="py-3 pr-6 whitespace-nowrap">
+                                  {label}
+                                  {locked && <span className="block text-[11px] text-muted-foreground">только для РОП и директоров</span>}
+                                  {changed && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 align-middle">изменено</span>}
+                                  {sales && !locked && IN_DEVELOPMENT.has(key) && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground align-middle">в разработке</span>}
+                                </td>
                                 <td className="py-3 px-4 text-center">
                                   <Switch
                                     checked={perm.can_view}
-                                    disabled={!isDirector || !!savingView}
+                                    disabled={!isDirector || locked || !!savingView}
                                     onCheckedChange={v => toggle(m.id, key, 'can_view', v)}
                                   />
                                 </td>
                                 <td className="py-3 px-4 text-center">
                                   <Switch
                                     checked={perm.can_edit}
-                                    disabled={!isDirector || !perm.can_view || !!savingEdit}
+                                    disabled={!isDirector || locked || !perm.can_view || !!savingEdit}
                                     onCheckedChange={v => toggle(m.id, key, 'can_edit', v)}
                                   />
                                 </td>

@@ -33,6 +33,11 @@ interface AuthContextType {
 /** Разделы «в разработке»: менеджеры видят заглушку, руководители работают как обычно */
 export const IN_DEVELOPMENT = new Set(['estimate', 'training']);
 
+/** Разделы, которые менеджеру не открыть даже вручную: там данные всей компании и управление людьми.
+ *  Нужен такой доступ — смените роль на РОП или Директор. */
+export const MANAGER_LOCKED = new Set(['managers', 'permissions', 'activity', 'profit']);
+
+/** Права менеджера по продажам по умолчанию; в «Доступе» их можно поднять или убрать для конкретного сотрудника */
 export const MANAGER_POLICY: Record<string, 'edit' | 'view' | 'none'> = {
   dashboard: 'edit',
   sales: 'edit',
@@ -260,7 +265,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function canView(page: string): boolean {
     if (isDirector || isDirectorView) return true;
-    if (salesPolicy) return (MANAGER_POLICY[page] ?? 'none') !== 'none';
+    if (salesPolicy) {
+      if (MANAGER_LOCKED.has(page)) return false;
+      const perm = permissions.find(p => p.page === page);   // поднятые вручную в «Доступе»
+      return perm ? perm.can_view : (MANAGER_POLICY[page] ?? 'none') !== 'none';
+    }
     if (isRop && ROP_PAGES.has(page)) return true;
     const perm = permissions.find(p => p.page === page);
     if (perm) return perm.can_view;
@@ -269,7 +278,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function canEdit(page: string): boolean {
     if (isDirector) return true;
-    if (salesPolicy) return MANAGER_POLICY[page] === 'edit';
+    if (salesPolicy) {
+      if (MANAGER_LOCKED.has(page)) return false;
+      const perm = permissions.find(p => p.page === page);
+      return perm ? perm.can_edit : MANAGER_POLICY[page] === 'edit';
+    }
     if (isDirectorView) return !DIRECTOR_ONLY_EDIT_PAGES.has(page);
     if (isRop && ROP_PAGES.has(page)) return true;
     const perm = permissions.find(p => p.page === page);
