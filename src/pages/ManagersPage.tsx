@@ -216,16 +216,14 @@ function EmployeeProfileDialog({ manager, setting, profile, onClose }: {
   );
 }
 
+/** Пароль, который легко набрать на телефоне: маленькие латинские слоги + 4 цифры, например «tomakiru4827» */
 function generateStrongPassword(): string {
-  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const lower = 'abcdefghijkmnpqrstuvwxyz';
-  const digits = '23456789';
-  const special = '!@#$%';
-  const all = upper + lower + digits + special;
-  const pick = (s: string) => s[Math.floor(Math.random() * s.length)];
-  let pwd = pick(upper) + pick(lower) + pick(digits) + pick(special);
-  for (let i = 0; i < 8; i++) pwd += pick(all);
-  return pwd.split('').sort(() => Math.random() - 0.5).join('');
+  const cons = 'bdfgkmnprstvz', vow = 'aeiou';
+  const rnd = (n: number) => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; };
+  let pwd = '';
+  for (let i = 0; i < 4; i++) pwd += cons[rnd(cons.length)] + vow[rnd(vow.length)];
+  for (let i = 0; i < 4; i++) pwd += String(2 + rnd(8));
+  return pwd;
 }
 
 export default function ManagersPage() {
@@ -238,6 +236,9 @@ export default function ManagersPage() {
   const [accountStatus, setAccountStatus] = useState<{ email: string; confirmed: boolean } | null | 'loading'>(null);
   const [replaceAccount, setReplaceAccount] = useState(false);
   const [accountBusy, setAccountBusy] = useState(false);
+  const [resetPw, setResetPw] = useState('');
+  // Данные для входа нового сотрудника — показываем окно, чтобы сразу отправить ему
+  const [creds, setCreds] = useState<{ name: string; login: string; password: string } | null>(null);
   const [loading, setLoading]       = useState(true);
   const [newName, setNewName]       = useState('');
   const [newRole, setNewRole]       = useState<string>('Менеджер по продажам');
@@ -296,6 +297,20 @@ export default function ManagersPage() {
     else { toast.success('Почта подтверждена — сотрудник может входить'); setAccountStatus({ ...accountStatus, confirmed: true }); }
   }
 
+  async function applyNewPassword() {
+    if (!editManager?.user_id) return;
+    const weak = weakPasswordReason(resetPw);
+    if (weak) { toast.error(`${weak} — или нажмите «Сгенерировать»`); return; }
+    setAccountBusy(true);
+    const r = await callEmployeeFn({ action: 'set_password', userId: editManager.user_id, password: resetPw });
+    setAccountBusy(false);
+    if (r.error) { toast.error(r.error); return; }
+    const login = profiles.find(p => p.id === editManager.user_id)?.name ?? '';
+    setCreds({ name: editManager.name, login, password: resetPw });
+    setResetPw('');
+    if (accountStatus && accountStatus !== 'loading') setAccountStatus({ ...accountStatus, confirmed: true });
+  }
+
   async function createAuthUser(username: string, password: string, managerId: string, role: string, recoveryEmail: string): Promise<string | null> {
     const r = await callEmployeeFn({ username: username.trim().toLowerCase(), password, managerId, role, recoveryEmail: recoveryEmail.trim().toLowerCase() });
     if (r.error) {
@@ -344,12 +359,9 @@ export default function ManagersPage() {
         // Привязываем user_id к записи менеджера
         await updateManager(managerId, name, role, userId);
       }
+      if (userId) setCreds({ name, login: newUsername.trim().toLowerCase(), password: newPassword });
       setNewName(''); setNewRole('Менеджер по продажам'); setNewRoleCustom(''); setNewUsername(''); setNewPassword('');
-      toast.success(
-        userId
-          ? `Сотрудник «${name}» добавлен — на его почту отправлено письмо для подтверждения аккаунта`
-          : `Сотрудник «${name}» добавлен`
-      );
+      toast.success(`Сотрудник «${name}» добавлен`);
       await load();
     } catch { toast.error('Не удалось добавить'); }
     finally { setSaving(false); }
@@ -390,7 +402,7 @@ export default function ManagersPage() {
     if (creatingAccount && anyAccountField) {
       if (!editUsername.trim()) { toast.error('Для аккаунта заполните «Логин»'); return; }
       { const weak = weakPasswordReason(editPassword); if (weak) { toast.error(`${weak} — или нажмите «Сгенерировать»`); return; } }
-      if (!/^\S+@\S+\.\S+$/.test(editRecoveryEmail.trim())) { toast.error('Укажите настоящую почту сотрудника — на неё придёт письмо подтверждения'); return; }
+      if (!/^\S+@\S+\.\S+$/.test(editRecoveryEmail.trim())) { toast.error('Укажите настоящую почту сотрудника — для восстановления пароля'); return; }
     }
 
     setEditSaving(true);
@@ -405,9 +417,8 @@ export default function ManagersPage() {
         if (prof && prof.role !== editAuthRole) await updateProfile(prof.id, { role: editAuthRole });
       }
       await updateManager(editManager.id, name, role, userId);
-      toast.success(creatingAccount && anyAccountField
-        ? `Аккаунт создан. На ${editRecoveryEmail.trim()} отправлено письмо — сотрудник должен нажать ссылку в нём, потом сможет входить`
-        : 'Данные обновлены');
+      if (creatingAccount && anyAccountField) setCreds({ name, login: editUsername.trim().toLowerCase(), password: editPassword });
+      toast.success(creatingAccount && anyAccountField ? 'Аккаунт создан — сотрудник может сразу входить' : 'Данные обновлены');
       setEditManager(null);
       await load();
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Не удалось обновить'); }
@@ -488,7 +499,7 @@ export default function ManagersPage() {
                 <div className="space-y-1 md:col-span-2">
                   <Label className="text-xs">Email для восстановления пароля</Label>
                   <Input type="email" placeholder="ivan@example.com" value={newRecoveryEmail} onChange={e => setNewRecoveryEmail(e.target.value)} autoComplete="email" />
-                  <p className="text-xs text-muted-foreground">Настоящая почта сотрудника — на неё придёт письмо, если он забудет пароль.</p>
+                  <p className="text-xs text-muted-foreground">Настоящая почта сотрудника — для восстановления пароля. Подтверждать её не нужно: войти можно сразу.</p>
                 </div>
                 <div className="space-y-1 md:col-span-2">
                   <Label className="text-xs">Роль в системе</Label>
@@ -647,8 +658,7 @@ export default function ManagersPage() {
                     ) : (
                       <div className="rounded-md bg-amber-50 border border-amber-200 p-2.5 space-y-2">
                         <p className="text-xs text-amber-800">
-                          Почта ещё не подтверждена — сотрудник не сможет войти, пока не нажмёт ссылку в письме.
-                          Если письма нет (проверьте «Спам»), отправьте ещё раз или подтвердите вручную.
+                          Почта не подтверждена — из‑за этого сотрудник не может войти. Нажмите «Подтвердить вручную», письмо ждать не нужно.
                         </p>
                         <div className="flex flex-wrap gap-2">
                           <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled={accountBusy}
@@ -659,6 +669,16 @@ export default function ManagersPage() {
                       </div>
                     )}
                   </>
+                )}
+                {accountStatus && accountStatus !== 'loading' && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Новый пароль — если сотрудник не может войти</Label>
+                    <div className="flex gap-2">
+                      <Input placeholder="Мин. 8 символов, буквы и цифры" value={resetPw} onChange={e => setResetPw(e.target.value)} autoComplete="new-password" className="h-9" />
+                      <Button type="button" variant="outline" size="sm" className="h-9 shrink-0" onClick={() => setResetPw(generateStrongPassword())}>Сгенерировать</Button>
+                      <Button type="button" size="sm" className="h-9 shrink-0" disabled={accountBusy || !resetPw} onClick={applyNewPassword}>Сохранить</Button>
+                    </div>
+                  </div>
                 )}
                 <div className="space-y-1">
                   <Label className="text-xs">Роль в системе</Label>
@@ -698,7 +718,7 @@ export default function ManagersPage() {
                 <div className="space-y-1 md:col-span-2">
                   <Label className="text-xs">Email для восстановления пароля</Label>
                   <Input type="email" placeholder="ivan@example.com" value={editRecoveryEmail} onChange={e => setEditRecoveryEmail(e.target.value)} autoComplete="email" />
-                  <p className="text-xs text-muted-foreground">Настоящая почта сотрудника — на неё придёт письмо, если он забудет пароль.</p>
+                  <p className="text-xs text-muted-foreground">Настоящая почта сотрудника — для восстановления пароля. Подтверждать её не нужно: войти можно сразу.</p>
                 </div>
                 <div className="space-y-1 md:col-span-2">
                   <Label className="text-xs">Роль в системе</Label>
@@ -732,6 +752,26 @@ export default function ManagersPage() {
         profile={profileTarget ? profiles.find(p => p.id === profileTarget.user_id) : undefined}
         onClose={() => setProfileTarget(null)}
       />
+      {/* Данные для входа — сразу отправить сотруднику */}
+      <Dialog open={!!creds} onOpenChange={v => { if (!v) setCreds(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Данные для входа — {creds?.name}</DialogTitle></DialogHeader>
+          {creds && (() => {
+            const text = `A-Finance: https://a-finance-five.vercel.app\nЛогин: ${creds.login}\nПароль: ${creds.password}`;
+            return (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">Аккаунт готов — письмо подтверждать не нужно. Отправьте сотруднику:</p>
+                <pre className="rounded-lg bg-muted p-3 text-sm whitespace-pre-wrap break-all font-mono select-all">{text}</pre>
+                <p className="text-xs text-muted-foreground">Пароль больше нигде не показывается. Если сотрудник его потеряет — задайте новый в карточке сотрудника.</p>
+                <div className="flex gap-2">
+                  <Button className="flex-1" onClick={() => { navigator.clipboard.writeText(text).then(() => toast.success('Скопировано')).catch(() => toast.error('Не удалось скопировать — выделите текст вручную')); }}>Скопировать</Button>
+                  <Button variant="outline" asChild><a href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener noreferrer">WhatsApp</a></Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

@@ -188,12 +188,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Логин, не email — ищем настоящий auth-email этого пользователя по имени профиля.
         // Так реальная почта сотрудника (для восстановления пароля) остаётся в Supabase Auth,
         // а входить он может коротким логином.
-        const { data: found } = await supabase
-          .from('profiles')
-          .select('email')
-          .eq('name', trimmed)
-          .maybeSingle();
-        email = found?.email || `${trimmed}@aybar.app`; // старые аккаунты без настоящей почты
+        const { data: found } = await supabase.rpc('login_email', { p_login: trimmed });
+        email = (found as string | null) || `${trimmed}@aybar.app`; // старые аккаунты без настоящей почты
       }
 
       // Логируем используемый email и ошибки для диагностики (НЕ логируем пароль)
@@ -214,7 +210,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // eslint-disable-next-line no-console
       if (error) console.debug('Auth: signIn response error', { message: error.message, status: (error as any)?.status });
 
-      if (error) return { error: error.message ?? 'Неверный логин или пароль' };
+      if (error) {
+        const m = (error.message ?? '').toLowerCase();
+        if (m.includes('invalid login') || m.includes('invalid credentials')) return { error: 'Неверный логин или пароль. Проверьте раскладку (пароль — латиницей) и большие буквы; если не получается — попросите руководителя задать новый пароль' };
+        if (m.includes('not confirmed')) return { error: 'Аккаунт ещё не активирован — попросите руководителя нажать «Подтвердить вручную» в карточке сотрудника' };
+        if (m.includes('rate limit') || m.includes('too many')) return { error: 'Слишком много попыток — подождите минуту' };
+        return { error: error.message || 'Неверный логин или пароль' };
+      }
       // После успешного входа подгружаем профиль и права заново
       try {
         await refreshProfile();
