@@ -17,7 +17,7 @@ import {
 import { getManagers, getAllPermissions, upsertPermission, getAllProfiles, updateProfile } from '@/lib/api';
 import type { Manager, EmployeePermission, Profile } from '@/types/types';
 import { PERMISSION_PAGES } from '@/types/types';
-import { useAuth, MANAGER_POLICY, MANAGER_LOCKED, IN_DEVELOPMENT } from '@/contexts/AuthContext';
+import { useAuth, MANAGER_POLICY, MANAGER_LOCKED, IN_DEVELOPMENT, ALL_DATA_KEY } from '@/contexts/AuthContext';
 
 const ROLE_LABELS: Record<Profile['role'], string> = {
   director: 'Главный админ',
@@ -356,6 +356,24 @@ export default function PermissionsPage() {
                           </tr>
                         </thead>
                         <tbody>
+                          {sales && (() => {
+                            const on = !!managerPerms[ALL_DATA_KEY]?.can_view;
+                            const busy = saving[`${m.id}:${ALL_DATA_KEY}:can_view`];
+                            return (
+                              <tr className="border-b border-border bg-muted/30">
+                                <td className="py-3 pr-6">
+                                  <span className="font-medium">Данные всех менеджеров</span>
+                                  <span className="block text-[11px] text-muted-foreground">выкл — только свои клиенты и сделки; вкл — как у РОП: сделки, отчёты, должники всех</span>
+                                </td>
+                                <td className="py-3 px-4 text-center">
+                                  <Switch checked={on} disabled={!isDirector || !!busy}
+                                    onCheckedChange={v => toggle(m.id, ALL_DATA_KEY, 'can_view', v)} />
+                                </td>
+                                <td className="py-3 px-4 text-center"><span className="text-muted-foreground/30 text-xs">—</span></td>
+                                <td className="py-3 px-4 text-center"><span className="text-muted-foreground/30 text-xs">—</span></td>
+                              </tr>
+                            );
+                          })()}
                           {PERMISSION_PAGES.map(({ key, label }) => {
                             const perm = getPerm(permMap, m.id, key, role);
                             const locked = sales && MANAGER_LOCKED.has(key);
@@ -372,7 +390,8 @@ export default function PermissionsPage() {
                               <tr key={key} className="border-b border-border last:border-0">
                                 <td className="py-3 pr-6 whitespace-nowrap">
                                   {label}
-                                  {locked && <span className="block text-[11px] text-muted-foreground">только для РОП и директоров</span>}
+                                  {locked && <span className="block text-[11px] text-muted-foreground">только Главный админ</span>}
+                                  {sales && !locked && key === 'profit' && perm.can_view && !managerPerms[ALL_DATA_KEY]?.can_view && <span className="block text-[11px] text-amber-700">включите «Данные всех менеджеров», иначе раздел будет пустым</span>}
                                   {changed && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 align-middle">изменено</span>}
                                   {sales && !locked && IN_DEVELOPMENT.has(key) && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground align-middle">в разработке</span>}
                                 </td>

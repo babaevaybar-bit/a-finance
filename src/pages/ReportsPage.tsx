@@ -21,9 +21,9 @@ import {
 } from '@/components/ui/alert-dialog';
 
 export default function ReportsPage() {
-  const { isDirector, isManager, isLidorub, profile } = useAuth();
-  // Менеджер видит отчёт только по своим сделкам (просмотр), без финансов компании
-  const own = isManager || isLidorub;
+  const { isDirector, isManager, isLidorub, profile, canViewAllManagers } = useAuth();
+  // Менеджер видит отчёт только по своим сделкам, если ему не открыты «Данные всех менеджеров»
+  const own = (isManager || isLidorub) && !canViewAllManagers;
   const [searchParams, setSearchParams] = useSearchParams();
   // Открытие по ссылке с дашборда (?month=YYYY-MM) — сразу нужный месяц
   const [monthYear, setMonthYear] = useState(searchParams.get('month') || getCurrentMonthYear());

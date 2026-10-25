@@ -35,7 +35,9 @@ export const IN_DEVELOPMENT = new Set(['estimate', 'training']);
 
 /** Разделы, которые менеджеру не открыть даже вручную: там данные всей компании и управление людьми.
  *  Нужен такой доступ — смените роль на РОП или Директор. */
-export const MANAGER_LOCKED = new Set(['managers', 'permissions', 'activity', 'profit']);
+export const MANAGER_LOCKED = new Set(['managers', 'permissions']);
+/** Особый ключ в employee_permissions: сотрудник видит сделки и данные всех менеджеров */
+export const ALL_DATA_KEY = 'all_data';
 
 /** Права менеджера по продажам по умолчанию; в «Доступе» их можно поднять или убрать для конкретного сотрудника */
 export const MANAGER_POLICY: Record<string, 'edit' | 'view' | 'none'> = {
@@ -81,7 +83,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin    = isDirector || isDirectorView; // обратная совместимость со старым кодом + доступ ко всем adminOnly-разделам
 
   // Директор и РОП видят сделки/CRM всех менеджеров; обычный менеджер — только свои
-  const canViewAllManagers = isDirector || isDirectorView || isRop;
+  const allData = (isManager || isLidorub) && permissions.some(p => p.page === ALL_DATA_KEY && p.can_view);
+  const canViewAllManagers = isDirector || isDirectorView || isRop || allData;
 
   // Может подтверждать/отклонять сделки: директор и РОП всегда, остальные — по разрешению can_approve
   const canApprove = isDirector || isDirectorView || isRop || permissions.some(p => p.page === 'approvals' && p.can_approve);
