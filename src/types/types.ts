@@ -221,6 +221,7 @@ export const PERMISSION_PAGES = [
   { key: 'profit',        label: 'Чистая прибыль' },
   { key: 'managers',      label: 'Сотрудники' },
   { key: 'permissions',   label: 'Доступ' },
+  { key: 'crm',           label: 'CRM' },
   { key: 'production',    label: 'Производство' },
   { key: 'amocrm',        label: 'amoCRM' },
   { key: 'activity',      label: 'Активность' },

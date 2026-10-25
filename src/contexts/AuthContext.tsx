@@ -53,6 +53,7 @@ export const MANAGER_POLICY: Record<string, 'edit' | 'view' | 'none'> = {
   production: 'view',
   boards: 'edit',
   amocrm: 'edit',
+  crm: 'edit',
   'daily-report': 'none',
   managers: 'none',
   activity: 'none',

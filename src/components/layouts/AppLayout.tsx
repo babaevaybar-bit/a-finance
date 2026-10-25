@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   Menu, Settings, Activity, ChevronDown, GraduationCap, Calculator, LayoutDashboard, TrendingUp, Wallet, BarChart2,
-  Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell, HandCoins, KanbanSquare,
+  Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell, HandCoins, KanbanSquare, Contact,
 } from 'lucide-react';
 import { useAuth, IN_DEVELOPMENT } from '@/contexts/AuthContext';
 import { countPendingDeals, countUnreadNotifications } from '@/lib/api';
@@ -30,6 +30,7 @@ export const navItems = [
   { path: '/profit',       label: 'Чистая прибыль',    icon: TrendingDown,    adminOnly: true,  pageKey: 'profit',       group: 'Деньги' },
   { path: '/production',   label: 'Производство',      icon: Wrench,          adminOnly: true,  pageKey: 'production',   group: 'Производство' },
   { path: '/boards',       label: 'Доски',             icon: KanbanSquare,    adminOnly: true,  pageKey: 'boards',       group: 'Производство' },
+  { path: '/crm',          label: 'CRM',               icon: Contact,         adminOnly: false, pageKey: 'crm',          group: 'Клиенты и лиды' },
   { path: '/amocrm',       label: 'amoCRM',            icon: Layers,          adminOnly: true,  pageKey: 'amocrm',       group: 'Клиенты и лиды' },
   { path: '/daily-report', label: 'Ежедневный отчёт',  icon: ClipboardList,   adminOnly: false, pageKey: 'daily-report', group: 'Клиенты и лиды' },
   { path: '/managers',     label: 'Сотрудники',        icon: Users,           adminOnly: true,  pageKey: 'managers',     group: 'Команда' },
