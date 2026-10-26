@@ -151,3 +151,16 @@ export function showPhone(p: string | null) {
   if (d.length !== 10) return p;
   return `+7 ${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6, 8)} ${d.slice(8)}`;
 }
+
+/** Готовые сроки для задачи — одним нажатием, без выбора даты */
+function kzAt(dayOffset: number, hh: number, mm = 0) {
+  const day = new Date(Date.now() + dayOffset * 86400000).toLocaleDateString('en-CA', { timeZone: KZ });
+  return new Date(`${day}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00+05:00`).toISOString();
+}
+export const DUE_PRESETS: { label: string; at: () => string }[] = [
+  { label: 'Через час', at: () => new Date(Date.now() + 3600000).toISOString() },
+  { label: 'Сегодня 18:00', at: () => { const t = kzAt(0, 18); return new Date(t).getTime() > Date.now() ? t : kzAt(1, 10); } },
+  { label: 'Завтра 10:00', at: () => kzAt(1, 10) },
+  { label: 'Через 3 дня', at: () => kzAt(3, 10) },
+  { label: 'Через неделю', at: () => kzAt(7, 10) },
+];

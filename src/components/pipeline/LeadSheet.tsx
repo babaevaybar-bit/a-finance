@@ -14,8 +14,9 @@ import type { Manager } from '@/types/types';
 import {
   type CrmLead, type CrmStage, type CrmTask, type CrmEvent, type TaskKind,
   getLead, updateLead, getEvents, addNote, addEvent, getTasks, createTask, completeTask, deleteTask, winLead,
-  TASK_KINDS, taskKindLabel, SOURCES, dueLabel, isOverdue, normPhone, showPhone, daysOnStage,
+  TASK_KINDS, taskKindLabel, SOURCES, dueLabel, isOverdue, normPhone, showPhone, daysOnStage, DUE_PRESETS,
 } from '@/lib/crm';
+const toKzLocal = (iso: string) => { const d = new Date(iso); return `${d.toLocaleDateString('en-CA', { timeZone: 'Asia/Qyzylorda' })}T${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Qyzylorda' })}`; };
 import { formatCurrency } from '@/lib/utils';
 
 const field = 'h-10 w-full rounded-md border border-input bg-background px-3 text-sm';
@@ -88,7 +89,7 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
     if (!lead || s.id === lead.stage_id) return;
     if (s.kind === 'won') { setWin({ amount: lead.amount ? String(lead.amount) : '', paid: '', contract: '', door: '' }); return; }
     if (s.kind === 'lost') { setLost({ reason: '', comment: '' }); return; }
-    patch({ stage_id: s.id });
+    patch({ stage_id: s.id }).then(() => { if (!openTasks.length) setTaskForm({ kind: 'call', title: '', due: defaultDue() }); });
   }
 
   async function saveEdit() {
@@ -190,6 +191,12 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
                 <Button asChild size="sm" variant="outline" className="h-9"><a href={`tel:+${phoneDigits.length === 10 ? '7' + phoneDigits : phoneDigits}`}><Phone size={14} className="mr-1.5" />Позвонить</a></Button>
                 <Button asChild size="sm" variant="outline" className="h-9"><a href={`https://wa.me/${phoneDigits.length === 10 ? '7' + phoneDigits : phoneDigits}`} target="_blank" rel="noopener noreferrer"><MessageCircle size={14} className="mr-1.5" />WhatsApp</a></Button>
               </>}
+              {!closed && (() => {
+                const open = pipeStages.filter(s => s.kind === 'open');
+                const i = open.findIndex(s => s.id === lead.stage_id);
+                const nx = i >= 0 && i < open.length - 1 ? open[i + 1] : null;
+                return nx ? <Button size="sm" variant="secondary" className="h-9" disabled={busy} onClick={() => moveTo(nx)}>{nx.name}<ArrowRight size={14} className="ml-1.5" /></Button> : null;
+              })()}
               {!closed && <>
                 <Button size="sm" className="h-9 bg-emerald-600 hover:bg-emerald-700" onClick={() => setWin({ amount: lead.amount ? String(lead.amount) : '', paid: '', contract: '', door: '' })}><Trophy size={14} className="mr-1.5" />Успешно</Button>
                 <Button size="sm" variant="outline" className="h-9 text-destructive border-destructive/30 hover:text-destructive" onClick={() => setLost({ reason: '', comment: '' })}><XCircle size={14} className="mr-1.5" />Отказ</Button>
@@ -232,6 +239,13 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
                     ))}
                   </div>
                   <Input value={taskForm.title} onChange={e => setTaskForm({ ...taskForm, title: e.target.value })} placeholder={`${taskKindLabel(taskForm.kind)}: что сделать`} className="h-10" />
+                  <div className="flex flex-wrap gap-1">
+                    {DUE_PRESETS.map(p => {
+                      const v = toKzLocal(p.at());
+                      return <button key={p.label} type="button" onClick={() => setTaskForm({ ...taskForm, due: v })}
+                        className={`h-8 px-3 rounded-full text-xs border ${taskForm.due === v ? 'bg-primary/10 border-primary text-primary' : 'bg-background hover:bg-muted'}`}>{p.label}</button>;
+                    })}
+                  </div>
                   <div className="flex flex-wrap gap-2 items-center">
                     <input type="datetime-local" value={taskForm.due} onChange={e => setTaskForm({ ...taskForm, due: e.target.value })} className={`${field} sm:w-auto flex-1`} />
                     <div className="flex gap-2 ml-auto">
