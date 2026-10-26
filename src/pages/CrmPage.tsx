@@ -37,7 +37,7 @@ function useIsMobile() {
 }
 
 export default function CrmPage() {
-  const { profile, canViewAllManagers } = useAuth();
+  const { profile, canViewAllLeads: canViewAllManagers, canEditAllLeads } = useAuth();
   const myId = profile?.manager_id ?? null;
   const me = profile?.name && profile.name !== 'admin' ? profile.name : (profile?.email ?? null);
   const isMobile = useIsMobile();
@@ -145,10 +145,11 @@ export default function CrmPage() {
   const LeadCard = ({ l, s }: { l: CrmLead; s: CrmStage }) => {
     const t = nextTaskByLead.get(l.id);
     const late = t && isOverdue(t);
-    const nx = s.kind === 'open' ? nextStage(l) : null;
+    const mine = canEditAllLeads || l.manager_id === (profile?.manager_id ?? null);
+    const nx = s.kind === 'open' && mine ? nextStage(l) : null;
     const tel = telLink(l.client_phone), wa = waLink(l.client_phone);
     return (
-      <div draggable={!isMobile} onDragStart={() => { dragId.current = l.id; }} onClick={() => setOpenId(l.id)}
+      <div draggable={!isMobile && mine} onDragStart={() => { dragId.current = l.id; }} onClick={() => setOpenId(l.id)}
         className={`group rounded-xl border bg-background p-3 shadow-sm hover:shadow-md hover:border-primary/40 transition-all cursor-pointer ${late ? 'border-l-4 border-l-red-500' : ''}`}>
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
@@ -344,7 +345,7 @@ export default function CrmPage() {
       <LeadSheet leadId={openId} stages={stages} lostReasons={lostReasons} managers={managers} onClose={() => setOpenId(null)} onChanged={onChanged} />
 
       <NewLeadDialog open={!!creating} onOpenChange={v => { if (!v) setCreating(null); }} stages={pipeStages} managers={managers} defaultManager={myId}
-        defaultStage={creating?.stageId} canPickManager={canViewAllManagers} pipelineId={pipelineId}
+        defaultStage={creating?.stageId} canPickManager={canEditAllLeads} pipelineId={pipelineId}
         onOpenExisting={id => { setCreating(null); setOpenId(id); }}
         onCreated={l => { setLeads(prev => [l, ...(prev ?? [])]); getTasks({ open: true }).then(setTasks).catch(() => {}); }} />
     </AppLayout>

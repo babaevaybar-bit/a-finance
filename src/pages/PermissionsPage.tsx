@@ -17,7 +17,7 @@ import {
 import { getManagers, getAllPermissions, upsertPermission, getAllProfiles, updateProfile } from '@/lib/api';
 import type { Manager, EmployeePermission, Profile } from '@/types/types';
 import { PERMISSION_PAGES } from '@/types/types';
-import { useAuth, MANAGER_POLICY, MANAGER_LOCKED, IN_DEVELOPMENT, ALL_DATA_KEY } from '@/contexts/AuthContext';
+import { useAuth, MANAGER_POLICY, MANAGER_LOCKED, IN_DEVELOPMENT, DATA_SCOPES, scopeLevel, type ScopeLevel } from '@/contexts/AuthContext';
 
 const ROLE_LABELS: Record<Profile['role'], string> = {
   director: 'Главный админ',
@@ -220,6 +220,22 @@ export default function PermissionsPage() {
     }
   }
 
+  // Чьи сделки / лиды видит сотрудник: только свои, все (просмотр), все (просмотр и правка)
+  async function setScope(managerId: string, page: string, level: ScopeLevel) {
+    const key = `${managerId}:${page}:scope`;
+    const next = { can_view: level !== 'own', can_edit: level === 'edit', can_approve: false };
+    setSaving(s => ({ ...s, [key]: true }));
+    setPermMap(prev => ({ ...prev, [managerId]: { ...(prev[managerId] ?? {}), [page]: next } }));
+    try {
+      await upsertPermission({ manager_id: managerId, page, ...next });
+    } catch {
+      toast.error('Ошибка сохранения');
+      await load();
+    } finally {
+      setSaving(s => { const n = { ...s }; delete n[key]; return n; });
+    }
+  }
+
   // Убрать ручные изменения менеджера — снова действуют права роли
   async function resetToRole(managerId: string) {
     const { error } = await supabase.from('employee_permissions').delete().eq('manager_id', managerId);
@@ -356,24 +372,32 @@ export default function PermissionsPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {sales && (() => {
-                            const on = !!managerPerms[ALL_DATA_KEY]?.can_view;
-                            const busy = saving[`${m.id}:${ALL_DATA_KEY}:can_view`];
+                          {sales && DATA_SCOPES.map(({ key: sk, label: sl, hint }) => {
+                            const lvl = scopeLevel(managerPerms[sk]);
+                            const busy = !!saving[`${m.id}:${sk}:scope`];
+                            const opts: { v: ScopeLevel; t: string }[] = [
+                              { v: 'own', t: 'Только свои' }, { v: 'view', t: 'Все: смотреть' }, { v: 'edit', t: 'Все: менять' },
+                            ];
                             return (
-                              <tr className="border-b border-border bg-muted/30">
+                              <tr key={sk} className="border-b border-border bg-muted/30">
                                 <td className="py-3 pr-6">
-                                  <span className="font-medium">Данные всех менеджеров</span>
-                                  <span className="block text-[11px] text-muted-foreground">выкл — только свои клиенты и сделки; вкл — как у РОП: сделки, отчёты, должники всех</span>
+                                  <span className="font-medium">{sl}: чьи видит</span>
+                                  <span className="block text-[11px] text-muted-foreground">{hint}</span>
                                 </td>
-                                <td className="py-3 px-4 text-center">
-                                  <Switch checked={on} disabled={!isDirector || !!busy}
-                                    onCheckedChange={v => toggle(m.id, ALL_DATA_KEY, 'can_view', v)} />
+                                <td colSpan={3} className="py-3 px-4">
+                                  <div role="radiogroup" aria-label={`${sl}: чьи видит`} className="inline-flex rounded-lg border border-border bg-background p-0.5 gap-0.5 whitespace-nowrap">
+                                    {opts.map(o => (
+                                      <button key={o.v} type="button" role="radio" aria-checked={lvl === o.v}
+                                        disabled={!isDirector || busy} onClick={() => lvl !== o.v && setScope(m.id, sk, o.v)}
+                                        className={`h-8 px-2.5 rounded-md text-xs font-medium transition-colors disabled:opacity-60 ${lvl === o.v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>
+                                        {o.t}
+                                      </button>
+                                    ))}
+                                  </div>
                                 </td>
-                                <td className="py-3 px-4 text-center"><span className="text-muted-foreground/30 text-xs">—</span></td>
-                                <td className="py-3 px-4 text-center"><span className="text-muted-foreground/30 text-xs">—</span></td>
                               </tr>
                             );
-                          })()}
+                          })}
                           {PERMISSION_PAGES.map(({ key, label }) => {
                             const perm = getPerm(permMap, m.id, key, role);
                             const locked = sales && MANAGER_LOCKED.has(key);
@@ -391,7 +415,7 @@ export default function PermissionsPage() {
                                 <td className="py-3 pr-6 whitespace-nowrap">
                                   {label}
                                   {locked && <span className="block text-[11px] text-muted-foreground">только Главный админ</span>}
-                                  {sales && !locked && key === 'profit' && perm.can_view && !managerPerms[ALL_DATA_KEY]?.can_view && <span className="block text-[11px] text-amber-700">включите «Данные всех менеджеров», иначе раздел будет пустым</span>}
+                                  {sales && !locked && key === 'profit' && perm.can_view && !managerPerms['scope:deals']?.can_view && <span className="block text-[11px] text-amber-700">поставьте «Сделки: все», иначе раздел будет пустым</span>}
                                   {changed && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 align-middle">изменено</span>}
                                   {sales && !locked && IN_DEVELOPMENT.has(key) && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground align-middle">в разработке</span>}
                                 </td>

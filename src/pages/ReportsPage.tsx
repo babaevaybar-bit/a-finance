@@ -21,9 +21,11 @@ import {
 } from '@/components/ui/alert-dialog';
 
 export default function ReportsPage() {
-  const { isDirector, isManager, isLidorub, profile, canViewAllManagers } = useAuth();
+  const { isDirector, isManager, isLidorub, profile, canViewAllManagers, canView } = useAuth();
   // Менеджер видит отчёт только по своим сделкам, если ему не открыты «Данные всех менеджеров»
   const own = (isManager || isLidorub) && !canViewAllManagers;
+  // Деньги компании (расходы, приходы, переводы) — только если открыт раздел «Финансы»
+  const noFin = (isManager || isLidorub) && !canView('finance');
   const [searchParams, setSearchParams] = useSearchParams();
   // Открытие по ссылке с дашборда (?month=YYYY-MM) — сразу нужный месяц
   const [monthYear, setMonthYear] = useState(searchParams.get('month') || getCurrentMonthYear());
@@ -47,11 +49,11 @@ export default function ReportsPage() {
     try {
       const [dls, exps, incs, mgrs, plns, trs, lockStatus] = await Promise.all([
         getAllDealsForMonth(monthYear),
-        own ? Promise.resolve([] as Expense[]) : getExpenses(),
-        own ? Promise.resolve([] as Income[]) : getIncome(),
+        noFin ? Promise.resolve([] as Expense[]) : getExpenses(),
+        noFin ? Promise.resolve([] as Income[]) : getIncome(),
         getManagers(),
         getSalesPlans(monthYear),
-        own ? Promise.resolve([] as Transfer[]) : getTransfers(),
+        noFin ? Promise.resolve([] as Transfer[]) : getTransfers(),
         isMonthLocked(monthYear),
       ]);
       const [py, pm] = monthYear.split('-').map(Number);
@@ -60,7 +62,7 @@ export default function ReportsPage() {
       setDeals(dls); setExpenses(exps); setIncome(incs); setManagers(mgrs); setPlans(plns); setTransfers(trs);
       setLocked(lockStatus);
     } catch { /* silent */ } finally { setLoading(false); }
-  }, [monthYear, own]);
+  }, [monthYear, noFin]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -145,7 +147,7 @@ export default function ReportsPage() {
                 </AlertDialogContent>
               </AlertDialog>
             )}
-            {!own && (
+            {!noFin && (
               <Button variant="outline" onClick={handleExport} disabled={loading}>
                 <Download size={14} className="mr-1.5" />
                 Excel
@@ -252,7 +254,7 @@ export default function ReportsPage() {
             </Card>
 
             {/* ── Overall finance summary ── */}
-            {!own && <Card>
+            {!noFin && <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Сводный финансовый итог</CardTitle>
               </CardHeader>

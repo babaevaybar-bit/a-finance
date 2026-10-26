@@ -44,7 +44,7 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
   onClose: () => void;
   onChanged: (l: CrmLead) => void;
 }) {
-  const { profile, canViewAllManagers } = useAuth();
+  const { profile, canEditAllLeads } = useAuth();
   const me = profile?.name && profile.name !== 'admin' ? profile.name : (profile?.email ?? null);
   const [lead, setLead] = useState<CrmLead | null>(null);
   const [events, setEvents] = useState<CrmEvent[]>([]);
@@ -158,6 +158,8 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
   }
 
   const phoneDigits = lead?.client_phone?.replace(/\D/g, '') ?? '';
+  // Лид другого менеджера при доступе «все — только просмотр»: этап и данные не меняем
+  const ro = !!lead && !canEditAllLeads && lead.manager_id !== (profile?.manager_id ?? null);
 
   return (
     <Sheet open={!!leadId} onOpenChange={v => { if (!v) onClose(); }}>
@@ -178,7 +180,7 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
               {pipeStages.map(s => {
                 const active = s.id === lead.stage_id;
                 return (
-                  <button key={s.id} type="button" disabled={busy} onClick={() => moveTo(s)}
+                  <button key={s.id} type="button" disabled={busy || ro} onClick={() => moveTo(s)}
                     className={`shrink-0 h-8 px-3 rounded-full text-xs font-medium border transition-colors ${active ? 'text-white border-transparent' : 'bg-background hover:bg-muted text-muted-foreground'}`}
                     style={active ? { background: s.color } : { borderColor: `${s.color}66` }}>
                     {s.name}
@@ -191,17 +193,18 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
                 <Button asChild size="sm" variant="outline" className="h-9"><a href={`tel:+${phoneDigits.length === 10 ? '7' + phoneDigits : phoneDigits}`}><Phone size={14} className="mr-1.5" />Позвонить</a></Button>
                 <Button asChild size="sm" variant="outline" className="h-9"><a href={`https://wa.me/${phoneDigits.length === 10 ? '7' + phoneDigits : phoneDigits}`} target="_blank" rel="noopener noreferrer"><MessageCircle size={14} className="mr-1.5" />WhatsApp</a></Button>
               </>}
-              {!closed && (() => {
+              {!closed && !ro && (() => {
                 const open = pipeStages.filter(s => s.kind === 'open');
                 const i = open.findIndex(s => s.id === lead.stage_id);
                 const nx = i >= 0 && i < open.length - 1 ? open[i + 1] : null;
                 return nx ? <Button size="sm" variant="secondary" className="h-9" disabled={busy} onClick={() => moveTo(nx)}>{nx.name}<ArrowRight size={14} className="ml-1.5" /></Button> : null;
               })()}
-              {!closed && <>
+              {!closed && !ro && <>
                 <Button size="sm" className="h-9 bg-emerald-600 hover:bg-emerald-700" onClick={() => setWin({ amount: lead.amount ? String(lead.amount) : '', paid: '', contract: '', door: '' })}><Trophy size={14} className="mr-1.5" />Успешно</Button>
                 <Button size="sm" variant="outline" className="h-9 text-destructive border-destructive/30 hover:text-destructive" onClick={() => setLost({ reason: '', comment: '' })}><XCircle size={14} className="mr-1.5" />Отказ</Button>
               </>}
             </div>
+            {ro && <p className="text-xs text-muted-foreground">Лид другого менеджера — только просмотр. Задачи и заметки добавлять можно.</p>}
             {stage?.kind === 'lost' && lead.lost_reason && <p className="text-xs text-destructive">Причина отказа: {lead.lost_reason}</p>}
             {lead.deal_id && <a href="/approvals" className="text-xs text-primary inline-flex items-center gap-1 hover:underline"><ExternalLink size={12} />Сделка отправлена в «Подтверждения»</a>}
           </div>
@@ -267,7 +270,7 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
             <section className="space-y-2">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold">Клиент</h3>
-                {!edit && <Button size="sm" variant="ghost" className="h-8" onClick={() => setEdit({ client_name: lead.client_name, client_phone: lead.client_phone, address: lead.address, source: lead.source, amount: lead.amount, comment: lead.comment, manager_id: lead.manager_id })}><Pencil size={13} className="mr-1" />Изменить</Button>}
+                {!edit && !ro && <Button size="sm" variant="ghost" className="h-8" onClick={() => setEdit({ client_name: lead.client_name, client_phone: lead.client_phone, address: lead.address, source: lead.source, amount: lead.amount, comment: lead.comment, manager_id: lead.manager_id })}><Pencil size={13} className="mr-1" />Изменить</Button>}
               </div>
               {edit ? (
                 <div className="grid gap-2">
@@ -280,7 +283,7 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
                     </select>
                     <Input value={edit.amount ? String(edit.amount) : ''} onChange={e => setEdit({ ...edit, amount: Number(e.target.value.replace(/\D/g, '')) || 0 })} placeholder="Бюджет, ₸" inputMode="numeric" className="h-10" />
                   </div>
-                  {canViewAllManagers && (
+                  {canEditAllLeads && (
                     <select value={edit.manager_id ?? ''} onChange={e => setEdit({ ...edit, manager_id: e.target.value || null })} className={field}>
                       <option value="">Ответственный</option>{managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
