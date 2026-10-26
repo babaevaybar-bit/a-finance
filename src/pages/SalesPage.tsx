@@ -15,7 +15,8 @@ import ManagerSalesSection from '@/components/sales/ManagerSalesSection';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function SalesPage() {
-  const { profile, isAdmin, isDirector, canViewAllManagers } = useAuth();
+  const { profile, isAdmin, isDirector, seesAll } = useAuth();
+  const canViewAllManagers = seesAll('sales');
   const [searchParams, setSearchParams] = useSearchParams();
   // Открытие по ссылке с дашборда (?manager=ID&month=YYYY-MM) — сразу показываем нужного менеджера и месяц
   const [monthYear, setMonthYear] = useState(searchParams.get('month') || getCurrentMonthYear());

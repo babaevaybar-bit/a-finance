@@ -50,7 +50,8 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
   const [collapsedState, setCollapsed] = useState(() => {
     try { return localStorage.getItem(collapseKey) === '1'; } catch { return false; }
   });
-  const { profile, canEditAllDeals } = useAuth();
+  const { profile, editsAll } = useAuth();
+  const canEditAllDeals = editsAll('sales');
   // Чужие сделки при доступе «Сделки: все — просмотр» — без удаления и добавления
   const canChange = (managerId: string) => canEditAllDeals || managerId === profile?.manager_id;
   const [formOpen, setFormOpen] = useState(false);

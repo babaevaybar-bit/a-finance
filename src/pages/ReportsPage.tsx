@@ -21,7 +21,8 @@ import {
 } from '@/components/ui/alert-dialog';
 
 export default function ReportsPage() {
-  const { isDirector, isManager, isLidorub, profile, canViewAllManagers, canView } = useAuth();
+  const { isDirector, isManager, isLidorub, profile, seesAll, canView } = useAuth();
+  const canViewAllManagers = seesAll('reports');
   // Менеджер видит отчёт только по своим сделкам, если ему не открыты «Данные всех менеджеров»
   const own = (isManager || isLidorub) && !canViewAllManagers;
   // Деньги компании (расходы, приходы, переводы) — только если открыт раздел «Финансы»

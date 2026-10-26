@@ -42,7 +42,8 @@ export const navItems = [
 
 // Счётчики для меню и колокольчика: ждут подтверждения / непрочитанные сообщения
 function useCounters() {
-  const { profile, canViewAllManagers, canApprove } = useAuth();
+  const { profile, seesAll, canApprove } = useAuth();
+  const canViewAllManagers = seesAll('approvals');
   const [unreadCount, setUnreadCount] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
   useEffect(() => {

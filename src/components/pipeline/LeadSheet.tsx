@@ -44,7 +44,8 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
   onClose: () => void;
   onChanged: (l: CrmLead) => void;
 }) {
-  const { profile, canEditAllLeads } = useAuth();
+  const { profile, editsAll } = useAuth();
+  const canEditAllLeads = editsAll('crm');
   const me = profile?.name && profile.name !== 'admin' ? profile.name : (profile?.email ?? null);
   const [lead, setLead] = useState<CrmLead | null>(null);
   const [events, setEvents] = useState<CrmEvent[]>([]);

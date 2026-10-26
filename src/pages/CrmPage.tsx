@@ -37,7 +37,8 @@ function useIsMobile() {
 }
 
 export default function CrmPage() {
-  const { profile, canViewAllLeads: canViewAllManagers, canEditAllLeads } = useAuth();
+  const { profile, seesAll, editsAll } = useAuth();
+  const canViewAllManagers = seesAll('crm'), canEditAllLeads = editsAll('crm');
   const myId = profile?.manager_id ?? null;
   const me = profile?.name && profile.name !== 'admin' ? profile.name : (profile?.email ?? null);
   const isMobile = useIsMobile();

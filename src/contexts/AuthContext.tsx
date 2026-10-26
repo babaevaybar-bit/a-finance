@@ -20,10 +20,11 @@ interface AuthContextType {
   isManager: boolean;     // Менеджер — только свои клиенты/сделки
   isLidorub: boolean;     // Лидоруб — доступ как у менеджера, ЗП как у РОП (от общей выручки)
   canApprove: boolean;    // может подтверждать/отклонять сделки
-  canViewAllManagers: boolean; // видит сделки всех менеджеров (руководители или «Сделки: все»)
-  canEditAllDeals: boolean;    // может править чужие сделки
-  canViewAllLeads: boolean;    // видит лиды (CRM, офлайн, клиенты) всех менеджеров
-  canEditAllLeads: boolean;
+  canViewAllManagers: boolean; // руководитель или хотя бы в одном разделе со сделками стоит «Все»
+  /** В этом разделе видит данные всех менеджеров (руководители — всегда; менеджер — если в «Доступе» стоит «Все») */
+  seesAll: (page: string) => boolean;
+  /** В этом разделе может менять чужие записи: «Все» + «Редактирование» */
+  editsAll: (page: string) => boolean;
   loading: boolean;
   permissions: EmployeePermission[];
   canView: (page: string) => boolean;
@@ -39,16 +40,9 @@ export const IN_DEVELOPMENT = new Set(['estimate', 'training']);
 /** Разделы, которые менеджеру не открыть даже вручную: там данные всей компании и управление людьми.
  *  Нужен такой доступ — смените роль на РОП или Директор. */
 export const MANAGER_LOCKED = new Set(['managers', 'permissions']);
-/** Чьи данные видит сотрудник (строки employee_permissions с page = 'scope:<область>'):
- *  нет строки / can_view=false — только свои; can_view — все (просмотр); can_view+can_edit — все с правкой */
-export const DATA_SCOPES = [
-  { key: 'scope:deals', label: 'Сделки', hint: 'Продажи, должники, подтверждения, отчёты, дашборд' },
-  { key: 'scope:leads', label: 'Лиды и клиенты', hint: 'CRM, офлайн-лиды салона, клиентская база' },
-] as const;
-export type ScopeLevel = 'own' | 'view' | 'edit';
-export function scopeLevel(row?: { can_view: boolean; can_edit: boolean } | null): ScopeLevel {
-  return row?.can_view ? (row.can_edit ? 'edit' : 'view') : 'own';
-}
+/** Разделы, где у менеджера выбор «только свои / все»: сделки, лиды. Значение хранится в employee_permissions.scope_all */
+export const SCOPE_PAGES = new Set(['dashboard', 'sales', 'debtors', 'approvals', 'reports', 'crm', 'amocrm']);
+const DEAL_SCOPE_PAGES = ['dashboard', 'sales', 'debtors', 'approvals', 'reports'];
 
 /** Права менеджера по продажам по умолчанию; в «Доступе» их можно поднять или убрать для конкретного сотрудника */
 export const MANAGER_POLICY: Record<string, 'edit' | 'view' | 'none'> = {
@@ -96,11 +90,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Директор и РОП видят сделки/CRM всех менеджеров; обычный менеджер — только свои
   const boss = isDirector || isDirectorView || isRop;
-  const scope = (area: string) => scopeLevel(permissions.find(p => p.page === `scope:${area}`));
-  const canViewAllManagers = boss || scope('deals') !== 'own';
-  const canEditAllDeals    = boss || scope('deals') === 'edit';
-  const canViewAllLeads    = boss || scope('leads') !== 'own';
-  const canEditAllLeads    = boss || scope('leads') === 'edit';
+  const seesAll = (page: string) => boss || permissions.some(p => p.page === page && p.can_view && p.scope_all);
+  const canViewAllManagers = boss || DEAL_SCOPE_PAGES.some(seesAll);
 
   // Может подтверждать/отклонять сделки: директор и РОП всегда, остальные — по разрешению can_approve
   const canApprove = isDirector || isDirectorView || isRop || permissions.some(p => p.page === 'approvals' && p.can_approve);
@@ -308,10 +299,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (perm) return perm.can_edit;
     return !RESTRICTED_BY_DEFAULT.has(page);
   }
+  const editsAll = (page: string) => boss || (seesAll(page) && canEdit(page));
 
   return (
     <AuthContext.Provider value={{
-      user, profile, isAdmin, isDirector, isDirectorView, isRop, isManager, isLidorub, canApprove, canViewAllManagers, canEditAllDeals, canViewAllLeads, canEditAllLeads,
+      user, profile, isAdmin, isDirector, isDirectorView, isRop, isManager, isLidorub, canApprove, canViewAllManagers, seesAll, editsAll,
       loading, permissions, canView, canEdit, signIn, signOut, refreshProfile,
     }}>
       {children}

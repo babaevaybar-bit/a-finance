@@ -40,7 +40,8 @@ const time = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: 
 
 /** Блок на главной: кнопка «Добавить офлайн‑лида» и лиды салона за сегодняшний рабочий день */
 export default function OfflineLeadsCard() {
-  const { profile, canViewAllLeads: canViewAllManagers, canEditAllLeads } = useAuth();
+  const { profile, seesAll, editsAll } = useAuth();
+  const canViewAllManagers = seesAll('crm'), canEditAllLeads = editsAll('crm');
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<OfflineLead[] | null>(null);
   const [managers, setManagers] = useState<Manager[]>([]);

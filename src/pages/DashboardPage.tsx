@@ -19,6 +19,7 @@ import type { Deal, Manager, SalesPlan } from '@/types/types';
 import { CHANNELS, SPLIT_PAYMENT_METHOD } from '@/types/types';
 import type { ActivityItem } from '@/lib/api';
 import { SALES_ROLES } from '@/types/types';
+import { useAuth } from '@/contexts/AuthContext';
 import { TrendingUp, ShoppingCart, Users, Wallet, CheckCircle2, UserPlus, CalendarClock, AlertTriangle } from 'lucide-react';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -95,6 +96,11 @@ export default function DashboardPage() {
   // Выбранный месяц (по умолчанию — текущий); все показатели дашборда считаются за него
   const [currentMonth, setCurrentMonth] = useState(getCurrentMonthYear());
 
+  // «Доступ» → Дашборд: «Только свои» — показатели только по своим сделкам
+  const { profile, seesAll } = useAuth();
+  const own = !seesAll('dashboard');
+  const myId = profile?.manager_id ?? null;
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -104,16 +110,16 @@ export default function DashboardPage() {
         getSalesPlans(currentMonth),
         getRecentActivity(),
       ]);
-      setDeals(allDeals);
-      setManagers(mgrs.filter(m => SALES_ROLES.includes(m.role)));
-      setPlans(curPlans);
-      setActivity(recentActivity);
+      setDeals(own ? allDeals.filter(d => d.manager_id === myId) : allDeals);
+      setManagers(mgrs.filter(m => SALES_ROLES.includes(m.role) && (!own || m.id === myId)));
+      setPlans(own ? curPlans.filter(p => p.manager_id === myId) : curPlans);
+      setActivity(own ? recentActivity.filter(x => x.managerId === myId || x.managerId === profile?.id) : recentActivity);
     } catch {
       // silent
     } finally {
       setLoading(false);
     }
-  }, [currentMonth]);
+  }, [currentMonth, own, myId, profile?.id]);
 
   useEffect(() => { load(); }, [load]);
 

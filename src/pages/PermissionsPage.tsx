@@ -17,7 +17,7 @@ import {
 import { getManagers, getAllPermissions, upsertPermission, getAllProfiles, updateProfile } from '@/lib/api';
 import type { Manager, EmployeePermission, Profile } from '@/types/types';
 import { PERMISSION_PAGES } from '@/types/types';
-import { useAuth, MANAGER_POLICY, MANAGER_LOCKED, IN_DEVELOPMENT, DATA_SCOPES, scopeLevel, type ScopeLevel } from '@/contexts/AuthContext';
+import { useAuth, MANAGER_POLICY, MANAGER_LOCKED, IN_DEVELOPMENT, SCOPE_PAGES } from '@/contexts/AuthContext';
 
 const ROLE_LABELS: Record<Profile['role'], string> = {
   director: 'Главный админ',
@@ -147,7 +147,8 @@ function RolesSection() {
 }
 
 // ─── Типы ─────────────────────────────────────────────────────────────────────
-type PermMap = Record<string, Record<string, { can_view: boolean; can_edit: boolean; can_approve: boolean }>>;
+type Perm = { can_view: boolean; can_edit: boolean; can_approve: boolean; scope_all?: boolean };
+type PermMap = Record<string, Record<string, Perm>>;
 
 const isSalesRole = (r?: Profile['role']) => r === 'manager' || r === 'lidorub';
 
@@ -155,12 +156,12 @@ const isSalesRole = (r?: Profile['role']) => r === 'manager' || r === 'lidorub';
 function getPerm(map: PermMap, managerId: string, page: string, role?: Profile['role']) {
   const row = map[managerId]?.[page];
   if (isSalesRole(role)) {
-    if (MANAGER_LOCKED.has(page)) return { can_view: false, can_edit: false, can_approve: false };
+    if (MANAGER_LOCKED.has(page)) return { can_view: false, can_edit: false, can_approve: false, scope_all: false };
     if (row) return row;
     const a = MANAGER_POLICY[page] ?? 'none';
-    return { can_view: a !== 'none', can_edit: a === 'edit', can_approve: false };
+    return { can_view: a !== 'none', can_edit: a === 'edit', can_approve: false, scope_all: false };
   }
-  return row ?? { can_view: true, can_edit: true, can_approve: false };
+  return row ?? { can_view: true, can_edit: true, can_approve: false, scope_all: true };
 }
 
 export default function PermissionsPage() {
@@ -180,7 +181,7 @@ export default function PermissionsPage() {
       const map: PermMap = {};
       (perms as EmployeePermission[]).forEach(p => {
         if (!map[p.manager_id]) map[p.manager_id] = {};
-        map[p.manager_id][p.page] = { can_view: p.can_view, can_edit: p.can_edit, can_approve: p.can_approve ?? false };
+        map[p.manager_id][p.page] = { can_view: p.can_view, can_edit: p.can_edit, can_approve: p.can_approve ?? false, scope_all: p.scope_all ?? false };
       });
       setPermMap(map);
     } catch { toast.error('Ошибка загрузки'); }
@@ -220,14 +221,15 @@ export default function PermissionsPage() {
     }
   }
 
-  // Чьи сделки / лиды видит сотрудник: только свои, все (просмотр), все (просмотр и правка)
-  async function setScope(managerId: string, page: string, level: ScopeLevel) {
+  // Чьи данные видит сотрудник в разделе: только свои или всех менеджеров
+  async function setScope(managerId: string, page: string, all: boolean) {
     const key = `${managerId}:${page}:scope`;
-    const next = { can_view: level !== 'own', can_edit: level === 'edit', can_approve: false };
+    const cur = getPerm(permMap, managerId, page, roleByManager[managerId]);
+    const next = { ...cur, scope_all: all };
     setSaving(s => ({ ...s, [key]: true }));
     setPermMap(prev => ({ ...prev, [managerId]: { ...(prev[managerId] ?? {}), [page]: next } }));
     try {
-      await upsertPermission({ manager_id: managerId, page, ...next });
+      await upsertPermission({ manager_id: managerId, page, can_view: next.can_view, can_edit: next.can_edit, can_approve: next.can_approve, scope_all: all });
     } catch {
       toast.error('Ошибка сохранения');
       await load();
@@ -369,41 +371,16 @@ export default function PermissionsPage() {
                             <th className="text-center py-2 px-4 font-medium text-muted-foreground whitespace-nowrap w-28">Просмотр</th>
                             <th className="text-center py-2 px-4 font-medium text-muted-foreground whitespace-nowrap w-28">Редактирование</th>
                             <th className="text-center py-2 px-4 font-medium text-muted-foreground whitespace-nowrap w-32">Подтверждение</th>
+                            {sales && <th className="text-center py-2 px-4 font-medium text-muted-foreground whitespace-nowrap w-44">Чьи данные</th>}
                           </tr>
                         </thead>
                         <tbody>
-                          {sales && DATA_SCOPES.map(({ key: sk, label: sl, hint }) => {
-                            const lvl = scopeLevel(managerPerms[sk]);
-                            const busy = !!saving[`${m.id}:${sk}:scope`];
-                            const opts: { v: ScopeLevel; t: string }[] = [
-                              { v: 'own', t: 'Только свои' }, { v: 'view', t: 'Все: смотреть' }, { v: 'edit', t: 'Все: менять' },
-                            ];
-                            return (
-                              <tr key={sk} className="border-b border-border bg-muted/30">
-                                <td className="py-3 pr-6">
-                                  <span className="font-medium">{sl}: чьи видит</span>
-                                  <span className="block text-[11px] text-muted-foreground">{hint}</span>
-                                </td>
-                                <td colSpan={3} className="py-3 px-4">
-                                  <div role="radiogroup" aria-label={`${sl}: чьи видит`} className="inline-flex rounded-lg border border-border bg-background p-0.5 gap-0.5 whitespace-nowrap">
-                                    {opts.map(o => (
-                                      <button key={o.v} type="button" role="radio" aria-checked={lvl === o.v}
-                                        disabled={!isDirector || busy} onClick={() => lvl !== o.v && setScope(m.id, sk, o.v)}
-                                        className={`h-8 px-2.5 rounded-md text-xs font-medium transition-colors disabled:opacity-60 ${lvl === o.v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>
-                                        {o.t}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
                           {PERMISSION_PAGES.map(({ key, label }) => {
                             const perm = getPerm(permMap, m.id, key, role);
                             const locked = sales && MANAGER_LOCKED.has(key);
                             const changed = sales && !locked && !!managerPerms[key] && (() => {
                               const a = MANAGER_POLICY[key] ?? 'none';
-                              return managerPerms[key].can_view !== (a !== 'none') || managerPerms[key].can_edit !== (a === 'edit') || managerPerms[key].can_approve;
+                              return managerPerms[key].can_view !== (a !== 'none') || managerPerms[key].can_edit !== (a === 'edit') || managerPerms[key].can_approve || !!managerPerms[key].scope_all;
                             })();
                             const savingView    = saving[`${m.id}:${key}:can_view`]    || saving[`${m.id}:${key}:batch`];
                             const savingEdit    = saving[`${m.id}:${key}:can_edit`]    || saving[`${m.id}:${key}:batch`];
@@ -415,7 +392,7 @@ export default function PermissionsPage() {
                                 <td className="py-3 pr-6 whitespace-nowrap">
                                   {label}
                                   {locked && <span className="block text-[11px] text-muted-foreground">только Главный админ</span>}
-                                  {sales && !locked && key === 'profit' && perm.can_view && !managerPerms['scope:deals']?.can_view && <span className="block text-[11px] text-amber-700">поставьте «Сделки: все», иначе раздел будет пустым</span>}
+                                  {sales && !locked && key === 'profit' && perm.can_view && !['dashboard', 'sales', 'debtors', 'approvals', 'reports'].some(k => managerPerms[k]?.scope_all && managerPerms[k]?.can_view) && <span className="block text-[11px] text-amber-700">поставьте «Все» хотя бы в Продажах, иначе раздел будет пустым</span>}
                                   {changed && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 align-middle">изменено</span>}
                                   {sales && !locked && IN_DEVELOPMENT.has(key) && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground align-middle">в разработке</span>}
                                 </td>
@@ -444,6 +421,27 @@ export default function PermissionsPage() {
                                     <span className="text-muted-foreground/30 text-xs">—</span>
                                   )}
                                 </td>
+                                {sales && (
+                                  <td className="py-3 px-4 text-center">
+                                    {SCOPE_PAGES.has(key) && !locked ? (() => {
+                                      const all = !!perm.scope_all;
+                                      const busy = !!saving[`${m.id}:${key}:scope`];
+                                      const off = !isDirector || busy || !perm.can_view;
+                                      return (
+                                        <div role="radiogroup" aria-label={`${label}: чьи данные`}
+                                          className={`inline-flex rounded-lg border border-border bg-background p-0.5 gap-0.5 whitespace-nowrap ${!perm.can_view ? 'opacity-40' : ''}`}>
+                                          {[{ v: false, t: 'Только свои' }, { v: true, t: 'Все' }].map(o => (
+                                            <button key={String(o.v)} type="button" role="radio" aria-checked={all === o.v} disabled={off}
+                                              onClick={() => all !== o.v && setScope(m.id, key, o.v)}
+                                              className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors ${all === o.v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>
+                                              {o.t}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      );
+                                    })() : <span className="text-muted-foreground/30 text-xs">—</span>}
+                                  </td>
+                                )}
                               </tr>
                             );
                           })}
