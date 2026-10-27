@@ -52,19 +52,44 @@ Deno.serve(async (req) => {
     const from = Math.floor((noonKz + KZ + SHIFT) / 86400) * 86400 - KZ - SHIFT;
     const to = from + 86400;
     const now = Math.floor(Date.now() / 1000);
-    const leads = await all(`/api/v4/leads?filter[created_at][from]=${from}&filter[created_at][to]=${Math.min(to, now) - 1}`, 'leads');
+    const leads = await all(`/api/v4/leads?with=contacts&filter[created_at][from]=${from}&filter[created_at][to]=${Math.min(to, now) - 1}`, 'leads');
     const added = await all(`/api/v4/events?filter[type][]=lead_added&filter[created_at][from]=${from}&filter[created_at][to]=${Math.min(to, now)}`, 'events', 4);
     const deleted = await all(`/api/v4/events?filter[type][]=lead_deleted&filter[created_at][from]=${from}&filter[created_at][to]=${now}`, 'events', 4);
     const leadIds = new Set(leads.map((l: any) => l.id));
     const delIds = new Set(deleted.map((e: any) => e.entity_id));
+    // повторное обращение: у контакта уже был лид раньше этого (id лидов растут по времени)
+    const contactIds = [...new Set(leads.flatMap((l: any) => (l._embedded?.contacts ?? []).map((c: any) => c.id)))];
+    const contactLeads: Record<string, number[]> = {};
+    for (let i = 0; i < contactIds.length; i += 50) {
+      const q = contactIds.slice(i, i + 50).map(id => `filter[id][]=${id}`).join('&');
+      const d = await get(`/api/v4/contacts?with=leads&limit=50&${q}`);
+      for (const c of d?._embedded?.contacts ?? []) contactLeads[c.id] = (c._embedded?.leads ?? []).map((x: any) => x.id);
+    }
+    // лид без контакта, но с номером в названии («Сделка 7701…») — ищем другие лиды и контакты с этим номером
+    const phoneEarlier: Record<string, boolean> = {};
+    for (const l of leads) {
+      if ((l._embedded?.contacts ?? []).length) continue;
+      const ph = String(l.name ?? '').replace(/\D/g, '').slice(-10);
+      if (ph.length !== 10) continue;
+      const [ls, cs] = await Promise.all([get(`/api/v4/leads?query=${ph}&limit=50`), get(`/api/v4/contacts?query=${ph}&with=leads&limit=50`)]);
+      const ids = [
+        ...(ls?._embedded?.leads ?? []).map((x: any) => x.id),
+        ...(cs?._embedded?.contacts ?? []).flatMap((c: any) => (c._embedded?.leads ?? []).map((x: any) => x.id)),
+      ];
+      phoneEarlier[l.id] = ids.some((id: number) => id < l.id);
+    }
+    const isRepeat = (l: any) => !!phoneEarlier[l.id] ||
+      (l._embedded?.contacts ?? []).some((c: any) => (contactLeads[c.id] ?? []).some(id => id < l.id));
     const rows = leads.map((l: any) => {
       const x = st[l.status_id];
       const pipe = pipeName[String(l.pipeline_id)] ?? x?.pipe ?? '?';
       let why = 'считается';
       if (!ALLOWED.includes(pipe)) why = `другая воронка: ${pipe}`;
       else if (l.status_id === 143) why = 'закрыт как «не реализовано»';
+      else if (isRepeat(l)) why = 'повторное обращение';
       return { id: l.id, name: l.name, created: kz(l.created_at), pipe, status: x?.name ?? null,
-        responsible: um[l.responsible_user_id] ?? l.responsible_user_id, created_by: um[l.created_by] ?? l.created_by, why };
+        responsible: um[l.responsible_user_id] ?? l.responsible_user_id, created_by: um[l.created_by] ?? l.created_by, why,
+        contacts: (l._embedded?.contacts ?? []).map((c: any) => `${c.id}:${(contactLeads[c.id] ?? []).length}`).join(','), repeat: isRepeat(l) };
     }).sort((a: any, b: any) => a.created.localeCompare(b.created));
     const missing = added.filter((e: any) => !leadIds.has(e.entity_id)).map((e: any) => ({
       id: e.entity_id, created: kz(e.created_at), by: um[e.created_by] ?? e.created_by, deleted: delIds.has(e.entity_id),

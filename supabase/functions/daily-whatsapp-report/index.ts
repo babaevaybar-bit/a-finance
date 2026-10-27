@@ -160,11 +160,48 @@ Deno.serve(async (req) => {
 
     const inWindow = (t: number) => t >= leadDayStart && t < leadDayEnd;
 
-    const leadsToday = allLeadsUnfiltered.filter((l: any) =>
+    const leadsInWindow = allLeadsUnfiltered.filter((l: any) =>
       leadAllowed(l.status_id) &&
       inWindow(l.created_at) &&
       statusMap[l.status_id]?.name !== 'Закрыто и не реализовано'
     );
+
+    // Повторные обращения не считаем: у клиента (контакта или номера в названии лида) уже был лид раньше.
+    // id лидов в amoCRM растут по времени — «раньше» = меньший id.
+    const repeatIds = new Set<number>();
+    try {
+      const ids = leadsInWindow.map((l: any) => l.id);
+      const withContacts: any[] = [];
+      for (let i = 0; i < ids.length; i += 50) {
+        const q = ids.slice(i, i + 50).map((id: number) => `filter[id][]=${id}`).join('&');
+        const d = await amoGet(`/api/v4/leads?with=contacts&limit=50&${q}`);
+        withContacts.push(...(d?._embedded?.leads ?? []));
+      }
+      const contactIds = [...new Set(withContacts.flatMap((l: any) => (l._embedded?.contacts ?? []).map((c: any) => c.id)))];
+      const contactLeads: Record<string, number[]> = {};
+      for (let i = 0; i < contactIds.length; i += 50) {
+        const q = contactIds.slice(i, i + 50).map(id => `filter[id][]=${id}`).join('&');
+        const d = await amoGet(`/api/v4/contacts?with=leads&limit=50&${q}`);
+        for (const c of d?._embedded?.contacts ?? []) contactLeads[c.id] = (c._embedded?.leads ?? []).map((x: any) => x.id);
+      }
+      for (const l of withContacts) {
+        const contacts = l._embedded?.contacts ?? [];
+        let earlier = contacts.some((c: any) => (contactLeads[c.id] ?? []).some((id: number) => id < l.id));
+        if (!earlier && !contacts.length) {
+          const ph = String(l.name ?? '').replace(/\D/g, '').slice(-10);
+          if (ph.length === 10) {
+            const [ls, cs] = await Promise.all([amoGet(`/api/v4/leads?query=${ph}&limit=50`), amoGet(`/api/v4/contacts?query=${ph}&with=leads&limit=50`)]);
+            const other = [
+              ...(ls?._embedded?.leads ?? []).map((x: any) => x.id),
+              ...(cs?._embedded?.contacts ?? []).flatMap((c: any) => (c._embedded?.leads ?? []).map((x: any) => x.id)),
+            ];
+            earlier = other.some((id: number) => id < l.id);
+          }
+        }
+        if (earlier) repeatIds.add(l.id);
+      }
+    } catch { /* не удалось проверить — считаем как раньше */ }
+    const leadsToday = leadsInWindow.filter((l: any) => !repeatIds.has(l.id));
     const leadsTodaySum = leadsToday.reduce((s: number, l: any) => s + Number(l.price || 0), 0);
 
     let callsIn = 0, callsOut = 0;
@@ -253,7 +290,7 @@ Deno.serve(async (req) => {
     lines.push(`*Ежедневный отчёт — ${kzDateLabel(leadDayEnd - 1)}*`);
     lines.push(`_период: с ${kzShortLabel(leadDayStart)} до ${kzShortLabel(leadDayEnd)}_`);
     lines.push('');
-    lines.push(`Новых лидов: *${leadsToday.length}* (на сумму ${leadsTodaySum.toLocaleString('ru-RU')} ₸)`);
+    lines.push(`Новых лидов: *${leadsToday.length}* (на сумму ${leadsTodaySum.toLocaleString('ru-RU')} ₸)${repeatIds.size ? ` · повторных обращений не считали: ${repeatIds.size}` : ''}`);
     lines.push(`Офлайн‑лидов (салон): *${offline.length}* (квал ${offQual} / не квал ${offline.length - offQual})`);
     lines.push(`Звонков: *${callsIn + callsOut}* (вход ${callsIn} / исход ${callsOut})`);
     lines.push(`Чатов обработано: *${chatsTotal}*`);
