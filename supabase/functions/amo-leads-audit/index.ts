@@ -36,8 +36,13 @@ Deno.serve(async (req) => {
 
   const pipes = await get('/api/v4/leads/pipelines');
   const users = await get('/api/v4/users?limit=250');
+  // статусы 142/143 («успешно»/«не реализовано») одинаковые во всех воронках — воронку берём из pipeline_id лида
   const st: Record<string, { name: string; pipe: string }> = {};
-  for (const p of pipes?._embedded?.pipelines ?? []) for (const x of p._embedded?.statuses ?? []) st[x.id] = { name: x.name, pipe: p.name };
+  const pipeName: Record<string, string> = {};
+  for (const p of pipes?._embedded?.pipelines ?? []) {
+    pipeName[String(p.id)] = p.name;
+    for (const x of p._embedded?.statuses ?? []) st[x.id] = { name: x.name, pipe: p.name };
+  }
   const um: Record<string, string> = { '0': 'Бот' };
   for (const u of users?._embedded?.users ?? []) um[u.id] = u.name;
 
@@ -54,16 +59,24 @@ Deno.serve(async (req) => {
     const delIds = new Set(deleted.map((e: any) => e.entity_id));
     const rows = leads.map((l: any) => {
       const x = st[l.status_id];
+      const pipe = pipeName[String(l.pipeline_id)] ?? x?.pipe ?? '?';
       let why = 'считается';
-      if (!x || !ALLOWED.includes(x.pipe)) why = `другая воронка: ${x?.pipe ?? '?'}`;
-      else if (x.name === 'Закрыто и не реализовано') why = 'закрыт как «не реализовано»';
-      return { id: l.id, name: l.name, created: kz(l.created_at), pipe: x?.pipe ?? null, status: x?.name ?? null,
+      if (!ALLOWED.includes(pipe)) why = `другая воронка: ${pipe}`;
+      else if (l.status_id === 143) why = 'закрыт как «не реализовано»';
+      return { id: l.id, name: l.name, created: kz(l.created_at), pipe, status: x?.name ?? null,
         responsible: um[l.responsible_user_id] ?? l.responsible_user_id, created_by: um[l.created_by] ?? l.created_by, why };
     }).sort((a: any, b: any) => a.created.localeCompare(b.created));
     const missing = added.filter((e: any) => !leadIds.has(e.entity_id)).map((e: any) => ({
       id: e.entity_id, created: kz(e.created_at), by: um[e.created_by] ?? e.created_by, deleted: delIds.has(e.entity_id),
     }));
-    result.push({ date, from: kz(from), to: kz(to), counted: rows.filter((r: any) => r.why === 'считается').length, total: rows.length, rows, missing });
+    // кто и когда закрыл лиды как «не реализовано» в этот рабочий день
+    const closedEv = await all(`/api/v4/events?filter[type][]=lead_status_changed&filter[created_at][from]=${from}&filter[created_at][to]=${Math.min(to, now)}`, 'events', 8);
+    const closed = closedEv.filter((e: any) => e.value_after?.[0]?.lead_status?.id === 143).map((e: any) => {
+      const l = leads.find((x: any) => x.id === e.entity_id);
+      return { id: e.entity_id, at: kz(e.created_at), by: um[e.created_by] ?? e.created_by,
+        lead_created: l ? kz(l.created_at) : 'раньше этого дня', from: st[e.value_before?.[0]?.lead_status?.id]?.name ?? null };
+    });
+    result.push({ date, closed, from: kz(from), to: kz(to), counted: rows.filter((r: any) => r.why === 'считается').length, total: rows.length, rows, missing });
   }
   return new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json' } });
 });
