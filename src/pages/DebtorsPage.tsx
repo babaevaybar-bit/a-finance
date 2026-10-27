@@ -9,6 +9,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, Manager } from '@/types/types';
 import DealPayments from '@/components/sales/DealPayments';
 import DealFormDialog from '@/components/sales/DealFormDialog';
+import { useAuth } from '@/contexts/AuthContext';
 import DealCompleteness from '@/components/sales/DealCompleteness';
 import { effectiveDueDate, waitingForWarehouse, PAYMENT_TRIGGER_STAGE } from '@/lib/payments';
 
@@ -41,15 +42,20 @@ export default function DebtorsPage() {
   const [search, setSearch] = useState('');
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
 
+  // «Доступ» → Должники: «Только свои» — только должники по своим сделкам
+  const { profile, seesAll } = useAuth();
+  const own = !seesAll('debtors');
+  const myId = profile?.manager_id ?? null;
+
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
       const [d, m] = await Promise.all([getAllDeals(), getManagers()]);
-      setDeals(d);
+      setDeals(own ? d.filter(x => x.manager_id === myId) : d);
       setManagers(m);
     } catch { /* silent */ }
     finally { if (!silent) setLoading(false); }
-  }, []);
+  }, [own, myId]);
   useEffect(() => { load(); }, [load]);
 
   const today = todayKz();

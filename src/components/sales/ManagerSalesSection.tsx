@@ -22,6 +22,7 @@ import { DEAL_STATUS_LABELS } from '@/types/types';
 import DealFormDialog from './DealFormDialog';
 import DealPayments from './DealPayments';
 import TrelloLookup from '@/components/trello/TrelloLookup';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Props {
   manager: { id: string; name: string; role?: string };
@@ -49,6 +50,10 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
   const [collapsedState, setCollapsed] = useState(() => {
     try { return localStorage.getItem(collapseKey) === '1'; } catch { return false; }
   });
+  const { profile, editsAll } = useAuth();
+  const canEditAllDeals = editsAll('sales');
+  // Чужие сделки при доступе «Сделки: все — просмотр» — без удаления и добавления
+  const canChange = (managerId: string) => canEditAllDeals || managerId === profile?.manager_id;
   const [formOpen, setFormOpen] = useState(false);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
   const [search, setSearch] = useState('');
@@ -251,7 +256,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                     className="h-8 text-sm pl-7 w-56"
                   />
                 </div>
-                {selectedIds.size > 0 && (
+                {selectedIds.size > 0 && deals.filter(d => selectedIds.has(d.id)).every(d => canChange(d.manager_id)) && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="outline" size="sm" className="h-8 text-xs text-destructive hover:text-destructive">
@@ -274,7 +279,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                     </AlertDialogContent>
                   </AlertDialog>
                 )}
-                {!isCombined && (
+                {!isCombined && canChange(manager.id) && (
                 <Button size="sm" variant="outline" onClick={() => { setEditDeal(null); setFormOpen(true); }}>
                   <Plus size={14} className="mr-1" />
                   Добавить
@@ -410,7 +415,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                               onClick={() => { setEditDeal(d); setFormOpen(true); }}>
                               <Pencil size={12} />
                             </Button>
-                            <AlertDialog>
+                            {canChange(d.manager_id) && <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive">
                                   <Trash2 size={12} />
@@ -429,7 +434,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                                   >Удалить</AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
-                            </AlertDialog>
+                            </AlertDialog>}
                           </div>
                         </TableCell>
                       </TableRow>

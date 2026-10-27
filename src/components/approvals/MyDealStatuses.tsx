@@ -4,6 +4,7 @@ import { Clock, CheckCircle, XCircle, Factory } from 'lucide-react';
 import { supabase } from '@/db/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal } from '@/types/types';
+import { useAuth } from '@/contexts/AuthContext';
 
 const STATUS = {
   pending:  { label: 'На проверке',  cls: 'bg-amber-50 text-amber-700 border-amber-200', Icon: Clock },
@@ -16,12 +17,17 @@ export default function MyDealStatuses() {
   const [deals, setDeals] = useState<Deal[] | null>(null);
   const [filter, setFilter] = useState<'all' | Deal['status']>('all');
 
+  // «Доступ» → Подтверждения: «Только свои» или статусы сделок всех менеджеров
+  const { profile, seesAll } = useAuth();
+  const all = seesAll('approvals');
+  const myId = profile?.manager_id ?? null;
   useEffect(() => {
     const since = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
-    supabase.from('deals').select('id, client_name, contract_number, total_amount, paid_amount, deal_date, status, production_stage, created_at')
-      .gte('deal_date', since).order('created_at', { ascending: false }).limit(300)
-      .then(({ data }) => setDeals((data as Deal[]) ?? []));
-  }, []);
+    let q = supabase.from('deals').select('id, client_name, contract_number, total_amount, paid_amount, deal_date, status, production_stage, created_at, manager_id')
+      .gte('deal_date', since).order('created_at', { ascending: false }).limit(300);
+    if (!all) q = q.eq('manager_id', myId ?? '00000000-0000-0000-0000-000000000000');
+    q.then(({ data }) => setDeals((data as Deal[]) ?? []));
+  }, [all, myId]);
 
   const counts = useMemo(() => {
     const c = { pending: 0, approved: 0, rejected: 0 };

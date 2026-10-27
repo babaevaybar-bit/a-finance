@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   Menu, Settings, Activity, ChevronDown, GraduationCap, Calculator, LayoutDashboard, TrendingUp, Wallet, BarChart2,
-  Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell, HandCoins, KanbanSquare,
+  Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell, HandCoins, KanbanSquare, Contact, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { useAuth, IN_DEVELOPMENT } from '@/contexts/AuthContext';
 import { countPendingDeals, countUnreadNotifications } from '@/lib/api';
@@ -30,6 +30,7 @@ export const navItems = [
   { path: '/profit',       label: 'Чистая прибыль',    icon: TrendingDown,    adminOnly: true,  pageKey: 'profit',       group: 'Деньги' },
   { path: '/production',   label: 'Производство',      icon: Wrench,          adminOnly: true,  pageKey: 'production',   group: 'Производство' },
   { path: '/boards',       label: 'Доски',             icon: KanbanSquare,    adminOnly: true,  pageKey: 'boards',       group: 'Производство' },
+  { path: '/crm',          label: 'CRM',               icon: Contact,         adminOnly: false, pageKey: 'crm',          group: 'Клиенты и лиды' },
   { path: '/amocrm',       label: 'amoCRM',            icon: Layers,          adminOnly: true,  pageKey: 'amocrm',       group: 'Клиенты и лиды' },
   { path: '/daily-report', label: 'Ежедневный отчёт',  icon: ClipboardList,   adminOnly: false, pageKey: 'daily-report', group: 'Клиенты и лиды' },
   { path: '/managers',     label: 'Сотрудники',        icon: Users,           adminOnly: true,  pageKey: 'managers',     group: 'Команда' },
@@ -41,7 +42,8 @@ export const navItems = [
 
 // Счётчики для меню и колокольчика: ждут подтверждения / непрочитанные сообщения
 function useCounters() {
-  const { profile, canViewAllManagers, canApprove } = useAuth();
+  const { profile, seesAll, canApprove } = useAuth();
+  const canViewAllManagers = seesAll('approvals');
   const [unreadCount, setUnreadCount] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
   useEffect(() => {
@@ -62,7 +64,7 @@ function readCollapsed(): string[] {
   try { return JSON.parse(localStorage.getItem('afin-nav-collapsed') || '[]'); } catch { return []; }
 }
 
-function NavLinks({ onClose }: { onClose?: () => void }) {
+function NavLinks({ onClose, mini = false }: { onClose?: () => void; mini?: boolean }) {
   const { pathname } = useLocation();
   const { isAdmin, canView } = useAuth();
   const { pendingCount } = useCounters();
@@ -80,6 +82,16 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
       return next;
     });
   }
+
+  // Свёрнутое меню: только значки, название — во всплывающей подсказке
+  const renderMini = ({ path, label, icon: Icon }: typeof navItems[number]) => (
+    <Link key={path} to={path} title={label} aria-label={label}
+      className={cn('relative h-10 w-10 mx-auto flex items-center justify-center rounded-md transition-colors',
+        isActive(path) ? 'bg-sidebar-accent text-sidebar-primary' : 'text-sidebar-foreground hover:bg-sidebar-accent')}>
+      <Icon size={18} />
+      {path === '/approvals' && pendingCount > 0 && <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-500" />}
+    </Link>
+  );
 
   const renderItem = ({ path, label, icon: Icon, pageKey }: typeof navItems[number]) => (
     <Link
@@ -107,6 +119,7 @@ function NavLinks({ onClose }: { onClose?: () => void }) {
     </Link>
   );
 
+  if (mini) return <nav className="flex flex-col gap-1 py-3">{visibleItems.map(renderMini)}</nav>;
   if (flat) return <nav className="flex flex-col gap-0.5 p-3">{visibleItems.map(renderItem)}</nav>;
 
   return (
@@ -212,28 +225,34 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (profile.start_page === '/welcome') navigate('/welcome', { replace: true });
   }, [profile, location.pathname, navigate]);
 
+  // Боковое меню можно свернуть до значков — больше места для воронки и таблиц
+  const [mini, setMini] = useState<boolean>(() => { try { return localStorage.getItem('afin-sidebar-mini') === '1'; } catch { return false; } });
+  const toggleMini = () => setMini(v => { try { localStorage.setItem('afin-sidebar-mini', v ? '0' : '1'); } catch { /* ignore */ } return !v; });
+
   return (
     <div className="flex min-h-screen w-full bg-background">
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex flex-col w-56 shrink-0 border-r border-sidebar-border bg-sidebar sticky top-0 h-screen">
-        <Link to="/welcome" title="Главная" className="h-14 flex items-center gap-2 px-4 border-b border-sidebar-border hover:bg-sidebar-accent/60 transition-colors">
+      <aside className={cn('hidden lg:flex flex-col shrink-0 border-r border-sidebar-border bg-sidebar sticky top-0 h-screen transition-[width] duration-200', mini ? 'w-16' : 'w-56')}>
+        <Link to="/welcome" title="Главная" className={cn('h-14 flex items-center gap-2 border-b border-sidebar-border hover:bg-sidebar-accent/60 transition-colors', mini ? 'justify-center' : 'px-4')}>
           <span className="w-7 h-7 rounded-[8px] bg-black text-white flex items-center justify-center text-xs font-display font-bold shrink-0">A</span>
-          <span className="font-semibold text-sm text-sidebar-foreground tracking-wide">A-Finance</span>
+          {!mini && <span className="font-semibold text-sm text-sidebar-foreground tracking-wide">A-Finance</span>}
         </Link>
         <div className="flex-1 overflow-y-auto">
-          <NavLinks />
+          <NavLinks mini={mini} />
         </div>
         {/* User info desktop */}
-        <div className="border-t border-sidebar-border p-3">
+        <div className={cn('border-t border-sidebar-border', mini ? 'py-3' : 'p-3')}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md hover:bg-sidebar-accent transition-colors text-left">
+              <button title={mini ? displayName : undefined} className={cn('flex items-center gap-2 rounded-md hover:bg-sidebar-accent transition-colors text-left', mini ? 'mx-auto p-1' : 'w-full px-2 py-1.5')}>
                 <UserAvatar name={displayName} url={profile?.avatar_url} size={30} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate text-sidebar-foreground">{displayName}</p>
-                  <p className="text-xs text-muted-foreground">{roleLabel}</p>
-                </div>
-                <Settings size={14} className="text-muted-foreground shrink-0" />
+                {!mini && <>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate text-sidebar-foreground">{displayName}</p>
+                    <p className="text-xs text-muted-foreground">{roleLabel}</p>
+                  </div>
+                  <Settings size={14} className="text-muted-foreground shrink-0" />
+                </>}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="start" className="w-48">
@@ -291,6 +310,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Полоса поиска — видна на всех страницах и устройствах */}
         <div className="h-12 flex items-center gap-2 px-4 md:px-6 border-b border-border bg-background shrink-0 sticky top-0 z-30">
+          <button type="button" onClick={toggleMini} title={mini ? 'Показать меню' : 'Скрыть меню'} aria-label={mini ? 'Показать меню' : 'Скрыть меню'}
+            className="hidden lg:flex h-9 w-9 -ml-2 shrink-0 rounded-md items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground">
+            {mini ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          </button>
           <GlobalSearchBar />
           {canView('messages') || isDirector || isDirectorView ? <div className="ml-auto"><MessagesBell /></div> : null}
         </div>

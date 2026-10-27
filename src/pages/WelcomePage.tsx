@@ -94,7 +94,8 @@ function PlanRing({ pct }: { pct: number }) {
 
 /** Приветственная страница — открывается по нажатию на «A-Finance». */
 export default function WelcomePage() {
-  const { profile, isAdmin, canView, canViewAllManagers, canApprove } = useAuth();
+  const { profile, isAdmin, canView, seesAll, canApprove } = useAuth();
+  const canViewAllManagers = seesAll('dashboard');
   const [now, setNow] = useState(() => new Date());
   const [s, setS] = useState<Summary>({ revenue: null, plan: null, dealsCount: null, pending: null, overdueCount: null, overdueSum: null, unread: null, reports: null });
 

@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
 
     const { data: profile } = await supabaseClient
       .from('profiles')
-      .select('role')
+      .select('role, manager_id')
       .eq('id', user.id)
       .single();
 
@@ -65,6 +65,20 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
+
+    // «Доступ» → amoCRM: менеджер без «Все» видит только сделки, звонки и чаты своего пользователя amoCRM
+    let ownAmoId: string | null = null;
+    let ownOnly = false;
+    if (['manager', 'lidorub'].includes(profile?.role ?? '')) {
+      const { data: perm } = await supabaseAdmin.from('employee_permissions')
+        .select('scope_all, can_view').eq('manager_id', profile?.manager_id ?? '').eq('page', 'amocrm').maybeSingle();
+      if (!(perm?.scope_all && perm?.can_view)) {
+        ownOnly = true;
+        const { data: me } = await supabaseAdmin.from('managers').select('amocrm_user_id').eq('id', profile?.manager_id ?? '').maybeSingle();
+        ownAmoId = me?.amocrm_user_id ? String(me.amocrm_user_id) : null;
+      }
+    }
+    const mine = (uid: unknown) => !ownOnly || (ownAmoId !== null && String(uid) === ownAmoId);
 
     const { data: settings, error: settingsErr } = await supabaseAdmin
       .from('amocrm_settings')
@@ -117,7 +131,7 @@ Deno.serve(async (req) => {
     // Начало текущего рабочего дня — последнее 20:00
     const leadDayStart = Math.floor((now + KZ_OFFSET_SEC + LEAD_SHIFT_SEC) / 86400) * 86400 - KZ_OFFSET_SEC - LEAD_SHIFT_SEC;
 
-    const [
+    let [
       leadsData,
       pipelinesData,
       usersData,
@@ -134,6 +148,15 @@ Deno.serve(async (req) => {
       amoGetAllPages(`/api/v4/events?filter[type][]=lead_status_changed&filter[created_at][from]=${from30}&filter[created_at][to]=${now}&with=lead_name`, 8, 'events'),
       amoGetAllPages(`/api/v4/events?filter[type][]=outgoing_chat_message&filter[type][]=incoming_chat_message&filter[created_at][from]=${from30}&filter[created_at][to]=${now}`, 2, 'events'),
     ]);
+
+    if (ownOnly) {
+      allLeadsUnfiltered = allLeadsUnfiltered.filter((l: any) => mine(l.responsible_user_id));
+      const ownLeadIds = new Set(allLeadsUnfiltered.map((l: any) => l.id));
+      callEvents = callEvents.filter((ev: any) => mine(ev.created_by));
+      chatEvents = chatEvents.filter((ev: any) => mine(ev.created_by));
+      statusEvents = statusEvents.filter((ev: any) => ownLeadIds.has(ev.entity_id));
+      if (leadsData?._embedded?.leads) leadsData._embedded.leads = leadsData._embedded.leads.filter((l: any) => mine(l.responsible_user_id));
+    }
 
     const statusMap: Record<string, { name: string; pipeline_id: string; pipeline_name: string; color: string; sort: number }> = {};
     const allowedPipelineIds = new Set<string>();
@@ -306,7 +329,7 @@ Deno.serve(async (req) => {
       ensureUser(ev.created_by).chats += 1;
     }
 
-    const dailyByUser = Object.entries(byUser)
+    let dailyByUser = Object.entries(byUser)
       .map(([userId, stats]) => ({
         user_id: userId,
         user_name: userMap[userId] ?? `Пользователь ${userId}`,
@@ -349,6 +372,8 @@ Deno.serve(async (req) => {
       if (bi !== -1) return 1;
       return (b.callsTotal + b.chats + b.newLeads) - (a.callsTotal + a.chats + a.newLeads);
     });
+
+    if (ownOnly) dailyByUser = dailyByUser.filter(u => mine(u.user_id));
 
     return new Response(JSON.stringify({
       leads: result,

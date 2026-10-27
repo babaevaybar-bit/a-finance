@@ -14,6 +14,7 @@ import {
 import { Layers, RefreshCw, Search, PhoneIncoming, UserPlus, ArrowRightLeft } from 'lucide-react';
 import { supabase } from '@/db/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface SalesStageLead {
   id: number;
@@ -74,7 +75,9 @@ export default function AmoCrmPage() {
 
   // Кэш последнего ответа: страница открывается мгновенно со вчерашними/
   // недавними цифрами, а свежие данные из amoCRM (~30 с) подтягиваются в фоне.
-  const CACHE_KEY = 'afin-amocrm-cache-v1';
+  const { seesAll } = useAuth();
+  const own = !seesAll('amocrm');
+  const CACHE_KEY = own ? 'afin-amocrm-cache-v1-own' : 'afin-amocrm-cache-v1';
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
 
@@ -145,7 +148,7 @@ export default function AmoCrmPage() {
               <Layers size={20} className="text-primary" />
               amoCRM
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Активность CRM — без захода в саму amoCRM</p>
+            <p className="text-sm text-muted-foreground mt-0.5">{own ? 'Ваши сделки, звонки и чаты в amoCRM' : 'Активность CRM — без захода в саму amoCRM'}</p>
           </div>
           {updatedAt && (
             <span className="text-xs text-muted-foreground mr-2">

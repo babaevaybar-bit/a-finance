@@ -20,7 +20,11 @@ interface AuthContextType {
   isManager: boolean;     // Менеджер — только свои клиенты/сделки
   isLidorub: boolean;     // Лидоруб — доступ как у менеджера, ЗП как у РОП (от общей выручки)
   canApprove: boolean;    // может подтверждать/отклонять сделки
-  canViewAllManagers: boolean; // видит CRM/сделки всех менеджеров (director или rop)
+  canViewAllManagers: boolean; // руководитель или хотя бы в одном разделе со сделками стоит «Все»
+  /** В этом разделе видит данные всех менеджеров (руководители — всегда; менеджер — если в «Доступе» стоит «Все») */
+  seesAll: (page: string) => boolean;
+  /** В этом разделе может менять чужие записи: «Все» + «Редактирование» */
+  editsAll: (page: string) => boolean;
   loading: boolean;
   permissions: EmployeePermission[];
   canView: (page: string) => boolean;
@@ -36,8 +40,9 @@ export const IN_DEVELOPMENT = new Set(['estimate', 'training']);
 /** Разделы, которые менеджеру не открыть даже вручную: там данные всей компании и управление людьми.
  *  Нужен такой доступ — смените роль на РОП или Директор. */
 export const MANAGER_LOCKED = new Set(['managers', 'permissions']);
-/** Особый ключ в employee_permissions: сотрудник видит сделки и данные всех менеджеров */
-export const ALL_DATA_KEY = 'all_data';
+/** Разделы, где у менеджера выбор «только свои / все»: сделки, лиды. Значение хранится в employee_permissions.scope_all */
+export const SCOPE_PAGES = new Set(['dashboard', 'sales', 'debtors', 'approvals', 'reports', 'crm', 'amocrm']);
+const DEAL_SCOPE_PAGES = ['dashboard', 'sales', 'debtors', 'approvals', 'reports'];
 
 /** Права менеджера по продажам по умолчанию; в «Доступе» их можно поднять или убрать для конкретного сотрудника */
 export const MANAGER_POLICY: Record<string, 'edit' | 'view' | 'none'> = {
@@ -53,6 +58,7 @@ export const MANAGER_POLICY: Record<string, 'edit' | 'view' | 'none'> = {
   production: 'view',
   boards: 'edit',
   amocrm: 'edit',
+  crm: 'edit',
   'daily-report': 'none',
   managers: 'none',
   activity: 'none',
@@ -83,8 +89,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin    = isDirector || isDirectorView; // обратная совместимость со старым кодом + доступ ко всем adminOnly-разделам
 
   // Директор и РОП видят сделки/CRM всех менеджеров; обычный менеджер — только свои
-  const allData = (isManager || isLidorub) && permissions.some(p => p.page === ALL_DATA_KEY && p.can_view);
-  const canViewAllManagers = isDirector || isDirectorView || isRop || allData;
+  const boss = isDirector || isDirectorView || isRop;
+  const seesAll = (page: string) => boss || permissions.some(p => p.page === page && p.can_view && p.scope_all);
+  const canViewAllManagers = boss || DEAL_SCOPE_PAGES.some(seesAll);
 
   // Может подтверждать/отклонять сделки: директор и РОП всегда, остальные — по разрешению can_approve
   const canApprove = isDirector || isDirectorView || isRop || permissions.some(p => p.page === 'approvals' && p.can_approve);
@@ -292,10 +299,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (perm) return perm.can_edit;
     return !RESTRICTED_BY_DEFAULT.has(page);
   }
+  const editsAll = (page: string) => boss || (seesAll(page) && canEdit(page));
 
   return (
     <AuthContext.Provider value={{
-      user, profile, isAdmin, isDirector, isDirectorView, isRop, isManager, isLidorub, canApprove, canViewAllManagers,
+      user, profile, isAdmin, isDirector, isDirectorView, isRop, isManager, isLidorub, canApprove, canViewAllManagers, seesAll, editsAll,
       loading, permissions, canView, canEdit, signIn, signOut, refreshProfile,
     }}>
       {children}

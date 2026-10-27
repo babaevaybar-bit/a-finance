@@ -40,7 +40,8 @@ const time = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: 
 
 /** Блок на главной: кнопка «Добавить офлайн‑лида» и лиды салона за сегодняшний рабочий день */
 export default function OfflineLeadsCard() {
-  const { profile, canViewAllManagers } = useAuth();
+  const { profile, seesAll, editsAll } = useAuth();
+  const canViewAllManagers = seesAll('crm'), canEditAllLeads = editsAll('crm');
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<OfflineLead[] | null>(null);
   const [managers, setManagers] = useState<Manager[]>([]);
@@ -103,7 +104,7 @@ export default function OfflineLeadsCard() {
               {r.client_phone && (
                 <a href={`tel:+7${r.client_phone}`} className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground shrink-0" aria-label="Позвонить"><Phone size={14} /></a>
               )}
-              {(canViewAllManagers || r.manager_id === myId) && (
+              {(canEditAllLeads || r.manager_id === myId) && (
                 <button type="button" onClick={() => remove(r)} className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-destructive shrink-0" aria-label="Удалить"><Trash2 size={14} /></button>
               )}
             </div>
@@ -111,7 +112,7 @@ export default function OfflineLeadsCard() {
         </div>
       )}
 
-      <OfflineLeadDialog open={open} onOpenChange={setOpen} managers={canViewAllManagers ? managers : []} defaultManager={myId}
+      <OfflineLeadDialog open={open} onOpenChange={setOpen} managers={canEditAllLeads ? managers : []} defaultManager={myId}
         onSaved={r => setRows(p => [r, ...(p ?? [])])} />
     </section>
   );

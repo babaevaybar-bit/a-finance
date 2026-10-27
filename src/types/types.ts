@@ -205,6 +205,7 @@ export interface EmployeePermission {
   can_view: boolean;
   can_edit: boolean;
   can_approve: boolean;   // право подтверждать/отклонять сделки
+  scope_all?: boolean;    // в разделе видит данные всех менеджеров, а не только свои
   created_at: string;
   updated_at: string;
 }
@@ -221,6 +222,7 @@ export const PERMISSION_PAGES = [
   { key: 'profit',        label: 'Чистая прибыль' },
   { key: 'managers',      label: 'Сотрудники' },
   { key: 'permissions',   label: 'Доступ' },
+  { key: 'crm',           label: 'CRM' },
   { key: 'production',    label: 'Производство' },
   { key: 'amocrm',        label: 'amoCRM' },
   { key: 'activity',      label: 'Активность' },
