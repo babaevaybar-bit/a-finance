@@ -7,17 +7,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
   Phone, MessageCircle, Trophy, XCircle, Check, Plus, Trash2, CalendarClock, StickyNote, ArrowRight,
-  UserRound, Sparkles, Pencil, ExternalLink, AlertTriangle,
+  UserRound, Sparkles, Pencil, ExternalLink, AlertTriangle, ChevronDown, Clock3,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Manager } from '@/types/types';
 import {
   type CrmLead, type CrmStage, type CrmTask, type CrmEvent, type TaskKind,
-  getLead, updateLead, getEvents, addNote, addEvent, getTasks, createTask, completeTask, deleteTask, winLead,
+  getLead, updateLead, getEvents, addNote, addEvent, getTasks, createTask, completeTask, deleteTask, rescheduleTask, winLead,
   TASK_KINDS, taskKindLabel, SOURCES, dueLabel, isOverdue, normPhone, showPhone, daysOnStage, DUE_PRESETS,
 } from '@/lib/crm';
 const toKzLocal = (iso: string) => { const d = new Date(iso); return `${d.toLocaleDateString('en-CA', { timeZone: 'Asia/Qyzylorda' })}T${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Qyzylorda' })}`; };
 import { formatCurrency } from '@/lib/utils';
+import LeadChat from './LeadChat';
 
 const field = 'h-10 w-full rounded-md border border-input bg-background px-3 text-sm';
 const time = (iso: string) => new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Qyzylorda' });
@@ -36,8 +37,9 @@ const EVENT_ICON: Record<string, React.ElementType> = {
   won: Trophy, lost: XCircle, edit: Pencil,
 };
 
-export default function LeadSheet({ leadId, stages, lostReasons, managers, onClose, onChanged }: {
+export default function LeadSheet({ leadId, initialTab = 'card', stages, lostReasons, managers, onClose, onChanged }: {
   leadId: string | null;
+  initialTab?: 'card' | 'chat';
   stages: CrmStage[];
   lostReasons: string[];
   managers: Manager[];
@@ -57,6 +59,7 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
   const [win, setWin] = useState<{ amount: string; paid: string; contract: string; door: string } | null>(null);
   const [lost, setLost] = useState<{ reason: string; comment: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<'card' | 'chat' | 'history'>('card');
 
   const load = useCallback(async () => {
     if (!leadId) return;
@@ -65,7 +68,14 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
       setLead(l); setEvents(ev); setTasks(ts);
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Не удалось загрузить'); }
   }, [leadId]);
-  useEffect(() => { setLead(null); setEdit(null); setNote(''); setTaskForm(null); if (leadId) load(); }, [leadId, load]);
+  useEffect(() => { setLead(null); setEdit(null); setNote(''); setTaskForm(null); setTab(initialTab); if (leadId) load(); }, [leadId, load]); // eslint-disable-line react-hooks/exhaustive-deps
+  // есть непрочитанные — сразу открываем переписку и снимаем отметку в списке
+  const firstUnread = lead?.id && lead.unread ? lead.id : null;
+  useEffect(() => {
+    if (!firstUnread || !lead) return;
+    setTab('chat');
+    const n = { ...lead, unread: 0 }; setLead(n); onChanged(n);
+  }, [firstUnread]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stage = stages.find(s => s.id === lead?.stage_id);
   const pipeStages = useMemo(() => stages.filter(s => s.pipeline_id === lead?.pipeline_id), [stages, lead?.pipeline_id]);
@@ -168,81 +178,146 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
         {!lead ? (
           <div className="p-6 space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}</div>
         ) : (<>
-          {/* Шапка */}
-          <div className="px-5 pt-5 pb-4 border-b space-y-3 shrink-0">
-            <div className="pr-8">
-              <SheetTitle className="text-lg leading-tight">{lead.client_name}</SheetTitle>
-              <SheetDescription className="mt-0.5">
-                {[showPhone(lead.client_phone), lead.source, formatCurrency(lead.amount)].filter(Boolean).join(' · ')}
-              </SheetDescription>
+          {/* Шапка: кто клиент, этап, действия */}
+          <div className="px-5 pt-4 pb-4 border-b space-y-3 shrink-0">
+            <div className="pr-8 flex items-center gap-3">
+              <div className="h-11 w-11 shrink-0 rounded-full flex items-center justify-center text-white font-semibold" style={{ background: stage?.color ?? '#94a3b8' }}>
+                {lead.client_name.replace(/[^\p{L}\d]/gu, ' ').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?'}
+              </div>
+              <div className="min-w-0 flex-1">
+                <SheetTitle className="text-lg leading-tight truncate">{lead.client_name}</SheetTitle>
+                <SheetDescription className="mt-0.5 truncate">
+                  {[showPhone(lead.client_phone) || 'нет телефона', lead.source, lead.amount ? formatCurrency(lead.amount) : null].filter(Boolean).join(' · ')}
+                </SheetDescription>
+              </div>
             </div>
-            {/* Этапы — тапом переносим лид */}
-            <div className="flex gap-1 overflow-x-auto tabs-scroll pb-1 -mx-1 px-1">
-              {pipeStages.map(s => {
-                const active = s.id === lead.stage_id;
-                return (
-                  <button key={s.id} type="button" disabled={busy || ro} onClick={() => moveTo(s)}
-                    className={`shrink-0 h-8 px-3 rounded-full text-xs font-medium border transition-colors ${active ? 'text-white border-transparent' : 'bg-background hover:bg-muted text-muted-foreground'}`}
-                    style={active ? { background: s.color } : { borderColor: `${s.color}66` }}>
-                    {s.name}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {phoneDigits && <>
-                <Button asChild size="sm" variant="outline" className="h-9"><a href={`tel:+${phoneDigits.length === 10 ? '7' + phoneDigits : phoneDigits}`}><Phone size={14} className="mr-1.5" />Позвонить</a></Button>
-                <Button asChild size="sm" variant="outline" className="h-9"><a href={`https://wa.me/${phoneDigits.length === 10 ? '7' + phoneDigits : phoneDigits}`} target="_blank" rel="noopener noreferrer"><MessageCircle size={14} className="mr-1.5" />WhatsApp</a></Button>
-              </>}
-              {!closed && !ro && (() => {
-                const open = pipeStages.filter(s => s.kind === 'open');
-                const i = open.findIndex(s => s.id === lead.stage_id);
-                const nx = i >= 0 && i < open.length - 1 ? open[i + 1] : null;
-                return nx ? <Button size="sm" variant="secondary" className="h-9" disabled={busy} onClick={() => moveTo(nx)}>{nx.name}<ArrowRight size={14} className="ml-1.5" /></Button> : null;
-              })()}
-              {!closed && !ro && <>
-                <Button size="sm" className="h-9 bg-emerald-600 hover:bg-emerald-700" onClick={() => setWin({ amount: lead.amount ? String(lead.amount) : '', paid: '', contract: '', door: '' })}><Trophy size={14} className="mr-1.5" />Успешно</Button>
-                <Button size="sm" variant="outline" className="h-9 text-destructive border-destructive/30 hover:text-destructive" onClick={() => setLost({ reason: '', comment: '' })}><XCircle size={14} className="mr-1.5" />Отказ</Button>
-              </>}
-            </div>
+
+            {(() => {
+              const open = pipeStages.filter(s => s.kind === 'open');
+              const i = open.findIndex(s => s.id === lead.stage_id);
+              const nx = !closed && i >= 0 && i < open.length - 1 ? open[i + 1] : null;
+              return (<>
+                {/* Этап: выпадающий список + «Дальше» */}
+                <div className="flex items-stretch gap-2">
+                  <label className="relative flex-1 min-w-0">
+                    <span className="sr-only">Этап</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full pointer-events-none" style={{ background: stage?.color }} />
+                    <select value={lead.stage_id} disabled={busy || ro} onChange={e => { const st = pipeStages.find(x => x.id === e.target.value); if (st) moveTo(st); }}
+                      className="h-11 w-full appearance-none rounded-lg border border-input bg-background pl-8 pr-9 text-sm font-medium truncate disabled:opacity-100">
+                      {pipeStages.map((s, k) => <option key={s.id} value={s.id}>{s.kind === 'open' ? `${k + 1}. ${s.name}` : s.name}</option>)}
+                    </select>
+                    <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  </label>
+                  {nx && !ro && (
+                    <Button className="h-11 shrink-0" disabled={busy} onClick={() => moveTo(nx)} title={`Перенести на «${nx.name}»`}>
+                      Дальше<ArrowRight size={15} className="ml-1.5" />
+                    </Button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground -mt-1">
+                  <div className="flex-1 flex gap-0.5">
+                    {open.map((s, k) => <span key={s.id} className="h-1 flex-1 rounded-full" style={{ background: closed ? (stage?.kind === 'won' ? '#16a34a' : 'hsl(var(--muted))') : k <= i ? (stage?.color ?? '#94a3b8') : 'hsl(var(--muted))' }} />)}
+                  </div>
+                  <span className="shrink-0 inline-flex items-center gap-1"><UserRound size={11} />{managerName(lead.manager_id)} · {daysOnStage(lead)} дн. на этапе</span>
+                </div>
+                {closed && (
+                  <div className={`rounded-lg px-3 py-2 text-sm ${stage?.kind === 'won' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>
+                    {stage?.kind === 'won' ? 'Успешно — сделка в «Подтверждениях»' : `Отказ${lead.lost_reason ? `: ${lead.lost_reason}` : ''}`}
+                    {!ro && <span className="block text-xs opacity-80">Чтобы вернуть в работу — выберите этап в списке выше.</span>}
+                  </div>
+                )}
+
+                {/* Действия: 4 одинаковые кнопки */}
+                <div className="grid grid-cols-4 gap-2">
+                  {([
+                    { key: 'call', label: 'Позвонить', icon: Phone, cls: 'text-foreground', href: phoneDigits ? `tel:+${phoneDigits.length === 10 ? '7' + phoneDigits : phoneDigits}` : null, on: undefined, off: !phoneDigits },
+                    { key: 'wa', label: 'Написать', icon: MessageCircle, cls: 'text-emerald-600', href: null, on: () => setTab('chat'), off: false },
+                    { key: 'won', label: 'Успешно', icon: Trophy, cls: 'text-emerald-700', href: null, on: () => setWin({ amount: lead.amount ? String(lead.amount) : '', paid: '', contract: '', door: '' }), off: closed || ro },
+                    { key: 'lost', label: 'Отказ', icon: XCircle, cls: 'text-red-600', href: null, on: () => setLost({ reason: '', comment: '' }), off: closed || ro },
+                  ]).map(a => {
+                    const I = a.icon;
+                    const inner = (<>
+                      <I size={18} className={a.off ? 'text-muted-foreground/50' : a.cls} />
+                      <span className="text-[11px] font-medium">{a.label}</span>
+                      {a.key === 'wa' && !!lead.unread && <span className="absolute top-1 right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center">{lead.unread}</span>}
+                    </>);
+                    const cls = `relative h-14 rounded-lg border bg-background flex flex-col items-center justify-center gap-1 transition-colors ${a.off ? 'opacity-50 pointer-events-none' : 'hover:bg-muted'}`;
+                    return a.href
+                      ? <a key={a.key} href={a.href} className={cls}>{inner}</a>
+                      : <button key={a.key} type="button" onClick={a.on} disabled={a.off} className={cls}>{inner}</button>;
+                  })}
+                </div>
+              </>);
+            })()}
             {ro && <p className="text-xs text-muted-foreground">Лид другого менеджера — только просмотр. Задачи и заметки добавлять можно.</p>}
-            {stage?.kind === 'lost' && lead.lost_reason && <p className="text-xs text-destructive">Причина отказа: {lead.lost_reason}</p>}
-            {lead.deal_id && <a href="/approvals" className="text-xs text-primary inline-flex items-center gap-1 hover:underline"><ExternalLink size={12} />Сделка отправлена в «Подтверждения»</a>}
+            {lead.deal_id && <a href="/approvals" className="text-xs text-primary inline-flex items-center gap-1 hover:underline"><ExternalLink size={12} />Открыть сделку в «Подтверждениях»</a>}
           </div>
 
+          {/* Вкладки */}
+          <div className="flex border-b shrink-0 px-5 gap-5 text-sm">
+            {([['card', 'Главное', openTasks.length], ['chat', 'WhatsApp', lead.unread ?? 0], ['history', 'История', events.length]] as const).map(([k, l, n]) => (
+              <button key={k} type="button" onClick={() => setTab(k)}
+                className={`relative h-10 font-medium transition-colors ${tab === k ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                {l}
+                {!!n && tab !== k && <span className={`ml-1.5 inline-flex min-w-[18px] h-[18px] px-1 items-center justify-center rounded-full text-[11px] ${k === 'chat' ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'}`}>{n}</span>}
+                {tab === k && <span className="absolute left-0 right-0 -bottom-px h-0.5 bg-primary rounded-full" />}
+              </button>
+            ))}
+          </div>
+          {tab === 'history' ? null : tab === 'chat' ? (
+            <div className="flex-1 min-h-0">
+              <LeadChat leadId={lead.id} hasPhone={phoneDigits.length >= 10}
+                onSent={t => { const n = { ...lead, unread: 0, last_message_text: t, last_message_at: new Date().toISOString() }; setLead(n); onChanged(n); }} />
+            </div>
+          ) : (
           <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-5">
-            {/* Задачи */}
+            {/* Следующий шаг */}
             <section className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Задачи</h3>
-                {!taskForm && <Button size="sm" variant="ghost" className="h-8 text-primary" onClick={() => setTaskForm({ kind: 'call', title: '', due: defaultDue() })}><Plus size={14} className="mr-1" />Задача</Button>}
-              </div>
-              {!openTasks.length && !taskForm && !closed && (
-                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 flex items-center gap-1.5">
-                  <AlertTriangle size={13} />Нет следующего шага — поставьте задачу, чтобы клиент не потерялся
-                </p>
-              )}
-              {openTasks.map(t => (
-                <div key={t.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${isOverdue(t) ? 'border-red-200 bg-red-50/60' : ''}`}>
-                  <button type="button" onClick={() => setDoneTask({ task: t, result: '', next: true })} aria-label="Выполнено"
-                    className="h-6 w-6 rounded-full border-2 border-muted-foreground/40 hover:border-emerald-600 hover:bg-emerald-50 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium truncate">{t.title}</div>
-                    <div className={`text-xs ${isOverdue(t) ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>{taskKindLabel(t.kind)} · {dueLabel(t.due_at)}{isOverdue(t) ? ' · просрочено' : ''}</div>
+              <h3 className="text-sm font-semibold">Следующий шаг</h3>
+              {openTasks.slice(0, 1).map(t => {
+                const late = isOverdue(t);
+                return (
+                  <div key={t.id} className={`rounded-xl border p-3 space-y-2.5 ${late ? 'border-red-200 bg-red-50/70' : 'bg-background'}`}>
+                    <div className="flex items-start gap-2">
+                      <CalendarClock size={18} className={`mt-0.5 shrink-0 ${late ? 'text-red-600' : 'text-primary'}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium leading-snug">{t.title}</div>
+                        <div className={`text-sm ${late ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>{late ? 'Просрочено · ' : ''}{dueLabel(t.due_at)}</div>
+                      </div>
+                      <button type="button" className="h-8 w-8 rounded-md hover:bg-background flex items-center justify-center text-muted-foreground shrink-0" title="Удалить задачу" aria-label="Удалить задачу"
+                        onClick={async () => { await deleteTask(t.id).catch(() => {}); setTasks(await getTasks({ leadId: lead.id })); }}><Trash2 size={14} /></button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" className="h-9 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDoneTask({ task: t, result: '', next: true })}><Check size={15} className="mr-1.5" />Сделано</Button>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground"><Clock3 size={13} />Перенести:</div>
+                      {DUE_PRESETS.slice(0, 3).map(p => (
+                        <button key={p.label} type="button" className="h-9 px-2.5 rounded-md border bg-background text-xs hover:bg-muted"
+                          onClick={async () => { await rescheduleTask(t.id, p.at()).catch(e => toast.error(e.message)); setTasks(await getTasks({ leadId: lead.id })); toast.success(`Перенесено: ${p.label.toLowerCase()}`); }}>{p.label}</button>
+                      ))}
+                    </div>
                   </div>
-                  <button type="button" className="h-8 w-8 rounded-md hover:bg-muted flex items-center justify-center text-muted-foreground" aria-label="Удалить задачу"
-                    onClick={async () => { await deleteTask(t.id).catch(() => {}); setTasks(await getTasks({ leadId: lead.id })); }}><Trash2 size={14} /></button>
+                );
+              })}
+              {!openTasks.length && !taskForm && !closed && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+                  <p className="text-sm text-amber-900 flex items-center gap-1.5"><AlertTriangle size={14} />Шаг не назначен — клиент может потеряться</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {([['call', 'Позвонить', 1], ['message', 'Написать', 0], ['meeting', 'Встреча', 1], ['measure', 'Замер', 1]] as const).map(([k, l, d]) => (
+                      <button key={k} type="button" className="h-9 px-3 rounded-md border border-amber-300 bg-background text-sm hover:bg-amber-100"
+                        onClick={() => setTaskForm({ kind: k, title: '', due: toKzLocal(DUE_PRESETS[d === 1 ? 2 : 0].at()) })}>{l}</button>
+                    ))}
+                  </div>
                 </div>
-              ))}
+              )}
               {taskForm && (
-                <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+                <div className="rounded-xl border p-3 space-y-2 bg-muted/30">
                   <div className="flex flex-wrap gap-1">
                     {TASK_KINDS.map(k => (
                       <button key={k.id} type="button" onClick={() => setTaskForm({ ...taskForm, kind: k.id })}
                         className={`h-8 px-3 rounded-full text-xs border ${taskForm.kind === k.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'}`}>{k.label}</button>
                     ))}
                   </div>
-                  <Input value={taskForm.title} onChange={e => setTaskForm({ ...taskForm, title: e.target.value })} placeholder={`${taskKindLabel(taskForm.kind)}: что сделать`} className="h-10" />
+                  <Input value={taskForm.title} onChange={e => setTaskForm({ ...taskForm, title: e.target.value })} placeholder={`${taskKindLabel(taskForm.kind)}: что сделать (необязательно)`} className="h-10" />
                   <div className="flex flex-wrap gap-1">
                     {DUE_PRESETS.map(p => {
                       const v = toKzLocal(p.at());
@@ -259,12 +334,27 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
                   </div>
                 </div>
               )}
-              {doneTasks.length > 0 && (
-                <details className="text-xs text-muted-foreground">
-                  <summary className="cursor-pointer">Выполненные ({doneTasks.length})</summary>
-                  <ul className="mt-1 space-y-1">{doneTasks.map(t => <li key={t.id} className="line-through">{t.title} · {time(t.done_at!)}{t.result ? ` — ${t.result}` : ''}</li>)}</ul>
-                </details>
+              {openTasks.length > 1 && (
+                <ul className="space-y-1">
+                  {openTasks.slice(1).map(t => (
+                    <li key={t.id} className="flex items-center gap-2 text-sm rounded-lg border px-3 py-2">
+                      <button type="button" onClick={() => setDoneTask({ task: t, result: '', next: false })} aria-label="Выполнено"
+                        className="h-5 w-5 rounded-full border-2 border-muted-foreground/40 hover:border-emerald-600 shrink-0" />
+                      <span className="flex-1 truncate">{t.title}</span>
+                      <span className={`text-xs shrink-0 ${isOverdue(t) ? 'text-red-600' : 'text-muted-foreground'}`}>{dueLabel(t.due_at)}</span>
+                    </li>
+                  ))}
+                </ul>
               )}
+              <div className="flex items-center justify-between">
+                {!taskForm && (openTasks.length > 0 || closed) && <button type="button" className="text-sm text-primary inline-flex items-center gap-1 hover:underline" onClick={() => setTaskForm({ kind: 'call', title: '', due: defaultDue() })}><Plus size={14} />Ещё задача</button>}
+                {doneTasks.length > 0 && (
+                  <details className="text-xs text-muted-foreground ml-auto">
+                    <summary className="cursor-pointer">Выполнено ({doneTasks.length})</summary>
+                    <ul className="mt-1 space-y-1">{doneTasks.map(t => <li key={t.id} className="line-through">{t.title} · {time(t.done_at!)}{t.result ? ` — ${t.result}` : ''}</li>)}</ul>
+                  </details>
+                )}
+              </div>
             </section>
 
             {/* Данные клиента */}
@@ -296,21 +386,33 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
                   </div>
                 </div>
               ) : (
-                <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-1.5 text-sm">
-                  <dt className="text-muted-foreground">Телефон</dt><dd>{showPhone(lead.client_phone) || '—'}</dd>
-                  <dt className="text-muted-foreground">Адрес</dt><dd>{lead.address || '—'}</dd>
-                  <dt className="text-muted-foreground">Источник</dt><dd>{lead.source || '—'}</dd>
-                  <dt className="text-muted-foreground">Бюджет</dt><dd>{lead.amount ? formatCurrency(lead.amount) : '—'}</dd>
-                  <dt className="text-muted-foreground">Ответственный</dt><dd className="flex items-center gap-1"><UserRound size={13} className="text-muted-foreground" />{managerName(lead.manager_id)}</dd>
-                  <dt className="text-muted-foreground">На этапе</dt><dd>{daysOnStage(lead)} дн.</dd>
-                  {lead.comment && <><dt className="text-muted-foreground">Комментарий</dt><dd className="whitespace-pre-wrap">{lead.comment}</dd></>}
-                </dl>
+                <div className="rounded-xl border divide-y text-sm bg-background">
+                  {([
+                    ['Телефон', showPhone(lead.client_phone)],
+                    ['Адрес / ЖК', lead.address],
+                    ['Бюджет', lead.amount ? formatCurrency(lead.amount) : null],
+                    ['Источник', lead.source],
+                    ['Ответственный', managerName(lead.manager_id)],
+                    ['Что хочет', lead.comment],
+                  ] as const).map(([k, v]) => (
+                    <div key={k} className="flex gap-3 px-3 py-2">
+                      <span className="w-28 shrink-0 text-muted-foreground">{k}</span>
+                      {v ? <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{v}</span>
+                        : !ro ? <button type="button" className="text-primary/80 hover:text-primary text-left" onClick={() => setEdit({ client_name: lead.client_name, client_phone: lead.client_phone, address: lead.address, source: lead.source, amount: lead.amount, comment: lead.comment, manager_id: lead.manager_id })}>+ добавить</button>
+                        : <span className="text-muted-foreground">—</span>}
+                    </div>
+                  ))}
+                </div>
               )}
             </section>
 
+          </div>
+          )}
+          {tab === 'history' && (
+            <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4">
             {/* История */}
             <section className="space-y-2">
-              <h3 className="text-sm font-semibold">История</h3>
+              <p className="text-xs text-muted-foreground">Всё, что происходило с лидом. Запишите, о чём договорились с клиентом — коллеги увидят.</p>
               <div className="flex gap-2">
                 <Textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Комментарий: о чём договорились…" rows={2} className="min-h-0" />
                 <Button className="self-end" onClick={sendNote} disabled={!note.trim()}>Добавить</Button>
@@ -328,7 +430,8 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
                 })}
               </ol>
             </section>
-          </div>
+            </div>
+          )}
         </>)}
 
         {/* Выполнение задачи */}
