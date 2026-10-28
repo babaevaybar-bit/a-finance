@@ -8,7 +8,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { ShieldCheck, Eye, EyeOff, UserCog, Trash2, RotateCcw } from 'lucide-react';
+import { ShieldCheck, Eye, EyeOff, UserCog, Trash2, RotateCcw, ChevronDown, Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { supabase } from '@/db/supabase';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -171,6 +172,14 @@ export default function PermissionsPage() {
   const [saving, setSaving]         = useState<Record<string, boolean>>({});
   const [loading, setLoading]       = useState(true);
   const [roleByManager, setRoleByManager] = useState<Record<string, Profile['role']>>({});
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [q, setQ] = useState('');
+  // открыли сотрудника — подтягиваем его карточку к верху экрана
+  useEffect(() => {
+    if (!openId) return;
+    const t = setTimeout(() => document.getElementById(`perm-${openId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    return () => clearTimeout(t);
+  }, [openId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -298,8 +307,20 @@ export default function PermissionsPage() {
         ) : managers.length === 0 ? (
           <Card><CardContent className="py-12 text-center text-muted-foreground">Нет сотрудников</CardContent></Card>
         ) : (
-          <div className="space-y-4">
-            {managers.map(m => {
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3 flex-wrap pt-2">
+              <div>
+                <h2 className="text-base font-semibold">Права сотрудников</h2>
+                <p className="text-xs text-muted-foreground">Нажмите на сотрудника, чтобы настроить его доступ.</p>
+              </div>
+              {managers.length > 6 && (
+                <div className="relative w-full sm:w-64">
+                  <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Найти сотрудника" className="h-9 pl-8" />
+                </div>
+              )}
+            </div>
+            {managers.filter(m => !q.trim() || `${m.name} ${m.role ?? ''}`.toLowerCase().includes(q.trim().toLowerCase())).map(m => {
               const managerPerms = permMap[m.id] ?? {};
               const hasRestrictions = PERMISSION_PAGES.some(({ key }) => {
                 const p = getPerm(permMap, m.id, key, roleByManager[m.id]);
@@ -316,12 +337,16 @@ export default function PermissionsPage() {
               const role = roleByManager[m.id];
               const sales = isSalesRole(role);
               const hasOverrides = sales && Object.keys(managerPerms).length > 0;
+              const isOpen = openId === m.id;
+              const openCount = PERMISSION_PAGES.filter(({ key }) => getPerm(permMap, m.id, key, role).can_view).length;
 
               return (
-                <Card key={m.id} className="border border-border">
-                  <CardHeader className="pb-2 pt-4 px-4">
+                <Card key={m.id} id={`perm-${m.id}`} className={`scroll-mt-20 border transition-shadow ${isOpen ? 'border-primary/40 shadow-sm' : 'border-border'}`}>
+                  <CardHeader className={`px-4 ${isOpen ? 'pb-2 pt-3' : 'py-3'}`}>
                     <div className="flex items-center gap-3 flex-wrap justify-between">
-                      <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      <button type="button" onClick={() => setOpenId(isOpen ? null : m.id)} aria-expanded={isOpen}
+                        className="flex items-center gap-2.5 flex-wrap min-w-0 flex-1 text-left rounded-md -m-1 p-1 hover:bg-muted/50">
+                        <ChevronDown size={16} className={`shrink-0 text-muted-foreground transition-transform ${isOpen ? '' : '-rotate-90'}`} />
                         <CardTitle className="text-sm font-medium truncate">{m.name}</CardTitle>
                         <Badge variant="secondary" className="text-xs shrink-0">{m.role || '—'}</Badge>
                         {sales && <Badge variant="outline" className="text-xs shrink-0">права роли «{ROLE_LABELS[role!]}»{hasOverrides ? ' + изменения' : ''}</Badge>}
@@ -330,8 +355,9 @@ export default function PermissionsPage() {
                             Есть ограничения
                           </Badge>
                         )}
-                      </div>
-                      <div className="flex gap-2 shrink-0">
+                        <span className="text-xs text-muted-foreground">открыто {openCount} из {PERMISSION_PAGES.length}</span>
+                      </button>
+                      {isOpen && <div className="flex gap-2 shrink-0">
                         {sales ? (
                           <Button variant="outline" size="sm" className="text-xs gap-1 h-7" disabled={!isDirector || isBatching || !hasOverrides}
                             onClick={() => resetToRole(m.id)}>
@@ -359,10 +385,10 @@ export default function PermissionsPage() {
                           Закрыть всё
                         </Button>
                         </>)}
-                      </div>
+                      </div>}
                     </div>
                   </CardHeader>
-                  <CardContent className="px-4 pb-4">
+                  {isOpen && <CardContent className="px-4 pb-4">
                     <div className="w-full overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
@@ -448,7 +474,7 @@ export default function PermissionsPage() {
                         </tbody>
                       </table>
                     </div>
-                  </CardContent>
+                  </CardContent>}
                 </Card>
               );
             })}
