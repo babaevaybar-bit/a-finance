@@ -123,6 +123,11 @@ export async function completeTask(id: string, result: string | null) {
   return data as CrmTask;
 }
 
+export async function rescheduleTask(id: string, due_at: string) {
+  const { error } = await supabase.from('crm_tasks').update({ due_at }).eq('id', id);
+  err(error);
+}
+
 export async function deleteTask(id: string) {
   const { error } = await supabase.from('crm_tasks').delete().eq('id', id);
   err(error);
