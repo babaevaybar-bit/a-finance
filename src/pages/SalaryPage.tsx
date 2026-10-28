@@ -157,9 +157,14 @@ export default function SalaryPage() {
 
 interface MySalaryRow { manager_name: string; base_salary: number; commission_pct: number; use_personal: boolean; revenue_base: number; deals_count: number; commission: number; total: number; paid: number }
 
+interface AllSalaryRow extends MySalaryRow { manager_id: string; role: string | null }
+
 function MySalary() {
+  const { seesAll } = useAuth();
+  const showAll = seesAll('salary');
   const [monthYear, setMonthYear] = useState(getCurrentMonthYear());
   const [row, setRow] = useState<MySalaryRow | null | undefined>(undefined);
+  const [all, setAll] = useState<AllSalaryRow[] | null>(null);
   useEffect(() => {
     setRow(undefined);
     supabase.rpc('my_salary', { p_month: monthYear }).then(({ data, error }) => {
@@ -167,6 +172,14 @@ function MySalary() {
       setRow(((data as MySalaryRow[] | null) ?? [])[0] ?? null);
     });
   }, [monthYear]);
+  useEffect(() => {
+    if (!showAll) { setAll(null); return; }
+    setAll(null);
+    supabase.rpc('all_salaries', { p_month: monthYear }).then(({ data, error }) => {
+      if (error) { toast.error('Не удалось загрузить зарплаты сотрудников'); setAll([]); return; }
+      setAll((data as AllSalaryRow[] | null) ?? []);
+    });
+  }, [monthYear, showAll]);
   const left = row ? Number(row.total) - Number(row.paid) : 0;
   const item = (label: string, value: string, sub?: string, strong = false) => (
     <div className="rounded-xl border border-border p-4">
@@ -177,7 +190,7 @@ function MySalary() {
   );
   return (
     <AppLayout>
-      <div className="space-y-6 max-w-3xl">
+      <div className={`space-y-6 ${showAll ? 'max-w-5xl' : 'max-w-3xl'}`}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold">Моя зарплата</h1>
@@ -212,6 +225,61 @@ function MySalary() {
             </Card>
             <p className="text-xs text-muted-foreground">Комиссия считается только с подтверждённых сделок. Если сделки нет в расчёте — проверьте её статус в «Подтверждениях».</p>
           </>
+        )}
+        {showAll && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Зарплаты сотрудников — {monthYearToLabel(monthYear)}</CardTitle>
+              <p className="text-xs text-muted-foreground">Только просмотр. Оклад, процент и выплаты меняет руководитель.</p>
+            </CardHeader>
+            <CardContent>
+              {all === null ? (
+                <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-10 bg-muted rounded animate-pulse" />)}</div>
+              ) : all.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-6">Нет данных</p>
+              ) : (
+                <div className="w-full overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-muted-foreground">
+                        <th className="text-left font-medium py-2 pr-3 whitespace-nowrap">Сотрудник</th>
+                        <th className="text-right font-medium py-2 px-3 whitespace-nowrap">Оклад</th>
+                        <th className="text-right font-medium py-2 px-3 whitespace-nowrap">Комиссия</th>
+                        <th className="text-right font-medium py-2 px-3 whitespace-nowrap">Итого</th>
+                        <th className="text-right font-medium py-2 px-3 whitespace-nowrap">Выплачено</th>
+                        <th className="text-right font-medium py-2 pl-3 whitespace-nowrap">К выплате</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {all.map(r => {
+                        const rest = Number(r.total) - Number(r.paid);
+                        return (
+                          <tr key={r.manager_id} className="border-b border-border last:border-0">
+                            <td className="py-2.5 pr-3">
+                              <div className="font-medium">{r.manager_name}</div>
+                              <div className="text-[11px] text-muted-foreground">{r.role ?? ''}{Number(r.commission_pct) > 0 ? ` · ${Number(r.commission_pct)}% от ${r.use_personal ? 'своих сделок' : 'выручки'}` : ''}</div>
+                            </td>
+                            <td className="py-2.5 px-3 text-right tabular-nums">{formatCurrency(Number(r.base_salary))}</td>
+                            <td className="py-2.5 px-3 text-right tabular-nums">{formatCurrency(Number(r.commission))}</td>
+                            <td className="py-2.5 px-3 text-right tabular-nums font-semibold">{formatCurrency(Number(r.total))}</td>
+                            <td className="py-2.5 px-3 text-right tabular-nums text-muted-foreground">{Number(r.paid) > 0 ? formatCurrency(Number(r.paid)) : '—'}</td>
+                            <td className="py-2.5 pl-3 text-right tabular-nums">{rest > 0 ? formatCurrency(rest) : '—'}</td>
+                          </tr>
+                        );
+                      })}
+                      <tr className="bg-muted/30">
+                        <td className="py-2.5 pr-3 font-semibold">ИТОГО</td>
+                        <td colSpan={2}></td>
+                        <td className="py-2.5 px-3 text-right tabular-nums font-semibold">{formatCurrency(all.reduce((s, r) => s + Number(r.total), 0))}</td>
+                        <td className="py-2.5 px-3 text-right tabular-nums text-muted-foreground">{formatCurrency(all.reduce((s, r) => s + Number(r.paid), 0))}</td>
+                        <td className="py-2.5 pl-3 text-right tabular-nums font-semibold">{formatCurrency(all.reduce((s, r) => s + Math.max(0, Number(r.total) - Number(r.paid)), 0))}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         )}
       </div>
     </AppLayout>

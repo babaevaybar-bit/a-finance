@@ -41,7 +41,7 @@ export const IN_DEVELOPMENT = new Set(['estimate', 'training', 'crm']);
  *  Нужен такой доступ — смените роль на РОП или Директор. */
 export const MANAGER_LOCKED = new Set(['managers', 'permissions']);
 /** Разделы, где у менеджера выбор «только свои / все»: сделки, лиды. Значение хранится в employee_permissions.scope_all */
-export const SCOPE_PAGES = new Set(['dashboard', 'sales', 'debtors', 'approvals', 'reports', 'crm', 'amocrm']);
+export const SCOPE_PAGES = new Set(['dashboard', 'sales', 'debtors', 'approvals', 'reports', 'salary', 'crm', 'amocrm']);
 const DEAL_SCOPE_PAGES = ['dashboard', 'sales', 'debtors', 'approvals', 'reports'];
 
 /** Права менеджера по продажам по умолчанию; в «Доступе» их можно поднять или убрать для конкретного сотрудника */
@@ -53,7 +53,7 @@ export const MANAGER_POLICY: Record<string, 'edit' | 'view' | 'none'> = {
   estimate: 'edit',        // пока «в разработке»
   finance: 'none',
   reports: 'view',
-  salary: 'view',          // только своя зарплата
+  salary: 'view',          // своя зарплата; «Все» в «Доступе» — зарплаты всех (только просмотр)
   profit: 'none',
   production: 'view',
   boards: 'edit',
