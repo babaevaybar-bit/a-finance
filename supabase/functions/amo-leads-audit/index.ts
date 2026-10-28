@@ -66,6 +66,56 @@ Deno.serve(async (req) => {
       sources: (sources?._embedded?.sources ?? []).map((x: any) => ({ id: x.id, name: x.name, type: x.origin_code })) }), { headers: { 'Content-Type': 'application/json' } });
   }
 
+  // Режим «rights»: права пользователей amoCRM на сделки и контакты (только чтение)
+  if (body?.mode === 'rights') {
+    const u = await get('/api/v4/users?with=rights,role&limit=250');
+    const rows = (u?._embedded?.users ?? []).map((x: any) => ({ name: x.name, admin: x.rights?.is_admin, active: x.rights?.is_active,
+      leads: x.rights?.leads, contacts: x.rights?.contacts, companies: x.rights?.companies, role: x._embedded?.roles?.[0]?.name ?? null }));
+    return new Response(JSON.stringify(rows), { headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // Режим «handoff»: лиды «Отдела продаж» за N дней — есть ли у них контакт с телефоном и чей он
+  if (body?.mode === 'handoff') {
+    const now = Math.floor(Date.now() / 1000);
+    const from = now - (Number(body.days) || 14) * 86400;
+    const salesId = Object.entries(pipeName).find(([, n]) => n === 'Отдел продаж')?.[0];
+    const qualId = Object.entries(pipeName).find(([, n]) => n === 'Квалификация')?.[0];
+    // лиды, которые меняли статус за период и сейчас в «Отделе продаж»
+    const ev = await all(`/api/v4/events?filter[type][]=lead_status_changed&filter[created_at][from]=${from}&filter[created_at][to]=${now}`, 'events', 20);
+    const moved = new Map<number, any>();
+    for (const e of ev) {
+      const b = e.value_before?.[0]?.lead_status, a2 = e.value_after?.[0]?.lead_status;
+      if (String(b?.pipeline_id) === qualId && String(a2?.pipeline_id) === salesId) moved.set(e.entity_id, { at: kz(e.created_at), by: um[e.created_by] ?? e.created_by });
+    }
+    const created = await all(`/api/v4/leads?with=contacts&filter[pipeline_id][]=${salesId}&filter[created_at][from]=${from}&filter[created_at][to]=${now}`, 'leads');
+    const ids = [...new Set([...moved.keys(), ...created.map((l: any) => l.id)])];
+    const leads: any[] = [];
+    for (let i = 0; i < ids.length; i += 50) {
+      const q = ids.slice(i, i + 50).map(id => `filter[id][]=${id}`).join('&');
+      const d = await get(`/api/v4/leads?with=contacts&limit=50&${q}`);
+      leads.push(...(d?._embedded?.leads ?? []));
+    }
+    const cids = [...new Set(leads.flatMap((l: any) => (l._embedded?.contacts ?? []).map((c: any) => c.id)))];
+    const contacts: Record<string, any> = {};
+    for (let i = 0; i < cids.length; i += 50) {
+      const q = cids.slice(i, i + 50).map(id => `filter[id][]=${id}`).join('&');
+      const d = await get(`/api/v4/contacts?limit=50&${q}`);
+      for (const c of d?._embedded?.contacts ?? []) contacts[c.id] = c;
+    }
+    const rows = leads.map((l: any) => {
+      const cs = (l._embedded?.contacts ?? []).map((c: any) => contacts[c.id]).filter(Boolean);
+      const phone = cs.some((c: any) => (c.custom_fields_values ?? []).some((f: any) => f.field_code === 'PHONE' && f.values?.length));
+      return {
+        id: l.id, name: l.name, created: kz(l.created_at), created_by: um[l.created_by] ?? l.created_by,
+        pipe: pipeName[String(l.pipeline_id)], status: st[l.status_id]?.name, lead_resp: um[l.responsible_user_id] ?? l.responsible_user_id,
+        moved: moved.get(l.id) ?? null, contacts: cs.length, phone,
+        contact_resp: cs.map((c: any) => um[c.responsible_user_id] ?? c.responsible_user_id).join(','),
+        phone_in_name: /\d{10,}/.test(String(l.name ?? '')),
+      };
+    }).sort((a: any, b: any) => a.created.localeCompare(b.created));
+    return new Response(JSON.stringify({ salesId, qualId, moved: moved.size, rows }), { headers: { 'Content-Type': 'application/json' } });
+  }
+
   const result: any[] = [];
   for (const date of dates) {
     const noonKz = Math.floor(Date.parse(`${date}T12:00:00Z`) / 1000) - KZ;
