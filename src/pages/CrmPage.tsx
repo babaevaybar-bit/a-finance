@@ -56,7 +56,9 @@ export default function CrmPage() {
   const [mgrFilter, setMgrFilter] = useState<string>('');
   const [view, setView] = useState<'board' | 'tasks'>(params.get('view') === 'tasks' ? 'tasks' : 'board');
   const [showClosed, setShowClosed] = useState(false);
+  const [quick, setQuick] = useState<'all' | 'overdue' | 'notask' | 'unread' | 'today'>('all');
   const [openId, setOpenId] = useState<string | null>(params.get('lead'));
+  const [openTab, setOpenTab] = useState<'card' | 'chat'>('card');
   const [creating, setCreating] = useState<{ stageId?: string } | null>(null);
   const [mobileStage, setMobileStage] = useState<string>('');
   const dragId = useRef<string | null>(null);
@@ -104,12 +106,23 @@ export default function CrmPage() {
     return m;
   }, [tasks]);
 
-  const filtered = useMemo(() => {
+  const base = useMemo(() => {
     const s = q.trim().toLowerCase(), digits = q.replace(/\D/g, '');
     return (leads ?? []).filter(l =>
       (!mgrFilter || l.manager_id === mgrFilter) &&
       (!s || l.client_name.toLowerCase().includes(s) || (digits.length >= 3 && (l.client_phone ?? '').replace(/\D/g, '').includes(digits)) || (l.address ?? '').toLowerCase().includes(s)));
   }, [leads, q, mgrFilter]);
+  // Быстрые фильтры над воронкой: что требует внимания прямо сейчас
+  const isOpenLead = (l: CrmLead) => stages.find(s => s.id === l.stage_id)?.kind === 'open';
+  const quickTest = useMemo(() => ({
+    all: () => true,
+    overdue: (l: CrmLead) => { const t = nextTaskByLead.get(l.id); return !!t && isOverdue(t); },
+    notask: (l: CrmLead) => isOpenLead(l) && !nextTaskByLead.has(l.id),
+    unread: (l: CrmLead) => !!l.unread,
+    today: (l: CrmLead) => { const t = nextTaskByLead.get(l.id); return !!t && !isOverdue(t) && kzDayKey(t.due_at) === todayKey(); },
+  }), [nextTaskByLead, stages]); // eslint-disable-line react-hooks/exhaustive-deps
+  const filtered = useMemo(() => base.filter(quickTest[quick]), [base, quick, quickTest]);
+  const quickCount = (k: keyof typeof quickTest) => base.filter(l => isOpenLead(l) || k === 'unread').filter(quickTest[k]).length;
   // Сначала лиды с просроченной задачей, потом без задачи, потом по ближайшей задаче
   const sortLeads = (list: CrmLead[]) => [...list].sort((a, b) => {
     const ua = a.unread ? 1 : 0, ub = b.unread ? 1 : 0;
@@ -161,39 +174,48 @@ export default function CrmPage() {
     const mine = canEditAllLeads || l.manager_id === (profile?.manager_id ?? null);
     const nx = s.kind === 'open' && mine ? nextStage(l) : null;
     const tel = telLink(l.client_phone), wa = waLink(l.client_phone);
+    const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+    const mName = l.manager_id ? managerName(l.manager_id) : '';
+    // Следующий шаг — главное на карточке: что сделать и когда
+    const next = s.kind === 'won' ? { cls: 'bg-emerald-50 text-emerald-800', icon: Trophy, text: 'Успешно' }
+      : s.kind === 'lost' ? { cls: 'bg-red-50 text-red-700', icon: XCircle, text: l.lost_reason ? `Отказ: ${l.lost_reason}` : 'Отказ' }
+      : t ? { cls: late ? 'bg-red-50 text-red-700 font-medium' : 'bg-muted text-foreground/80', icon: CalendarClock, text: `${late ? 'Просрочено: ' : ''}${t.title !== taskKindLabel(t.kind) ? t.title : taskKindLabel(t.kind)} · ${dueLabel(t.due_at)}` }
+      : { cls: 'bg-amber-50 text-amber-800', icon: AlertTriangle, text: 'Нет следующего шага' };
+    const NI = next.icon;
     return (
       <div draggable={!isMobile && mine} onDragStart={() => { dragId.current = l.id; }} onClick={() => setOpenId(l.id)}
-        className={`group rounded-xl border bg-background p-3 shadow-sm hover:shadow-md hover:border-primary/40 transition-all cursor-pointer ${late ? 'border-l-4 border-l-red-500' : ''}`}>
+        className={`group rounded-xl border bg-background p-3 shadow-sm hover:shadow-md hover:border-primary/40 transition-all cursor-pointer ${l.unread ? 'ring-1 ring-emerald-500/50' : ''}`}>
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
-            <div className="text-[15px] md:text-sm font-medium truncate">{l.client_name}</div>
+            <div className="text-[15px] md:text-sm font-semibold truncate">{l.client_name}</div>
             <div className="text-xs text-muted-foreground truncate">{[showPhone(l.client_phone), l.source].filter(Boolean).join(' · ')}</div>
           </div>
-          {l.amount > 0 && <span className="text-xs font-semibold tabular-nums shrink-0">{formatCurrency(l.amount)}</span>}
-          {!!l.unread && <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold inline-flex items-center justify-center" title="Непрочитанные сообщения">{l.unread}</span>}
+          {!!l.unread ? <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold inline-flex items-center justify-center" title="Новые сообщения">{l.unread}</span>
+            : l.amount > 0 && <span className="text-xs font-semibold tabular-nums shrink-0">{formatCurrency(l.amount)}</span>}
         </div>
         {l.last_message_text && (
           <div className={`mt-1.5 text-xs truncate flex items-center gap-1 ${l.unread ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
             <MessageCircle size={11} className="shrink-0 text-emerald-600" />{l.last_message_text}
           </div>
         )}
-        <div className="mt-2 flex items-center gap-2 text-xs">
-          {s.kind === 'won' ? <span className="text-emerald-700 inline-flex items-center gap-1"><Trophy size={12} />успешно</span>
-            : s.kind === 'lost' ? <span className="text-red-600 inline-flex items-center gap-1 truncate"><XCircle size={12} />{l.lost_reason ?? 'отказ'}</span>
-            : t ? <span className={`inline-flex items-center gap-1 truncate ${late ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}><CalendarClock size={12} />{taskKindLabel(t.kind)} {dueLabel(t.due_at)}</span>
-            : <span className="text-amber-700 inline-flex items-center gap-1"><AlertTriangle size={12} />нет задачи</span>}
-          <span className="ml-auto text-muted-foreground shrink-0 inline-flex items-center gap-0.5" title="дней на этапе"><Clock size={11} />{daysOnStage(l)}д</span>
+        <div className={`mt-2 rounded-md px-2 py-1 text-xs flex items-center gap-1.5 ${next.cls}`}>
+          <NI size={12} className="shrink-0" /><span className="truncate">{next.text}</span>
         </div>
-        <div className="mt-2 flex items-center gap-1 -mb-1 -mx-1" onClick={e => e.stopPropagation()}>
-          {tel && <a href={tel} className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground" aria-label="Позвонить"><Phone size={15} /></a>}
-          {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-emerald-600" aria-label="WhatsApp"><MessageCircle size={15} /></a>}
-          {canViewAllManagers && l.manager_id && <span className="text-[11px] text-muted-foreground ml-1 min-w-0 flex-1 truncate"><UserRound size={11} className="inline -mt-0.5 mr-0.5" />{managerName(l.manager_id)}</span>}
-          {nx && (
-            <button type="button" onClick={() => moveLead(l.id, nx)} title={`На этап «${nx.name}»`}
-              className={`ml-auto shrink-0 h-8 pl-2 pr-1.5 rounded-lg text-xs items-center gap-0.5 text-primary hover:bg-primary/10 ${isMobile ? 'inline-flex' : 'hidden group-hover:inline-flex'}`}>
-              <span className="truncate max-w-[110px]">{nx.name}</span><ChevronRight size={14} />
-            </button>
+        <div className="mt-2 flex items-center gap-1.5 -mb-1" onClick={e => e.stopPropagation()}>
+          {canViewAllManagers && mName && (
+            <span className="h-5 w-5 rounded-full bg-muted text-[9px] font-semibold text-muted-foreground flex items-center justify-center shrink-0" title={`Ответственный: ${mName}`}>{initials(mName)}</span>
           )}
+          <span className="text-[11px] text-muted-foreground inline-flex items-center gap-0.5 shrink-0" title="Сколько дней лид на этом этапе"><Clock size={11} />{daysOnStage(l)} дн.</span>
+          <span className="ml-auto inline-flex items-center gap-0.5">
+            {tel && <a href={tel} className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground" title="Позвонить" aria-label="Позвонить"><Phone size={15} /></a>}
+            {wa && <button type="button" onClick={() => { setOpenTab('chat'); setOpenId(l.id); }} className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-emerald-600" title="Переписка" aria-label="Переписка"><MessageCircle size={15} /></button>}
+            {nx && (
+              <button type="button" onClick={() => moveLead(l.id, nx)} title={`Перенести на «${nx.name}»`}
+                className={`shrink-0 h-8 px-1.5 rounded-lg text-xs items-center gap-0.5 text-primary hover:bg-primary/10 ${isMobile ? 'inline-flex' : 'hidden group-hover:inline-flex'}`}>
+                Дальше<ChevronRight size={14} />
+              </button>
+            )}
+          </span>
         </div>
       </div>
     );
@@ -228,7 +250,7 @@ export default function CrmPage() {
         <label className="text-sm text-muted-foreground inline-flex items-center gap-1.5"><input type="checkbox" checked={showClosed} onChange={e => setShowClosed(e.target.checked)} />Закрытые</label>
       )}
       {isDirector && (
-        <Button variant="outline" className="h-9 md:ml-auto" onClick={() => setWaOpen(true)}><Settings2 size={15} className="mr-1.5" />WhatsApp</Button>
+        <Button variant="outline" className="h-9 md:ml-auto px-3" title="Подключение WhatsApp" onClick={() => setWaOpen(true)}><Settings2 size={15} /><span className="hidden sm:inline ml-1.5">WhatsApp</span></Button>
       )}
       <Button className={`h-9 hidden md:inline-flex ${isDirector ? '' : 'ml-auto'}`} onClick={() => setCreating({})}><Plus size={16} className="mr-1.5" />Новый лид</Button>
     </div>
@@ -240,10 +262,30 @@ export default function CrmPage() {
         <div className="flex items-baseline gap-2">
           <h1 className="text-xl font-semibold">CRM</h1>
           <span className="text-sm text-muted-foreground">
-            {leads ? `${filtered.filter(l => pipeStages.find(s => s.id === l.stage_id)?.kind === 'open').length} в работе · ${formatCurrency(filtered.filter(l => pipeStages.find(s => s.id === l.stage_id)?.kind === 'open').reduce((a, l) => a + Number(l.amount || 0), 0))}` : ''}
+            {leads ? `${base.filter(isOpenLead).length} в работе · ${formatCurrency(base.filter(isOpenLead).reduce((a, l) => a + Number(l.amount || 0), 0))}` : ''}
           </span>
         </div>
         {toolbar}
+        {leads && view === 'board' && (
+          <div className="tabs-scroll flex gap-1.5 overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+            {([
+              ['all', 'Все', base.filter(isOpenLead).length, ''],
+              ['overdue', 'Просрочено', quickCount('overdue'), 'red'],
+              ['today', 'Дела на сегодня', quickCount('today'), 'blue'],
+              ['notask', 'Без следующего шага', quickCount('notask'), 'amber'],
+              ['unread', 'Новые сообщения', quickCount('unread'), 'emerald'],
+            ] as const).map(([k, label, n, c]) => {
+              const act = quick === k;
+              const tone = { red: 'text-red-700 border-red-200 bg-red-50', blue: 'text-blue-700 border-blue-200 bg-blue-50', amber: 'text-amber-800 border-amber-200 bg-amber-50', emerald: 'text-emerald-800 border-emerald-200 bg-emerald-50', '': '' }[c];
+              return (
+                <button key={k} type="button" onClick={() => setQuick(act && k !== 'all' ? 'all' : k)}
+                  className={`shrink-0 h-8 px-3 rounded-full border text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${act ? 'bg-foreground text-background border-foreground' : n && c ? tone : 'bg-background text-muted-foreground hover:bg-muted'}`}>
+                  {label}<span className={`tabular-nums ${act ? 'opacity-80' : ''}`}>{n}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {leads === null ? (
           <div className="flex gap-3 overflow-hidden">{[1, 2, 3, 4].map(i => <div key={i} className="h-64 w-72 shrink-0 rounded-xl bg-muted animate-pulse" />)}</div>
@@ -291,21 +333,22 @@ export default function CrmPage() {
                   onDragOver={e => { e.preventDefault(); setDragOver(s.id); }}
                   onDragLeave={() => setDragOver(p => (p === s.id ? null : p))}
                   onDrop={e => { e.preventDefault(); setDragOver(null); if (dragId.current) moveLead(dragId.current, s); dragId.current = null; }}>
-                  <div className="px-3 pt-2.5 pb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold truncate">{s.name}</span>
-                      <span className="ml-auto text-xs text-muted-foreground bg-background rounded-full px-2 py-0.5">{items.length}</span>
+                  <div className="px-3 pt-2.5 pb-2 flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold truncate">{s.name}</span>
+                        <span className="text-xs text-muted-foreground tabular-nums">{items.length}</span>
+                      </div>
+                      {sum > 0 && <div className="text-xs text-muted-foreground mt-0.5 tabular-nums">{formatCurrency(sum)}</div>}
                     </div>
-                    <div className="text-xs text-muted-foreground mt-0.5 tabular-nums">{sum > 0 ? formatCurrency(sum) : '—'}</div>
+                    {s.kind === 'open' && (
+                      <button type="button" onClick={() => setCreating({ stageId: s.id })} title={`Новый лид на этап «${s.name}»`} aria-label="Новый лид на этот этап"
+                        className="h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:text-primary hover:bg-background inline-flex items-center justify-center"><Plus size={16} /></button>
+                    )}
                   </div>
                   <div className="px-2 pb-2 space-y-2 flex-1 overflow-y-auto">
-                    {s.kind === 'open' && (
-                      <button type="button" onClick={() => setCreating({ stageId: s.id })}
-                        className="w-full h-8 rounded-lg border border-dashed text-xs text-muted-foreground hover:text-primary hover:border-primary/50 hover:bg-background inline-flex items-center justify-center gap-1">
-                        <Plus size={13} />Лид
-                      </button>
-                    )}
                     {items.map(l => <LeadCard key={l.id} l={l} s={s} />)}
+                    {!items.length && <div className="h-20 rounded-lg border border-dashed text-xs text-muted-foreground/70 flex items-center justify-center text-center px-3">{quick === 'all' ? 'Перетащите сюда лида' : 'Нет лидов по фильтру'}</div>}
                   </div>
                 </div>
               );
@@ -364,7 +407,7 @@ export default function CrmPage() {
         <Plus size={26} />
       </button>
 
-      <LeadSheet leadId={openId} stages={stages} lostReasons={lostReasons} managers={managers} onClose={() => setOpenId(null)} onChanged={onChanged} />
+      <LeadSheet leadId={openId} initialTab={openTab} stages={stages} lostReasons={lostReasons} managers={managers} onClose={() => { setOpenId(null); setOpenTab('card'); }} onChanged={onChanged} />
       {isDirector && <WhatsAppSetup open={waOpen} onOpenChange={setWaOpen} managers={managers} />}
 
       <NewLeadDialog open={!!creating} onOpenChange={v => { if (!v) setCreating(null); }} stages={pipeStages} managers={managers} defaultManager={myId}
