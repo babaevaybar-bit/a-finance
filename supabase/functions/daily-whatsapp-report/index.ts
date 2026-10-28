@@ -160,10 +160,11 @@ Deno.serve(async (req) => {
 
     const inWindow = (t: number) => t >= leadDayStart && t < leadDayEnd;
 
+    // Считаем ВСЕ лиды, поступившие с 20:00 до 20:00 в «Отдел продаж» и «Квалификацию», в том числе уже
+    // закрытые как нецелевые — число не зависит от того, когда их закрыли. Воронку берём из pipeline_id лида:
+    // статус «Закрыто и не реализовано» (143) общий для всех воронок.
     const leadsInWindow = allLeadsUnfiltered.filter((l: any) =>
-      leadAllowed(l.status_id) &&
-      inWindow(l.created_at) &&
-      statusMap[l.status_id]?.name !== 'Закрыто и не реализовано'
+      allowedPipelineIds.has(String(l.pipeline_id)) && inWindow(l.created_at)
     );
 
     // Повторные обращения не считаем: у клиента (контакта или номера в названии лида) уже был лид раньше.
@@ -202,6 +203,7 @@ Deno.serve(async (req) => {
       }
     } catch { /* не удалось проверить — считаем как раньше */ }
     const leadsToday = leadsInWindow.filter((l: any) => !repeatIds.has(l.id));
+    const leadsClosedLost = leadsToday.filter((l: any) => Number(l.status_id) === 143).length;
     const leadsTodaySum = leadsToday.reduce((s: number, l: any) => s + Number(l.price || 0), 0);
 
     let callsIn = 0, callsOut = 0;
@@ -290,7 +292,7 @@ Deno.serve(async (req) => {
     lines.push(`*Ежедневный отчёт — ${kzDateLabel(leadDayEnd - 1)}*`);
     lines.push(`_период: с ${kzShortLabel(leadDayStart)} до ${kzShortLabel(leadDayEnd)}_`);
     lines.push('');
-    lines.push(`Новых лидов: *${leadsToday.length}* (на сумму ${leadsTodaySum.toLocaleString('ru-RU')} ₸)${repeatIds.size ? ` · повторных обращений не считали: ${repeatIds.size}` : ''}`);
+    lines.push(`Новых лидов: *${leadsToday.length}* (в работе ${leadsToday.length - leadsClosedLost}, закрыто как нецелевые ${leadsClosedLost})${repeatIds.size ? ` · повторных обращений не считали: ${repeatIds.size}` : ''}`);
     lines.push(`Офлайн‑лидов (салон): *${offline.length}* (квал ${offQual} / не квал ${offline.length - offQual})`);
     lines.push(`Звонков: *${callsIn + callsOut}* (вход ${callsIn} / исход ${callsOut})`);
     lines.push(`Чатов обработано: *${chatsTotal}*`);
