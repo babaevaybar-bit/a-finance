@@ -8,11 +8,17 @@ export interface CrmLead {
   client_name: string; client_phone: string | null; address: string | null; source: string | null;
   amount: number; comment: string | null; tags: string[]; position: number; lost_reason: string | null;
   deal_id: string | null; created_at: string; updated_at: string; stage_changed_at: string; closed_at: string | null;
+  last_message_at?: string | null; last_message_text?: string | null; unread?: number;
 }
 export interface CrmTask {
   id: string; lead_id: string; manager_id: string | null; kind: TaskKind; title: string;
   due_at: string; done_at: string | null; result: string | null; created_at: string;
 }
+export interface CrmMessage {
+  id: string; lead_id: string; chat_id: string; direction: 'in' | 'out'; type: string; text: string | null;
+  content_uri: string | null; status: string | null; error: string | null; author_name: string | null; created_at: string;
+}
+export interface CrmSettings { wa_channel_id: string | null; wa_phone: string | null; new_lead_manager_id: string | null }
 export interface CrmEvent { id: string; lead_id: string; kind: string; text: string | null; data: Record<string, unknown>; author_name: string | null; created_at: string }
 
 export type TaskKind = 'call' | 'meeting' | 'measure' | 'message' | 'other';
@@ -164,3 +170,28 @@ export const DUE_PRESETS: { label: string; at: () => string }[] = [
   { label: 'Через 3 дня', at: () => kzAt(3, 10) },
   { label: 'Через неделю', at: () => kzAt(7, 10) },
 ];
+
+// ── WhatsApp (Wazzup) ──
+async function invokeWa<T>(body: Record<string, unknown>): Promise<T> {
+  const res = await supabase.functions.invoke('crm-whatsapp', { body });
+  if (res.error) {
+    let msg = res.error.message;
+    try { const b = await (res.error as { context?: Response }).context?.json?.(); if (b?.error) msg = b.error; } catch { /* */ }
+    throw new Error(msg);
+  }
+  if ((res.data as { error?: string })?.error) throw new Error((res.data as { error: string }).error);
+  return res.data as T;
+}
+export async function getMessages(leadId: string) {
+  const { data, error } = await supabase.from('crm_messages').select('*').eq('lead_id', leadId).order('created_at').limit(500);
+  err(error);
+  return (data ?? []) as CrmMessage[];
+}
+export const sendWhatsApp = (leadId: string, text: string) => invokeWa<{ message: CrmMessage }>({ action: 'send', lead_id: leadId, text });
+export async function markRead(leadId: string) { await supabase.rpc('crm_mark_read', { p_lead: leadId }); }
+export const waStatus = () => invokeWa<{ connected: boolean; reason?: string; keyOk?: boolean; channels?: { id: string; phone: string | null; state: string | null }[]; webhook?: string | null }>({ action: 'status' });
+export const waSetup = (channelId: string, managerId: string | null) => invokeWa<{ ok: boolean }>({ action: 'setup', channel_id: channelId, manager_id: managerId });
+export async function getCrmSettings() {
+  const { data } = await supabase.from('crm_settings').select('wa_channel_id, wa_phone, new_lead_manager_id').eq('id', 1).maybeSingle();
+  return (data ?? null) as CrmSettings | null;
+}

@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { toast } from 'sonner';
 import {
   Plus, Search, Phone, CalendarClock, AlertTriangle, LayoutGrid, ListChecks, Clock, Trophy, XCircle,
-  MessageCircle, ChevronRight, UserRound, X,
+  MessageCircle, ChevronRight, UserRound, X, Settings2,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getManagers } from '@/lib/api';
@@ -15,6 +15,7 @@ import { supabase } from '@/db/supabase';
 import type { Manager } from '@/types/types';
 import { formatCurrency } from '@/lib/utils';
 import LeadSheet from '@/components/pipeline/LeadSheet';
+import WhatsAppSetup from '@/components/pipeline/WhatsAppSetup';
 import {
   type CrmLead, type CrmStage, type CrmPipeline, type CrmTask, type TaskKind,
   getPipeline, getLeads, createLead, updateLead, getTasks, createTask, completeTask, addEvent, SOURCES, TASK_KINDS, taskKindLabel,
@@ -37,7 +38,8 @@ function useIsMobile() {
 }
 
 export default function CrmPage() {
-  const { profile, seesAll, editsAll } = useAuth();
+  const { profile, seesAll, editsAll, isDirector } = useAuth();
+  const [waOpen, setWaOpen] = useState(false);
   const canViewAllManagers = seesAll('crm'), canEditAllLeads = editsAll('crm');
   const myId = profile?.manager_id ?? null;
   const me = profile?.name && profile.name !== 'admin' ? profile.name : (profile?.email ?? null);
@@ -83,6 +85,14 @@ export default function CrmPage() {
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Не удалось загрузить'); setLeads([]); }
   }, [pipelineId]);
   useEffect(() => { load(); }, [load]);
+  // Новые лиды из WhatsApp и новые сообщения появляются сами
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const ch = supabase.channel('crm-leads-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_leads' }, () => { if (t) clearTimeout(t); t = setTimeout(load, 600); })
+      .subscribe();
+    return () => { if (t) clearTimeout(t); supabase.removeChannel(ch); };
+  }, [load]);
 
   const pipeStages = useMemo(() => stages.filter(s => s.pipeline_id === pipelineId).sort((a, b) => a.sort - b.sort), [stages, pipelineId]);
   const visibleStages = pipeStages.filter(s => showClosed || s.kind === 'open');
@@ -102,6 +112,8 @@ export default function CrmPage() {
   }, [leads, q, mgrFilter]);
   // Сначала лиды с просроченной задачей, потом без задачи, потом по ближайшей задаче
   const sortLeads = (list: CrmLead[]) => [...list].sort((a, b) => {
+    const ua = a.unread ? 1 : 0, ub = b.unread ? 1 : 0;
+    if (ua !== ub) return ub - ua;
     const ta = nextTaskByLead.get(a.id), tb = nextTaskByLead.get(b.id);
     const ra = ta ? (isOverdue(ta) ? 0 : 2) : 1, rb = tb ? (isOverdue(tb) ? 0 : 2) : 1;
     if (ra !== rb) return ra - rb;
@@ -158,7 +170,13 @@ export default function CrmPage() {
             <div className="text-xs text-muted-foreground truncate">{[showPhone(l.client_phone), l.source].filter(Boolean).join(' · ')}</div>
           </div>
           {l.amount > 0 && <span className="text-xs font-semibold tabular-nums shrink-0">{formatCurrency(l.amount)}</span>}
+          {!!l.unread && <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold inline-flex items-center justify-center" title="Непрочитанные сообщения">{l.unread}</span>}
         </div>
+        {l.last_message_text && (
+          <div className={`mt-1.5 text-xs truncate flex items-center gap-1 ${l.unread ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+            <MessageCircle size={11} className="shrink-0 text-emerald-600" />{l.last_message_text}
+          </div>
+        )}
         <div className="mt-2 flex items-center gap-2 text-xs">
           {s.kind === 'won' ? <span className="text-emerald-700 inline-flex items-center gap-1"><Trophy size={12} />успешно</span>
             : s.kind === 'lost' ? <span className="text-red-600 inline-flex items-center gap-1 truncate"><XCircle size={12} />{l.lost_reason ?? 'отказ'}</span>
@@ -209,7 +227,10 @@ export default function CrmPage() {
       {view === 'board' && (
         <label className="text-sm text-muted-foreground inline-flex items-center gap-1.5"><input type="checkbox" checked={showClosed} onChange={e => setShowClosed(e.target.checked)} />Закрытые</label>
       )}
-      <Button className="h-9 ml-auto hidden md:inline-flex" onClick={() => setCreating({})}><Plus size={16} className="mr-1.5" />Новый лид</Button>
+      {isDirector && (
+        <Button variant="outline" className="h-9 md:ml-auto" onClick={() => setWaOpen(true)}><Settings2 size={15} className="mr-1.5" />WhatsApp</Button>
+      )}
+      <Button className={`h-9 hidden md:inline-flex ${isDirector ? '' : 'ml-auto'}`} onClick={() => setCreating({})}><Plus size={16} className="mr-1.5" />Новый лид</Button>
     </div>
   );
 
@@ -344,6 +365,7 @@ export default function CrmPage() {
       </button>
 
       <LeadSheet leadId={openId} stages={stages} lostReasons={lostReasons} managers={managers} onClose={() => setOpenId(null)} onChanged={onChanged} />
+      {isDirector && <WhatsAppSetup open={waOpen} onOpenChange={setWaOpen} managers={managers} />}
 
       <NewLeadDialog open={!!creating} onOpenChange={v => { if (!v) setCreating(null); }} stages={pipeStages} managers={managers} defaultManager={myId}
         defaultStage={creating?.stageId} canPickManager={canEditAllLeads} pipelineId={pipelineId}

@@ -18,6 +18,7 @@ import {
 } from '@/lib/crm';
 const toKzLocal = (iso: string) => { const d = new Date(iso); return `${d.toLocaleDateString('en-CA', { timeZone: 'Asia/Qyzylorda' })}T${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Qyzylorda' })}`; };
 import { formatCurrency } from '@/lib/utils';
+import LeadChat from './LeadChat';
 
 const field = 'h-10 w-full rounded-md border border-input bg-background px-3 text-sm';
 const time = (iso: string) => new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Qyzylorda' });
@@ -57,6 +58,7 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
   const [win, setWin] = useState<{ amount: string; paid: string; contract: string; door: string } | null>(null);
   const [lost, setLost] = useState<{ reason: string; comment: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<'card' | 'chat'>('card');
 
   const load = useCallback(async () => {
     if (!leadId) return;
@@ -65,7 +67,14 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
       setLead(l); setEvents(ev); setTasks(ts);
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Не удалось загрузить'); }
   }, [leadId]);
-  useEffect(() => { setLead(null); setEdit(null); setNote(''); setTaskForm(null); if (leadId) load(); }, [leadId, load]);
+  useEffect(() => { setLead(null); setEdit(null); setNote(''); setTaskForm(null); setTab('card'); if (leadId) load(); }, [leadId, load]);
+  // есть непрочитанные — сразу открываем переписку и снимаем отметку в списке
+  const firstUnread = lead?.id && lead.unread ? lead.id : null;
+  useEffect(() => {
+    if (!firstUnread || !lead) return;
+    setTab('chat');
+    const n = { ...lead, unread: 0 }; setLead(n); onChanged(n);
+  }, [firstUnread]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stage = stages.find(s => s.id === lead?.stage_id);
   const pipeStages = useMemo(() => stages.filter(s => s.pipeline_id === lead?.pipeline_id), [stages, lead?.pipeline_id]);
@@ -210,6 +219,23 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
             {lead.deal_id && <a href="/approvals" className="text-xs text-primary inline-flex items-center gap-1 hover:underline"><ExternalLink size={12} />Сделка отправлена в «Подтверждения»</a>}
           </div>
 
+          {/* Вкладки: карточка / переписка WhatsApp */}
+          <div className="flex border-b shrink-0 px-5 gap-4 text-sm">
+            {([['card', 'Карточка'], ['chat', 'WhatsApp']] as const).map(([k, l]) => (
+              <button key={k} type="button" onClick={() => setTab(k)}
+                className={`relative h-10 font-medium transition-colors ${tab === k ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                {l}
+                {k === 'chat' && !!lead.unread && tab !== 'chat' && <span className="ml-1.5 inline-flex min-w-[18px] h-[18px] px-1 items-center justify-center rounded-full bg-emerald-600 text-white text-[11px]">{lead.unread}</span>}
+                {tab === k && <span className="absolute left-0 right-0 -bottom-px h-0.5 bg-primary rounded-full" />}
+              </button>
+            ))}
+          </div>
+          {tab === 'chat' ? (
+            <div className="flex-1 min-h-0">
+              <LeadChat leadId={lead.id} hasPhone={phoneDigits.length >= 10}
+                onSent={t => { const n = { ...lead, unread: 0, last_message_text: t, last_message_at: new Date().toISOString() }; setLead(n); onChanged(n); }} />
+            </div>
+          ) : (
           <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-5">
             {/* Задачи */}
             <section className="space-y-2">
@@ -329,6 +355,7 @@ export default function LeadSheet({ leadId, stages, lostReasons, managers, onClo
               </ol>
             </section>
           </div>
+          )}
         </>)}
 
         {/* Выполнение задачи */}
