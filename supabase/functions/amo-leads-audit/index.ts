@@ -46,6 +46,26 @@ Deno.serve(async (req) => {
   const um: Record<string, string> = { '0': 'Бот' };
   for (const u of users?._embedded?.users ?? []) um[u.id] = u.name;
 
+  // Режим «bot»: что делает «Бот» (created_by = 0 — автоматические действия amoCRM) за последние N дней
+  if (body?.mode === 'bot') {
+    const now = Math.floor(Date.now() / 1000);
+    const from = now - (Number(body.days) || 7) * 86400;
+    const ev = await all(`/api/v4/events?filter[created_by][]=0&filter[created_at][from]=${from}&filter[created_at][to]=${now}`, 'events', 20);
+    const byType: Record<string, { count: number; samples: any[] }> = {};
+    for (const e of ev) {
+      const t = byType[e.type] ??= { count: 0, samples: [] };
+      t.count += 1;
+      if (t.samples.length < 3) t.samples.push({ at: kz(e.created_at), entity: e.entity_type, id: e.entity_id,
+        before: JSON.stringify(e.value_before ?? null).slice(0, 200), after: JSON.stringify(e.value_after ?? null).slice(0, 200) });
+    }
+    const leads = await all(`/api/v4/leads?with=source_id&filter[created_at][from]=${from}&filter[created_at][to]=${now}`, 'leads');
+    const src: Record<string, number> = {};
+    for (const l of leads) { const k = `${um[l.created_by] ?? l.created_by} · source ${l.source_id ?? '—'}`; src[k] = (src[k] ?? 0) + 1; }
+    const sources = await get('/api/v4/sources');
+    return new Response(JSON.stringify({ events: ev.length, byType, leadsBy: src,
+      sources: (sources?._embedded?.sources ?? []).map((x: any) => ({ id: x.id, name: x.name, type: x.origin_code })) }), { headers: { 'Content-Type': 'application/json' } });
+  }
+
   const result: any[] = [];
   for (const date of dates) {
     const noonKz = Math.floor(Date.parse(`${date}T12:00:00Z`) / 1000) - KZ;
