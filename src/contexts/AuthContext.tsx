@@ -35,7 +35,7 @@ interface AuthContextType {
 }
 
 /** Разделы «в разработке»: менеджеры видят заглушку, руководители работают как обычно */
-export const IN_DEVELOPMENT = new Set(['estimate', 'training']);
+export const IN_DEVELOPMENT = new Set(['estimate', 'training', 'crm']);
 
 /** Разделы, которые менеджеру не открыть даже вручную: там данные всей компании и управление людьми.
  *  Нужен такой доступ — смените роль на РОП или Директор. */
