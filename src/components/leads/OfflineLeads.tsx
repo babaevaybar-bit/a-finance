@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { Store, Plus, Trash2, Phone, Check, X } from 'lucide-react';
+import { Store, Plus, Trash2, Phone, Check, X, History } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getManagers } from '@/lib/api';
 import { supabase } from '@/db/supabase';
@@ -43,6 +43,7 @@ export default function OfflineLeadsCard() {
   const { profile, seesAll, editsAll } = useAuth();
   const canViewAllManagers = seesAll('crm'), canEditAllLeads = editsAll('crm');
   const [open, setOpen] = useState(false);
+  const [histOpen, setHistOpen] = useState(false);
   const [rows, setRows] = useState<OfflineLead[] | null>(null);
   const [managers, setManagers] = useState<Manager[]>([]);
   const myId = profile?.manager_id ?? null;
@@ -83,9 +84,14 @@ export default function OfflineLeadsCard() {
               : 'сегодня пока никого — добавьте каждого, кто зашёл в салон'}
           </div>
         </div>
-        <Button className="h-12 w-full sm:w-auto px-5 text-base rounded-xl" onClick={() => setOpen(true)}>
-          <Plus size={18} className="mr-1.5" />Добавить офлайн‑лида
-        </Button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <Button variant="outline" className="h-12 px-4 rounded-xl" onClick={() => setHistOpen(true)}>
+            <History size={17} className="mr-1.5" />Все офлайн‑лиды
+          </Button>
+          <Button className="h-12 flex-1 sm:flex-none px-5 text-base rounded-xl" onClick={() => setOpen(true)}>
+            <Plus size={18} className="mr-1.5" />Добавить
+          </Button>
+        </div>
       </div>
 
       {list.length > 0 && (
@@ -112,6 +118,7 @@ export default function OfflineLeadsCard() {
         </div>
       )}
 
+      <OfflineLeadsHistory open={histOpen} onOpenChange={setHistOpen} managers={managers} showAll={canViewAllManagers} myId={myId} />
       <OfflineLeadDialog open={open} onOpenChange={setOpen} managers={canEditAllLeads ? managers : []} defaultManager={myId}
         onSaved={r => setRows(p => [r, ...(p ?? [])])} />
     </section>
@@ -206,6 +213,117 @@ export function OfflineLeadDialog({ open, onOpenChange, managers, defaultManager
           </label>
           <Button type="submit" className="w-full h-12 text-base" disabled={!ready || saving}>{saving ? 'Сохраняю…' : 'Сохранить'}</Button>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const dayKey = (iso: string) => {
+  // рабочий день: с 20:00 до 20:00 — лид после 20:00 относится к следующему дню, как в отчёте
+  return new Date(new Date(iso).getTime() + KZ + SHIFT).toISOString().slice(0, 10);
+};
+const dayTitle = (k: string) => new Date(k + 'T00:00:00Z').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long', timeZone: 'UTC' });
+const isoDay = (d: Date) => new Date(d.getTime() + KZ).toISOString().slice(0, 10);
+
+/** Все офлайн‑лиды за выбранные даты: по дням, с телефонами, фильтр по менеджеру и квал/не квал */
+function OfflineLeadsHistory({ open, onOpenChange, managers, showAll, myId }: {
+  open: boolean; onOpenChange: (v: boolean) => void; managers: Manager[]; showAll: boolean; myId: string | null;
+}) {
+  const [from, setFrom] = useState(() => isoDay(new Date(Date.now() - 29 * 86400000)));
+  const [to, setTo] = useState(() => isoDay(new Date()));
+  const [mgr, setMgr] = useState('');
+  const [qf, setQf] = useState<'all' | 'q' | 'nq'>('all');
+  const [rows, setRows] = useState<OfflineLead[] | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setRows(null);
+    // границы рабочих дней: «с» — 20:00 накануне, «по» — 20:00 этого дня
+    const start = new Date(Date.parse(from + 'T00:00:00Z') - KZ - SHIFT).toISOString();
+    const end = new Date(Date.parse(to + 'T00:00:00Z') + 86400000 - KZ - SHIFT).toISOString();
+    let q = supabase.from('offline_leads').select('*').gte('created_at', start).lt('created_at', end).order('created_at', { ascending: false }).limit(2000);
+    if (!showAll && myId) q = q.eq('manager_id', myId);
+    else if (mgr) q = q.eq('manager_id', mgr);
+    q.then(({ data, error }) => {
+      if (error) toast.error('Не удалось загрузить офлайн‑лидов');
+      setRows((data as OfflineLead[]) ?? []);
+    });
+  }, [open, from, to, mgr, showAll, myId]);
+
+  const all = rows ?? [];
+  const list = all.filter(r => qf === 'all' || (qf === 'q' ? r.qualified : !r.qualified));
+  const qCount = all.filter(r => r.qualified).length;
+  const groups: { day: string; items: OfflineLead[] }[] = [];
+  for (const r of list) {
+    const k = dayKey(r.created_at);
+    const g = groups[groups.length - 1];
+    if (g && g.day === k) g.items.push(r); else groups.push({ day: k, items: [r] });
+  }
+  const mName = (id: string) => managers.find(m => m.id === id)?.name ?? '';
+  const preset = (days: number) => { setFrom(isoDay(new Date(Date.now() - (days - 1) * 86400000))); setTo(isoDay(new Date())); };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col gap-3">
+        <DialogHeader>
+          <DialogTitle>Офлайн‑лиды (салон)</DialogTitle>
+          <DialogDescription>День считается с 20:00 до 20:00 — как в ежедневном отчёте.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="space-y-1"><span className="block text-xs text-muted-foreground">С</span>
+            <Input type="date" value={from} max={to} onChange={e => e.target.value && setFrom(e.target.value)} className="h-9 w-[150px]" /></label>
+          <label className="space-y-1"><span className="block text-xs text-muted-foreground">По</span>
+            <Input type="date" value={to} min={from} onChange={e => e.target.value && setTo(e.target.value)} className="h-9 w-[150px]" /></label>
+          {showAll && managers.length > 0 && (
+            <label className="space-y-1"><span className="block text-xs text-muted-foreground">Менеджер</span>
+              <select value={mgr} onChange={e => setMgr(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+                <option value="">Все</option>
+                {managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select></label>
+          )}
+          <div className="flex gap-1">
+            {[[1, 'Сегодня'], [7, '7 дней'], [30, '30 дней']].map(([d, t]) => (
+              <button key={d} type="button" onClick={() => preset(d as number)} className="h-9 px-2.5 rounded-md border text-xs hover:bg-muted">{t}</button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {([['all', `Все ${all.length}`], ['q', `Квал ${qCount}`], ['nq', `Не квал ${all.length - qCount}`]] as const).map(([k, t]) => (
+            <button key={k} type="button" onClick={() => setQf(k)}
+              className={`h-8 px-3 rounded-full text-xs font-medium border ${qf === k ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted'}`}>{t}</button>
+          ))}
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
+          {rows === null ? (
+            <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-12 rounded-lg bg-muted animate-pulse" />)}</div>
+          ) : groups.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-10">За эти даты офлайн‑лидов нет</p>
+          ) : groups.map(g => (
+            <div key={g.day} className="mb-3">
+              <div className="sticky top-0 bg-background/95 backdrop-blur py-1 text-xs font-medium text-muted-foreground flex justify-between">
+                <span className="capitalize">{dayTitle(g.day)}</span><span>{g.items.length}</span>
+              </div>
+              <div className="divide-y rounded-xl border">
+                {g.items.map(r => (
+                  <div key={r.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full shrink-0 ${r.qualified ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-muted text-muted-foreground border'}`}>
+                      {r.qualified ? 'квал' : 'не квал'}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium">{r.client_name}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {[time(r.created_at), r.client_phone ? showPhone(r.client_phone) : null, showAll ? mName(r.manager_id) : null, r.comment].filter(Boolean).join(' · ')}
+                      </div>
+                    </div>
+                    {r.client_phone && (
+                      <a href={`tel:+7${r.client_phone}`} className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground shrink-0" aria-label="Позвонить"><Phone size={14} /></a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       </DialogContent>
     </Dialog>
   );
