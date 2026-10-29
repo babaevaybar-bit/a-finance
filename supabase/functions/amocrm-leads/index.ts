@@ -1,4 +1,4 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2.49.4';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -207,7 +207,8 @@ Deno.serve(async (req) => {
         is_lost: statusMap[lead.status_id]?.name === 'Закрыто и не реализовано',
       }));
 
-    const allLeadsFiltered = allLeadsUnfiltered.filter((l: any) => leadAllowed(l.status_id));
+    // статус 143 («не реализовано») общий для всех воронок — воронку берём из pipeline_id сделки
+    const allLeadsFiltered = allLeadsUnfiltered.filter((l: any) => filterByPipeline ? allowedPipelineIds.has(String(l.pipeline_id)) : true);
 
     const SALES_STAGE_SORT_MIN = 30;
     const SALES_STAGE_SORT_MAX = 100;
@@ -231,9 +232,8 @@ Deno.serve(async (req) => {
       }))
       .sort((a, b) => b.created_at - a.created_at);
     const salesStageSum = salesStageLeads.reduce((s, l) => s + Number(l.price || 0), 0);
-    const leadsInRangeFiltered = allLeadsFiltered.filter((l: any) =>
-      l.created_at >= from30 && statusMap[l.status_id]?.name !== 'Закрыто и не реализовано'
-    );
+    // все поступившие лиды, в том числе позже закрытые как нецелевые — как в ежедневном отчёте
+    const leadsInRangeFiltered = allLeadsFiltered.filter((l: any) => l.created_at >= from30);
 
     // Лиды по дням — день считается с 20:00 до 20:00
     const leadsByDayMap: Record<string, number> = {};
@@ -258,6 +258,11 @@ Deno.serve(async (req) => {
     const leadDays: string[] = [];
     for (let i = 29; i >= 0; i--) {
       leadDays.push(leadDayKey(leadDayStart - i * 24 * 60 * 60));
+    }
+    // прошедшие дни — ровно как в сохранённых ежедневных отчётах (без повторных обращений), сегодня — живой счёт
+    if (!ownOnly) {
+      const { data: reps } = await supabaseAdmin.from('amo_daily_reports').select('report_date, leads').gte('report_date', leadDays[0]);
+      for (const r of reps ?? []) if (r.report_date !== leadDays[leadDays.length - 1] && r.leads != null) leadsByDayMap[r.report_date] = Number(r.leads);
     }
     const leadsByDay = leadDays.map(d => ({ date: d, count: leadsByDayMap[d] ?? 0 }));
     const callsByDay = leadDays.map(d => ({
