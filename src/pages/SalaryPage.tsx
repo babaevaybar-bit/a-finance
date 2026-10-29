@@ -8,9 +8,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Pencil, Check, X } from 'lucide-react';
+import { Pencil, Banknote, HandCoins, ChevronDown, Trash2 } from 'lucide-react';
 import {
-  getManagers, getSalarySettings, upsertSalarySetting, getExpenses, createExpense,
+  getManagers, getSalarySettings, upsertSalarySetting, getExpenses, createExpense, deleteExpense,
   getAllDealsForMonth,
 } from '@/lib/api';
 import {
@@ -21,132 +21,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/db/supabase';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import type { Manager, SalarySetting, Deal } from '@/types/types';
-import { SALES_ROLES, SALARY_CATEGORIES, PAYOUT_CATEGORY, CHANNELS } from '@/types/types';
-
-// ─── row with inline edit ──────────────────────────────────────────────────────
-interface RowProps {
-  manager: Manager;
-  setting: SalarySetting | undefined;
-  revenue: number;         // личные сделки менеджера
-  companyRevenue: number;  // общая выручка компании
-  onSaved: () => void;
-}
-
-function ManagerSalaryRow({ manager, setting, revenue, companyRevenue, onSaved, advance = 0, onPay }: RowProps & { advance?: number; onPay?: (amount: number) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [base, setBase]       = useState(String(setting?.base_salary ?? 0));
-  const [pct, setPct]         = useState(String(setting?.commission_pct ?? 0));
-  // usePersonal: true = личные сделки, false = общая выручка
-  const [usePersonal, setUsePersonal] = useState<boolean>(
-    setting?.use_personal_revenue ?? SALES_ROLES.includes(manager.role)
-  );
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setBase(String(setting?.base_salary ?? 0));
-    setPct(String(setting?.commission_pct ?? 0));
-    setUsePersonal(setting?.use_personal_revenue ?? SALES_ROLES.includes(manager.role));
-  }, [setting, manager.role]);
-
-  const baseSalary = Number(base) || 0;
-  const commPct    = Number(pct)  || 0;
-  const revenueBase = usePersonal ? revenue : companyRevenue;
-  const commission  = revenueBase * (commPct / 100);
-  const total       = baseSalary + commission;
-
-  async function save() {
-    if (baseSalary < 0 || commPct < 0) { toast.error('Значения не могут быть отрицательными'); return; }
-    setSaving(true);
-    try {
-      await upsertSalarySetting({
-        manager_id: manager.id,
-        base_salary: baseSalary,
-        commission_pct: commPct,
-        use_personal_revenue: usePersonal,
-      });
-      toast.success('Настройки сохранены');
-      onSaved();
-      setEditing(false);
-    } catch { toast.error('Ошибка сохранения'); } finally { setSaving(false); }
-  }
-
-  function cancel() {
-    setBase(String(setting?.base_salary ?? 0));
-    setPct(String(setting?.commission_pct ?? 0));
-    setUsePersonal(setting?.use_personal_revenue ?? SALES_ROLES.includes(manager.role));
-    setEditing(false);
-  }
-
-  return (
-    <tr className="border-b border-border last:border-0">
-      {/* Сотрудник */}
-      <td className="whitespace-nowrap py-3 pr-4 text-sm font-medium">
-        <div>{manager.name}</div>
-        <div className="mt-0.5">
-          <Badge variant="secondary" className="text-xs">{manager.role || '—'}</Badge>
-        </div>
-      </td>
-      {/* База выручки */}
-      <td className="whitespace-nowrap py-3 px-3 text-sm">
-        {editing ? (
-          <Select value={usePersonal ? 'personal' : 'company'} onValueChange={v => setUsePersonal(v === 'personal')}>
-            <SelectTrigger className="h-7 w-36 text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="personal">Личные сделки</SelectItem>
-              <SelectItem value="company">Общая выручка</SelectItem>
-            </SelectContent>
-          </Select>
-        ) : (
-          <Badge variant={usePersonal ? 'default' : 'outline'} className="text-xs">
-            {usePersonal ? 'Личные сделки' : 'Общая выручка'}
-          </Badge>
-        )}
-      </td>
-      {/* Сумма базы */}
-      <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums text-muted-foreground">
-        {formatCurrency(revenueBase)}
-      </td>
-      {/* Оклад */}
-      <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums">
-        {editing
-          ? <Input type="number" min="0" step="1000" className="h-7 w-28 text-right text-sm px-2" value={base} onChange={e => setBase(e.target.value)} />
-          : formatCurrency(baseSalary)}
-      </td>
-      {/* % */}
-      <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums">
-        {editing
-          ? <Input type="number" min="0" max="100" step="0.5" className="h-7 w-20 text-right text-sm px-2" value={pct} onChange={e => setPct(e.target.value)} />
-          : `${commPct}%`}
-      </td>
-      {/* Комиссия */}
-      <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums text-muted-foreground">{formatCurrency(commission)}</td>
-      {/* Итого */}
-      <td className="whitespace-nowrap py-3 pl-3 text-right text-sm tabular-nums font-semibold">{formatCurrency(total)}</td>
-      {/* Аванс и к выплате */}
-      <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums text-muted-foreground">{advance > 0 ? `− ${formatCurrency(advance)}` : '—'}</td>
-      <td className="whitespace-nowrap py-3 pl-3 text-right text-sm tabular-nums">
-        <div className={`font-semibold ${total - advance > 0 ? 'text-primary' : 'text-green-700'}`}>
-          {total - advance > 0 ? formatCurrency(total - advance) : 'Выплачено'}
-        </div>
-        {total - advance > 0 && onPay && (
-          <button type="button" className="text-[11px] text-primary underline" onClick={() => onPay(total - advance)}>Выплатить</button>
-        )}
-      </td>
-      {/* Действия */}
-      <td className="whitespace-nowrap py-3 pl-3">
-        {editing ? (
-          <div className="flex gap-1">
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" onClick={save} disabled={saving}><Check size={13} /></Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={cancel}><X size={13} /></Button>
-          </div>
-        ) : (
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(true)}><Pencil size={13} /></Button>
-        )}
-      </td>
-    </tr>
-  );
-}
+import type { Manager, SalarySetting, Deal, Expense } from '@/types/types';
+import { SALES_ROLES, ADVANCE_CATEGORY, PAYOUT_CATEGORY, CHANNELS } from '@/types/types';
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 /** Менеджер видит только свою зарплату, остальные — расчёт по всем сотрудникам */
@@ -286,204 +162,334 @@ function MySalary() {
   );
 }
 
+// ─── Руководитель: расчёт и выплата зарплат ────────────────────────────────────
+type PayKind = 'advance' | 'payout';
+interface Calc {
+  m: Manager; setting?: SalarySetting; personal: boolean; base: number; pct: number;
+  revenue: number; ownRevenue: number; deals: number; commission: number; total: number; advance: number; paid: number; rest: number; ops: Expense[];
+}
+
+const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase()).join('') || '?';
+const shortDate = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+
 function SalaryAdmin() {
+  const { isDirector } = useAuth();
   const [managers, setManagers]   = useState<Manager[]>([]);
   const [settings, setSettings]   = useState<SalarySetting[]>([]);
   const [deals, setDeals]         = useState<Deal[]>([]);
+  const [ops, setOps]             = useState<Expense[]>([]);
   const [monthYear, setMonthYear] = useState(getCurrentMonthYear());
   const [loading, setLoading]     = useState(true);
+  const [filter, setFilter]       = useState<'all' | 'due' | 'done'>('all');
+  const [openId, setOpenId]       = useState<string | null>(null);
 
-
-
-  const [advances, setAdvances] = useState<Record<string, number>>({});
-  const [payTarget, setPayTarget] = useState<{ id: string; name: string; amount: number } | null>(null);
-  const [payAmount, setPayAmount] = useState(0);
+  const [payTarget, setPayTarget] = useState<{ id: string; name: string; rest: number; kind: PayKind } | null>(null);
+  const [payAmount, setPayAmount] = useState('');
   const [payChannel, setPayChannel] = useState<string>('Наличные');
   const [paying, setPaying] = useState(false);
+  const [editTarget, setEditTarget] = useState<Calc | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [mgrs, setts, dls, exps] = await Promise.all([getManagers(), getSalarySettings(), getAllDealsForMonth(monthYear), getExpenses()]);
+      setManagers(mgrs); setSettings(setts); setDeals(dls);
+      setOps(exps.filter(e => e.manager_id && (e.category === ADVANCE_CATEGORY || e.category === PAYOUT_CATEGORY)
+        && (e.month_year ?? e.expense_date.slice(0, 7)) === monthYear));
+    } catch { toast.error('Не удалось загрузить зарплаты'); } finally { setLoading(false); }
+  }, [monthYear]);
+  useEffect(() => { load(); }, [load]);
+
+  const approved = deals.filter(d => d.status === 'approved');
+  const companyRevenue = approved.reduce((s, d) => s + Number(d.salary_amount ?? d.total_amount), 0);
+
+  const rows: Calc[] = managers.map(m => {
+    const setting = settings.find(s => s.manager_id === m.id);
+    const personal = setting?.use_personal_revenue ?? SALES_ROLES.includes(m.role);
+    const own = approved.filter(d => d.manager_id === m.id);
+    const ownRevenue = own.reduce((s, d) => s + Number(d.salary_amount ?? d.total_amount), 0);
+    const revenue = personal ? ownRevenue : companyRevenue;
+    const base = Number(setting?.base_salary ?? 0), pct = Number(setting?.commission_pct ?? 0);
+    const commission = revenue * pct / 100, total = base + commission;
+    const my = ops.filter(o => o.manager_id === m.id).sort((a, b) => b.expense_date.localeCompare(a.expense_date));
+    const advance = my.filter(o => o.category === ADVANCE_CATEGORY).reduce((s, o) => s + Number(o.amount), 0);
+    const paid = my.filter(o => o.category === PAYOUT_CATEGORY).reduce((s, o) => s + Number(o.amount), 0);
+    return { m, setting, personal, base, pct, revenue, ownRevenue, deals: personal ? own.length : approved.length, commission, total, advance, paid, rest: total - advance - paid, ops: my };
+  })
+    // уволенные — только если им что‑то начислено или выдано в этом месяце
+    .filter(r => r.m.is_active !== false || r.total > 0 || r.ops.length > 0);
+
+  const fot = rows.reduce((s, r) => s + r.total, 0);
+  const advTotal = rows.reduce((s, r) => s + r.advance, 0);
+  const paidTotal = rows.reduce((s, r) => s + r.paid, 0);
+  const restTotal = rows.reduce((s, r) => s + Math.max(0, r.rest), 0);
+  const isDone = (r: Calc) => r.total > 0 && r.rest <= 0;
+  const shown = rows.filter(r => filter === 'all' || (filter === 'done' ? isDone(r) : r.rest > 0));
+
+  function openPay(r: Calc, kind: PayKind) {
+    setPayTarget({ id: r.m.id, name: r.m.name, rest: Math.max(0, r.rest), kind });
+    setPayAmount(kind === 'payout' && r.rest > 0 ? String(Math.round(r.rest)) : '');
+  }
 
   async function handlePay() {
-    if (!payTarget || payAmount <= 0) return;
+    const amount = Number(payAmount);
+    if (!payTarget || !(amount > 0)) return;
     setPaying(true);
     try {
       await createExpense({
         expense_date: new Date().toISOString().slice(0, 10),
-        amount: payAmount,
-        channel: payChannel,
-        category: PAYOUT_CATEGORY,
-        description: `Зарплата за ${monthYearToLabel(monthYear)}: ${payTarget.name}`,
+        amount, channel: payChannel,
+        category: payTarget.kind === 'advance' ? ADVANCE_CATEGORY : PAYOUT_CATEGORY,
+        description: `${payTarget.kind === 'advance' ? 'Аванс' : 'Зарплата'} за ${monthYearToLabel(monthYear)}: ${payTarget.name}`,
         month_year: monthYear, // относится к месяцу начисления, даже если платим в следующем
-        deal_id: null,
-        manager_id: payTarget.id,
+        deal_id: null, manager_id: payTarget.id,
       });
-      toast.success(`Выплачено ${formatCurrency(payAmount)} — ${payTarget.name} (${payChannel})`);
+      toast.success(`${payTarget.kind === 'advance' ? 'Аванс выдан' : 'Выплачено'}: ${formatCurrency(amount)} — ${payTarget.name}`);
       setPayTarget(null);
       await load();
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
     finally { setPaying(false); }
   }
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [mgrs, setts, dls, exps] = await Promise.all([
-        getManagers(),
-        getSalarySettings(),
-        getAllDealsForMonth(monthYear),
-        getExpenses(),
-      ]);
-      setManagers(mgrs); setSettings(setts); setDeals(dls);
-      // Авансы этого месяца по сотрудникам (вносятся в «Финансах» как расход «Аванс сотруднику»)
-      const adv: Record<string, number> = {};
-      exps.filter(e => SALARY_CATEGORIES.includes(e.category) && e.manager_id && (e.month_year ?? e.expense_date.slice(0, 7)) === monthYear)
-        .forEach(e => { adv[e.manager_id!] = (adv[e.manager_id!] ?? 0) + Number(e.amount); });
-      setAdvances(adv);
-    } catch { /* silent */ } finally { setLoading(false); }
-  }, [monthYear]);
 
-  useEffect(() => { load(); }, [load]);
-
-  // Company-wide revenue (approved deals only — salary_amount ?? total_amount)
-  const companyRevenue = deals
-    .filter(d => d.status === 'approved')
-    .reduce((s, d) => s + Number(d.salary_amount ?? d.total_amount), 0);
-
-  // Revenue per manager (own approved deals)
-  function managerPersonalRevenue(m: Manager): number {
-    return deals
-      .filter(d => d.manager_id === m.id && d.status === 'approved')
-      .reduce((s, d) => s + Number(d.salary_amount ?? d.total_amount), 0);
+  async function removeOp(o: Expense) {
+    if (!confirm(`Удалить ${o.category === ADVANCE_CATEGORY ? 'аванс' : 'выплату'} ${formatCurrency(Number(o.amount))} от ${shortDate(o.expense_date)}?`)) return;
+    try { await deleteExpense(o.id); toast.success('Удалено'); await load(); }
+    catch { toast.error('Не удалось удалить'); }
   }
 
-  // Total salary fund
-  const totalSalary = managers.reduce((s, m) => {
-    const sett  = settings.find(ss => ss.manager_id === m.id);
-    const usePersonal = sett?.use_personal_revenue ?? SALES_ROLES.includes(m.role);
-    const rev   = usePersonal ? managerPersonalRevenue(m) : companyRevenue;
-    const base  = Number(sett?.base_salary ?? 0);
-    const pct   = Number(sett?.commission_pct ?? 0);
-    return s + base + rev * (pct / 100);
-  }, 0);
+  const tile = (label: string, value: string, sub?: string, tone = '') => (
+    <div className="rounded-xl border border-border bg-card p-3.5">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={`mt-1 text-lg font-semibold tabular-nums ${tone}`}>{value}</p>
+      {sub && <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>}
+    </div>
+  );
 
   return (
     <AppLayout>
-      <div className="space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div className="space-y-5 max-w-5xl">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold">Зарплаты</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Менеджеры по продажам — от своих сделок. Остальные — от общей выручки компании.
-            </p>
+            <p className="text-sm text-muted-foreground mt-0.5">Начислено, выдано авансом и сколько осталось выплатить — за {monthYearToLabel(monthYear)}</p>
           </div>
           <MonthYearPicker value={monthYear} onChange={setMonthYear} className="shrink-0" />
         </div>
 
-        {!loading && (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs text-muted-foreground">Общий ФОТ ({monthYearToLabel(monthYear)})</p>
-              <p className="text-base font-semibold mt-1">{formatCurrency(totalSalary)}</p>
-            </div>
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs text-muted-foreground">Сотрудников</p>
-              <p className="text-base font-semibold mt-1">{managers.length}</p>
-            </div>
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs text-muted-foreground">Выручка компании (подтверждённые)</p>
-              <p className="text-base font-semibold mt-1">{formatCurrency(companyRevenue)}</p>
-            </div>
+        {loading ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[1, 2, 3, 4].map(i => <div key={i} className="h-20 rounded-xl bg-muted animate-pulse" />)}</div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {tile('Начислено (ФОТ)', formatCurrency(fot), `выручка компании ${formatCurrency(companyRevenue)}`)}
+            {tile('Выдано авансом', formatCurrency(advTotal), undefined, advTotal > 0 ? 'text-amber-700' : '')}
+            {tile('Выплачено', formatCurrency(paidTotal))}
+            {tile('Осталось выплатить', formatCurrency(restTotal), undefined, restTotal > 0 ? 'text-primary' : 'text-green-700')}
           </div>
         )}
 
-        <Card className="border border-border">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Расчёт зарплат — {monthYearToLabel(monthYear)}</CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Нажмите <Pencil size={10} className="inline mb-0.5" /> чтобы изменить оклад или процент
-            </p>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="space-y-2">
-                {[1,2,3].map(i => <div key={i} className="h-10 bg-muted rounded animate-pulse" />)}
-              </div>
-            ) : managers.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Нет сотрудников</p>
-            ) : (
-              <div className="w-full overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left whitespace-nowrap py-2 pr-4 font-medium text-muted-foreground">Сотрудник</th>
-                      <th className="text-left whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">База ЗП</th>
-                      <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">Сумма базы (₸)</th>
-                      <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">Оклад (₸)</th>
-                      <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">% комиссии</th>
-                      <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">Комиссия (₸)</th>
-                      <th className="text-right whitespace-nowrap py-2 pl-3 font-medium text-muted-foreground">Итого ЗП</th>
-                      <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">Выплачено</th>
-                      <th className="text-right whitespace-nowrap py-2 pl-3 font-medium text-muted-foreground">К выплате</th>
-                      <th className="whitespace-nowrap py-2 pl-3 w-16"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {managers.map(m => (
-                       <ManagerSalaryRow
-                         key={m.id}
-                         manager={m}
-                         setting={settings.find(s => s.manager_id === m.id)}
-                         revenue={managerPersonalRevenue(m)}
-                         companyRevenue={companyRevenue}
-                         onSaved={load}
-                         advance={advances[m.id] ?? 0}
-                         onPay={amount => { setPayTarget({ id: m.id, name: m.name, amount }); setPayAmount(amount); }}
-                       />
-                    ))}
-                    <tr className="border-t border-border bg-muted/30">
-                      <td className="py-2.5 pr-4 text-sm font-semibold" colSpan={6}>ИТОГО ФОТ</td>
-                      <td className="py-2.5 pl-3 text-right text-sm font-semibold tabular-nums">{formatCurrency(totalSalary)}</td>
-                      <td className="py-2.5 px-3 text-right text-sm tabular-nums text-muted-foreground">{(() => { const a = Object.values(advances).reduce((x, y) => x + y, 0); return a > 0 ? `− ${formatCurrency(a)}` : '—'; })()}</td>
-                      <td className="py-2.5 pl-3 text-right text-sm font-semibold tabular-nums text-primary">{formatCurrency(totalSalary - Object.values(advances).reduce((x, y) => x + y, 0))}</td>
-                      <td></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <div className="flex flex-wrap gap-1.5">
+          {([['all', `Все ${rows.length}`], ['due', `К выплате ${rows.filter(r => r.rest > 0).length}`], ['done', `Рассчитаны ${rows.filter(isDone).length}`]] as const).map(([k, t]) => (
+            <button key={k} type="button" onClick={() => setFilter(k)}
+              className={`h-8 px-3 rounded-full text-xs font-medium border transition-colors ${filter === k ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'}`}>{t}</button>
+          ))}
+        </div>
+
+        {loading ? (
+          <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />)}</div>
+        ) : shown.length === 0 ? (
+          <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">{rows.length ? 'Никого по этому фильтру' : 'Нет сотрудников'}</CardContent></Card>
+        ) : (
+          <div className="space-y-2.5">
+            {shown.map(r => {
+              const out = r.advance + r.paid;
+              const pctPaid = r.total > 0 ? Math.min(100, (out / r.total) * 100) : 0;
+              const pctAdv = r.total > 0 ? Math.min(100, (r.advance / r.total) * 100) : 0;
+              const open = openId === r.m.id;
+              return (
+                <div key={r.m.id} className="rounded-xl border border-border bg-card">
+                  <div className="p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center gap-3 md:gap-5">
+                    {/* кто и как считается */}
+                    <div className="flex items-start gap-3 min-w-0 md:w-[38%]">
+                      <span className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold shrink-0">{initials(r.m.name)}</span>
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{r.m.name}{r.m.is_active === false && <span className="ml-1.5 text-[11px] text-muted-foreground">(уволен)</span>}</div>
+                        <div className="text-xs text-muted-foreground truncate">{r.m.role || '—'}</div>
+                        <div className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                          {r.base > 0 || r.pct > 0 ? (<>
+                            Оклад {formatCurrency(r.base)}
+                            {r.pct > 0 && <> + {r.pct}% от {r.personal ? `своих сделок (${r.deals})` : 'выручки компании'} {formatCurrency(r.revenue)} = <span className="text-foreground">{formatCurrency(r.commission)}</span></>}
+                          </>) : <span className="text-amber-700">Оклад и процент не заданы</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* деньги */}
+                    <div className="flex-1 min-w-0">
+                      <div className="grid grid-cols-3 gap-2 text-sm">
+                        <div><div className="text-[11px] text-muted-foreground">Начислено</div><div className="font-semibold tabular-nums">{formatCurrency(r.total)}</div></div>
+                        <div><div className="text-[11px] text-muted-foreground">Аванс / выплачено</div><div className="tabular-nums">
+                          <span className={r.advance > 0 ? 'text-amber-700' : 'text-muted-foreground'}>{r.advance > 0 ? formatCurrency(r.advance) : '—'}</span>
+                          <span className="text-muted-foreground"> / </span>
+                          <span className={r.paid > 0 ? '' : 'text-muted-foreground'}>{r.paid > 0 ? formatCurrency(r.paid) : '—'}</span>
+                        </div></div>
+                        <div><div className="text-[11px] text-muted-foreground">{r.rest < 0 ? 'Переплата' : 'К выплате'}</div>
+                          <div className={`font-semibold tabular-nums ${r.rest > 0 ? 'text-primary' : r.rest < 0 ? 'text-destructive' : 'text-green-700'}`}>
+                            {r.rest > 0 ? formatCurrency(r.rest) : r.rest < 0 ? formatCurrency(-r.rest) : r.total > 0 ? 'Выплачено ✓' : '—'}
+                          </div></div>
+                      </div>
+                      {r.total > 0 && (
+                        <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden flex" title="Аванс и выплаты от начисленного">
+                          <div className="h-full bg-amber-500" style={{ width: `${pctAdv}%` }} />
+                          <div className="h-full bg-primary" style={{ width: `${Math.max(0, pctPaid - pctAdv)}%` }} />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* действия */}
+                    <div className="flex gap-1.5 md:flex-col md:w-32 shrink-0">
+                      <Button size="sm" className="flex-1 md:flex-none h-9" disabled={r.rest <= 0} onClick={() => openPay(r, 'payout')}><Banknote size={15} className="mr-1.5" />Выплатить</Button>
+                      <Button size="sm" variant="outline" className="flex-1 md:flex-none h-9" onClick={() => openPay(r, 'advance')}><HandCoins size={15} className="mr-1.5" />Аванс</Button>
+                    </div>
+                  </div>
+                  <div className="border-t border-border px-3.5 sm:px-4 py-1.5 flex items-center gap-3 text-xs">
+                    <button type="button" onClick={() => setOpenId(open ? null : r.m.id)} className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground py-1">
+                      <ChevronDown size={14} className={`transition-transform ${open ? '' : '-rotate-90'}`} />
+                      История выплат{r.ops.length ? ` (${r.ops.length})` : ''}
+                    </button>
+                    <span className="flex-1" />
+                    <button type="button" onClick={() => setEditTarget(r)} className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground py-1"><Pencil size={12} />Оклад и процент</button>
+                  </div>
+                  {open && (
+                    <div className="border-t border-border px-3.5 sm:px-4 py-2">
+                      {r.ops.length === 0 ? <p className="text-xs text-muted-foreground py-2">В этом месяце авансов и выплат не было</p> : (
+                        <div className="divide-y">
+                          {r.ops.map(o => (
+                            <div key={o.id} className="flex items-center gap-2 py-2 text-sm">
+                              <span className={`text-[11px] px-2 py-0.5 rounded-full shrink-0 ${o.category === ADVANCE_CATEGORY ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-primary/10 text-primary border border-primary/20'}`}>
+                                {o.category === ADVANCE_CATEGORY ? 'аванс' : 'зарплата'}
+                              </span>
+                              <span className="text-muted-foreground w-16 shrink-0">{shortDate(o.expense_date)}</span>
+                              <span className="text-muted-foreground truncate flex-1">{o.channel}</span>
+                              <span className="font-medium tabular-nums">{formatCurrency(Number(o.amount))}</span>
+                              {isDirector && (
+                                <button type="button" onClick={() => removeOp(o)} className="h-7 w-7 rounded-md hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-destructive" aria-label="Удалить"><Trash2 size={13} /></button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <p className="text-xs text-muted-foreground">
-          <span className="font-medium">Итого ЗП = Оклад + База × % комиссии.</span>{' '}
-          Менеджеры по продажам: база = личные подтверждённые сделки.
-          Остальные: база = общая подтверждённая выручка компании за месяц.
+          Начислено = оклад + процент. Менеджеры по продажам — от своих подтверждённых сделок, остальные — от общей подтверждённой выручки за месяц.
+          К выплате = начислено − аванс − выплачено. Авансы и выплаты попадают в «Финансы» расходами.
         </p>
       </div>
+
+      {/* выдать аванс / выплатить */}
       <Dialog open={!!payTarget} onOpenChange={v => !v && setPayTarget(null)}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Выплата зарплаты — {payTarget?.name}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
+          <DialogHeader><DialogTitle>{payTarget?.kind === 'advance' ? 'Выдать аванс' : 'Выплатить зарплату'} — {payTarget?.name}</DialogTitle></DialogHeader>
+          <form className="space-y-3" onSubmit={e => { e.preventDefault(); handlePay(); }}>
             <p className="text-xs text-muted-foreground">
-              За {monthYearToLabel(monthYear)}. Осталось выплатить {payTarget ? formatCurrency(payTarget.amount) : ''}.
-              Запишется расходом «Выплата зарплаты» — в прибыли второй раз не посчитается.
+              {payTarget?.kind === 'advance'
+                ? <>Аванс за {monthYearToLabel(monthYear)} вычтется из зарплаты этого месяца. Сейчас к выплате {formatCurrency(payTarget?.rest ?? 0)}.</>
+                : <>За {monthYearToLabel(monthYear)} осталось выплатить {formatCurrency(payTarget?.rest ?? 0)}.</>}
             </p>
             <div className="space-y-1">
-              <Label className="text-xs">Сумма</Label>
-              <Input type="number" value={payAmount || ''} onChange={e => setPayAmount(Number(e.target.value))} />
+              <Label className="text-xs">Сумма, ₸</Label>
+              <Input type="number" inputMode="numeric" min="1" autoFocus value={payAmount} onChange={e => setPayAmount(e.target.value)} className="h-11 text-base tabular-nums" placeholder="0" />
+              {payTarget && payTarget.rest > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {(payTarget.kind === 'advance' ? [0.3, 0.5] : [0.5, 1]).map(f => (
+                    <button key={f} type="button" onClick={() => setPayAmount(String(Math.round(payTarget.rest * f)))}
+                      className="h-7 px-2.5 rounded-md border text-xs hover:bg-muted">{f === 1 ? 'Весь остаток' : `${f * 100}%`} · {formatCurrency(Math.round(payTarget.rest * f))}</button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Из какой кассы</Label>
               <Select value={payChannel} onValueChange={setPayChannel}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
                 <SelectContent>{CHANNELS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPayTarget(null)}>Отмена</Button>
-            <Button onClick={handlePay} disabled={paying || payAmount <= 0}>{paying ? 'Сохранение...' : 'Выплатить'}</Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setPayTarget(null)}>Отмена</Button>
+              <Button type="submit" disabled={paying || !(Number(payAmount) > 0)}>{paying ? 'Сохранение…' : payTarget?.kind === 'advance' ? 'Выдать аванс' : 'Выплатить'}</Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
+
+      <SalarySettingsDialog target={editTarget} onClose={() => setEditTarget(null)} onSaved={load} companyRevenue={companyRevenue} />
     </AppLayout>
   );
 }
 
+/** Оклад, процент и от чего считать процент — в отдельном окне, с живым расчётом */
+function SalarySettingsDialog({ target, onClose, onSaved, companyRevenue }: { target: Calc | null; onClose: () => void; onSaved: () => void; companyRevenue: number }) {
+  const [base, setBase] = useState('');
+  const [pct, setPct] = useState('');
+  const [personal, setPersonal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!target) return;
+    setBase(String(target.base)); setPct(String(target.pct)); setPersonal(target.personal);
+  }, [target]);
+  if (!target) return null;
+  const rev = personal ? target.ownRevenue : companyRevenue;
+  const total = (Number(base) || 0) + rev * (Number(pct) || 0) / 100;
+
+  async function save() {
+    if (!target) return;
+    if ((Number(base) || 0) < 0 || (Number(pct) || 0) < 0) { toast.error('Значения не могут быть отрицательными'); return; }
+    setSaving(true);
+    try {
+      await upsertSalarySetting({ manager_id: target.m.id, base_salary: Number(base) || 0, commission_pct: Number(pct) || 0, use_personal_revenue: personal });
+      toast.success('Сохранено');
+      onSaved(); onClose();
+    } catch { toast.error('Ошибка сохранения'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader><DialogTitle>Оклад и процент — {target.m.name}</DialogTitle></DialogHeader>
+        <form className="space-y-3" onSubmit={e => { e.preventDefault(); save(); }}>
+          <div className="space-y-1">
+            <Label className="text-xs">Оклад в месяц, ₸</Label>
+            <Input type="number" min="0" step="1000" value={base} onChange={e => setBase(e.target.value)} className="h-10 tabular-nums" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Процент</Label>
+            <Input type="number" min="0" max="100" step="0.5" value={pct} onChange={e => setPct(e.target.value)} className="h-10 tabular-nums" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Процент считается от</Label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {[{ v: true, t: 'Своих сделок' }, { v: false, t: 'Выручки компании' }].map(o => (
+                <button key={String(o.v)} type="button" onClick={() => setPersonal(o.v)}
+                  className={`h-10 rounded-md border text-sm ${personal === o.v ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted'}`}>{o.t}</button>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+            За этот месяц начислено будет <b className="text-foreground">{formatCurrency(total)}</b> ({personal ? 'свои сделки' : 'выручка'} {formatCurrency(rev)})
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Отмена</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Сохранение…' : 'Сохранить'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

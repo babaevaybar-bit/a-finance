@@ -15,7 +15,7 @@ export interface Profile {
   id: string;
   name: string;
   email: string | null;
-  role: 'director' | 'director_view' | 'rop' | 'manager' | 'lidorub';
+  role: 'director' | 'director_view' | 'rop' | 'technolog' | 'manager' | 'lidorub';
   manager_id: string | null;
   created_at: string;
   updated_at: string;

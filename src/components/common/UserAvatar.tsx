@@ -1,7 +1,7 @@
 import React from 'react';
 
 export const ROLE_LABELS: Record<string, string> = {
-  director: 'Главный админ', director_view: 'Директор', rop: 'РОП', manager: 'Менеджер', lidorub: 'Лидоруб',
+  director: 'Главный админ', director_view: 'Директор', rop: 'РОП', technolog: 'Технолог', manager: 'Менеджер', lidorub: 'Лидоруб',
 };
 
 export function UserAvatar({ name, url, size = 28 }: { name: string; url?: string | null; size?: number }) {

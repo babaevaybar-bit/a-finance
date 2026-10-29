@@ -36,6 +36,13 @@ function formatPhone(raw: string) {
 /** Сохранённые 10 цифр (7071234567) → +7 (707) 123-45-67 */
 const showPhone = (d: string) => formatPhone('7' + d);
 const phoneDigits = (s: string) => s.replace(/\D/g, '').replace(/^[78]/, '').slice(0, 10);
+/** Не квал, который не оставил имя и телефон — сохраняется с таким именем */
+export const NO_NAME = 'Без имени';
+/** Без имени — вместо имени показываем комментарий («искал дешёвые двери») */
+const nameView = (n: string, comment?: string | null) => n === NO_NAME
+  ? (comment ? <span>{comment}</span> : <span className="italic text-muted-foreground">без имени</span>)
+  : n;
+const restComment = (r: { client_name: string; comment: string | null }) => r.client_name === NO_NAME ? null : r.comment;
 const time = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Qyzylorda' });
 
 /** Блок на главной: кнопка «Добавить офлайн‑лида» и лиды салона за сегодняшний рабочий день */
@@ -66,7 +73,7 @@ export default function OfflineLeadsCard() {
   const mName = (id: string) => managers.find(m => m.id === id)?.name;
 
   async function remove(r: OfflineLead) {
-    if (!confirm(`Удалить «${r.client_name}»?`)) return;
+    if (!confirm(`Удалить «${r.client_name}» (${time(r.created_at)})?`)) return;
     const { error } = await supabase.from('offline_leads').delete().eq('id', r.id);
     if (error) { toast.error('Не удалось удалить'); return; }
     setRows(p => (p ?? []).filter(x => x.id !== r.id));
@@ -85,7 +92,7 @@ export default function OfflineLeadsCard() {
           </div>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
-          <Button variant="outline" className="h-12 px-4 rounded-xl" onClick={() => setHistOpen(true)}>
+          <Button variant="outline" className="h-12 px-4 rounded-xl" onClick={() => setHistOpen(true)} title="Все офлайн‑лиды">
             <History size={17} className="mr-1.5" />Все офлайн‑лиды
           </Button>
           <Button className="h-12 flex-1 sm:flex-none px-5 text-base rounded-xl" onClick={() => setOpen(true)}>
@@ -102,9 +109,9 @@ export default function OfflineLeadsCard() {
                 {r.qualified ? 'квал' : 'не квал'}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{r.client_name}</div>
+                <div className="truncate font-medium">{nameView(r.client_name, r.comment)}</div>
                 <div className="text-xs text-muted-foreground truncate">
-                  {[time(r.created_at), r.client_phone ? showPhone(r.client_phone) : null, canViewAllManagers ? mName(r.manager_id) : null, r.comment].filter(Boolean).join(' · ')}
+                  {[time(r.created_at), r.client_phone ? showPhone(r.client_phone) : null, canViewAllManagers ? mName(r.manager_id) : null, restComment(r)].filter(Boolean).join(' · ')}
                 </div>
               </div>
               {r.client_phone && (
@@ -152,13 +159,14 @@ export function OfflineLeadDialog({ open, onOpenChange, managers, defaultManager
   }, [digits]);
 
   const phoneOk = digits.length === 0 || digits.length === 10;
-  const ready = name.trim().length > 0 && qual !== null && phoneOk && !!manager;
+  // не квал может уйти без имени и номера — тогда сохраняем «Без имени»
+  const ready = (name.trim().length > 0 || qual === false) && qual !== null && phoneOk && !!manager;
 
   async function save() {
     if (!ready) return;
     setSaving(true);
     const { data, error } = await supabase.from('offline_leads').insert({
-      manager_id: manager, client_name: name.trim(), client_phone: digits || null, qualified: qual, comment: comment.trim() || null,
+      manager_id: manager, client_name: name.trim() || NO_NAME, client_phone: digits || null, qualified: qual, comment: comment.trim() || null,
     }).select('*').single();
     setSaving(false);
     if (error || !data) { toast.error('Не удалось сохранить'); return; }
@@ -172,19 +180,9 @@ export function OfflineLeadDialog({ open, onOpenChange, managers, defaultManager
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Офлайн‑лид</DialogTitle>
-          <DialogDescription>Клиент, который пришёл в салон. Попадёт в вечерний отчёт.</DialogDescription>
+          <DialogDescription>Клиент, который пришёл в салон. Попадёт в вечерний отчёт. Для «не квал» имя и номер необязательны — можно оставить только комментарий.</DialogDescription>
         </DialogHeader>
         <form className="space-y-4" onSubmit={e => { e.preventDefault(); save(); }}>
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium">Имя</span>
-            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Как зовут клиента" maxLength={120} autoComplete="off" className="h-11" />
-          </label>
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium">Номер телефона</span>
-            <Input value={phone} onChange={e => setPhone(formatPhone(e.target.value))} placeholder="+7 (___) ___-__-__" inputMode="tel" autoComplete="off" className="h-11 tabular-nums" />
-            {!phoneOk && <span className="block text-xs text-destructive">Номер неполный — 10 цифр после +7</span>}
-            {dup && <span className="block text-xs text-amber-700">{dup}</span>}
-          </label>
           <div className="space-y-1.5">
             <span className="text-sm font-medium">Лид</span>
             <div className="grid grid-cols-2 gap-2">
@@ -198,6 +196,16 @@ export function OfflineLeadDialog({ open, onOpenChange, managers, defaultManager
               </button>
             </div>
           </div>
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium">Имя{qual === false && <span className="text-muted-foreground font-normal"> — можно не заполнять</span>}</span>
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Как зовут клиента" maxLength={120} autoComplete="off" className="h-11" />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium">Номер телефона{qual === false && <span className="text-muted-foreground font-normal"> — можно не заполнять</span>}</span>
+            <Input value={phone} onChange={e => setPhone(formatPhone(e.target.value))} placeholder="+7 (___) ___-__-__" inputMode="tel" autoComplete="off" className="h-11 tabular-nums" />
+            {!phoneOk && <span className="block text-xs text-destructive">Номер неполный — 10 цифр после +7</span>}
+            {dup && <span className="block text-xs text-amber-700">{dup}</span>}
+          </label>
           {managers.length > 0 && (
             <label className="block space-y-1.5">
               <span className="text-sm font-medium">Менеджер</span>
@@ -208,8 +216,8 @@ export function OfflineLeadDialog({ open, onOpenChange, managers, defaultManager
             </label>
           )}
           <label className="block space-y-1.5">
-            <span className="text-sm font-medium">Комментарий <span className="text-muted-foreground font-normal">— необязательно</span></span>
-            <Input value={comment} onChange={e => setComment(e.target.value)} placeholder="Что интересует, откуда узнал" maxLength={500} className="h-11" />
+            <span className="text-sm font-medium">Комментарий <span className="text-muted-foreground font-normal">{qual === false ? '— почему не квал' : '— необязательно'}</span></span>
+            <Input value={comment} onChange={e => setComment(e.target.value)} placeholder={qual === false ? 'Например: искал дешёвые двери' : 'Что интересует, откуда узнал'} maxLength={500} className="h-11" />
           </label>
           <Button type="submit" className="w-full h-12 text-base" disabled={!ready || saving}>{saving ? 'Сохраняю…' : 'Сохранить'}</Button>
         </form>
@@ -310,9 +318,9 @@ function OfflineLeadsHistory({ open, onOpenChange, managers, showAll, myId }: {
                       {r.qualified ? 'квал' : 'не квал'}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">{r.client_name}</div>
+                      <div className="truncate font-medium">{nameView(r.client_name, r.comment)}</div>
                       <div className="text-xs text-muted-foreground truncate">
-                        {[time(r.created_at), r.client_phone ? showPhone(r.client_phone) : null, showAll ? mName(r.manager_id) : null, r.comment].filter(Boolean).join(' · ')}
+                        {[time(r.created_at), r.client_phone ? showPhone(r.client_phone) : null, showAll ? mName(r.manager_id) : null, restComment(r)].filter(Boolean).join(' · ')}
                       </div>
                     </div>
                     {r.client_phone && (

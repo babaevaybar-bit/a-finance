@@ -1,4 +1,4 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2.49.4';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
     if (!username || !password || !managerId) return json({ error: 'Заполните логин и пароль' });
     if (String(password).length < 8) return json({ error: 'Пароль — минимум 8 символов' });
     if (!recoveryEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recoveryEmail)) return json({ error: 'Укажите настоящую почту сотрудника' });
-    const assignedRole = ['director', 'director_view', 'rop', 'manager', 'lidorub'].includes(role) ? role : 'manager';
+    const assignedRole = ['director', 'director_view', 'rop', 'technolog', 'manager', 'lidorub'].includes(role) ? role : 'manager';
     const email = String(recoveryEmail).trim().toLowerCase();
     const login = String(username).trim().toLowerCase();
 

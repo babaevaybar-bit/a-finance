@@ -83,7 +83,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isDirector = profile?.role === 'director';
   const isDirectorView = profile?.role === 'director_view'; // Директор — видит всё, но не управляет сотрудниками/правами
-  const isRop      = profile?.role === 'rop';
+  // Технолог работает как РОП: видит все сделки; разделы настраиваются в «Доступе»
+  const isTechnolog = profile?.role === 'technolog';
+  const isRop      = profile?.role === 'rop' || isTechnolog;
   const isManager  = profile?.role === 'manager';
   const isLidorub  = profile?.role === 'lidorub';
   const isAdmin    = isDirector || isDirectorView; // обратная совместимость со старым кодом + доступ ко всем adminOnly-разделам
