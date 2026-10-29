@@ -1,7 +1,7 @@
 // Служебная проверка (только чтение): какие лиды amoCRM создались в рабочий день 20:00–20:00
 // и почему каждый попал или не попал в «Новых лидов» ежедневного отчёта.
 // Запуск только с ключом расписания (x-cron-key), ничего не пишет.
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2.49.4';
 
 const KZ = 5 * 3600;
 const SHIFT = 4 * 3600;
