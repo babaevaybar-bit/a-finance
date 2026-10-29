@@ -186,7 +186,8 @@ function GlobalSearchBar() {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const { user, profile, isDirector, isDirectorView, isRop, isLidorub, signOut, canView } = useAuth();
-  const roleLabel = isDirector ? 'Главный админ' : isDirectorView ? 'Директор' : isRop ? 'РОП' : isLidorub ? 'Лидоруб' : 'Менеджер';
+  const isTechnolog = profile?.role === 'technolog';
+  const roleLabel = isDirector ? 'Главный админ' : isDirectorView ? 'Директор' : isTechnolog ? 'Технолог' : isRop ? 'РОП' : isLidorub ? 'Лидоруб' : 'Менеджер';
   const navigate = useNavigate();
 
   async function handleSignOut() {

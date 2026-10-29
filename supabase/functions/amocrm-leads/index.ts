@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
       .single();
 
     // amoCRM (полный доступ) открыт и менеджерам по продажам
-    if (!['director', 'director_view', 'rop', 'manager', 'lidorub'].includes(profile?.role ?? '')) {
+    if (!['director', 'director_view', 'rop', 'technolog', 'manager', 'lidorub'].includes(profile?.role ?? '')) {
       return new Response(JSON.stringify({ error: 'Forbidden' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

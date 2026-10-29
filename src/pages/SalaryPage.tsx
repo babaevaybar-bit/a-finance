@@ -22,7 +22,7 @@ import { supabase } from '@/db/supabase';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import type { Manager, SalarySetting, Deal } from '@/types/types';
-import { SALES_ROLES, SALARY_CATEGORIES, PAYOUT_CATEGORY, CHANNELS } from '@/types/types';
+import { SALES_ROLES, ADVANCE_CATEGORY, PAYOUT_CATEGORY, CHANNELS } from '@/types/types';
 
 // ─── row with inline edit ──────────────────────────────────────────────────────
 interface RowProps {
@@ -33,7 +33,7 @@ interface RowProps {
   onSaved: () => void;
 }
 
-function ManagerSalaryRow({ manager, setting, revenue, companyRevenue, onSaved, advance = 0, onPay }: RowProps & { advance?: number; onPay?: (amount: number) => void }) {
+function ManagerSalaryRow({ manager, setting, revenue, companyRevenue, onSaved, advance = 0, paid = 0, onPay, onAdvance }: RowProps & { advance?: number; paid?: number; onPay?: (amount: number) => void; onAdvance?: () => void }) {
   const [editing, setEditing] = useState(false);
   const [base, setBase]       = useState(String(setting?.base_salary ?? 0));
   const [pct, setPct]         = useState(String(setting?.commission_pct ?? 0));
@@ -54,6 +54,7 @@ function ManagerSalaryRow({ manager, setting, revenue, companyRevenue, onSaved, 
   const revenueBase = usePersonal ? revenue : companyRevenue;
   const commission  = revenueBase * (commPct / 100);
   const total       = baseSalary + commission;
+  const rest        = total - advance - paid;
 
   async function save() {
     if (baseSalary < 0 || commPct < 0) { toast.error('Значения не могут быть отрицательными'); return; }
@@ -123,14 +124,19 @@ function ManagerSalaryRow({ manager, setting, revenue, companyRevenue, onSaved, 
       <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums text-muted-foreground">{formatCurrency(commission)}</td>
       {/* Итого */}
       <td className="whitespace-nowrap py-3 pl-3 text-right text-sm tabular-nums font-semibold">{formatCurrency(total)}</td>
-      {/* Аванс и к выплате */}
-      <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums text-muted-foreground">{advance > 0 ? `− ${formatCurrency(advance)}` : '—'}</td>
+      {/* Аванс: выданный за месяц вычитается из зарплаты */}
+      <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums">
+        <div className={advance > 0 ? 'text-amber-700' : 'text-muted-foreground'}>{advance > 0 ? `− ${formatCurrency(advance)}` : '—'}</div>
+        {onAdvance && <button type="button" className="text-[11px] text-primary underline" onClick={onAdvance}>+ аванс</button>}
+      </td>
+      {/* Выплачено зарплатой */}
+      <td className="whitespace-nowrap py-3 px-3 text-right text-sm tabular-nums text-muted-foreground">{paid > 0 ? `− ${formatCurrency(paid)}` : '—'}</td>
       <td className="whitespace-nowrap py-3 pl-3 text-right text-sm tabular-nums">
-        <div className={`font-semibold ${total - advance > 0 ? 'text-primary' : 'text-green-700'}`}>
-          {total - advance > 0 ? formatCurrency(total - advance) : 'Выплачено'}
+        <div className={`font-semibold ${rest > 0 ? 'text-primary' : 'text-green-700'}`}>
+          {rest > 0 ? formatCurrency(rest) : 'Выплачено'}
         </div>
-        {total - advance > 0 && onPay && (
-          <button type="button" className="text-[11px] text-primary underline" onClick={() => onPay(total - advance)}>Выплатить</button>
+        {rest > 0 && onPay && (
+          <button type="button" className="text-[11px] text-primary underline" onClick={() => onPay(rest)}>Выплатить</button>
         )}
       </td>
       {/* Действия */}
@@ -296,7 +302,9 @@ function SalaryAdmin() {
 
 
   const [advances, setAdvances] = useState<Record<string, number>>({});
-  const [payTarget, setPayTarget] = useState<{ id: string; name: string; amount: number } | null>(null);
+  const [payouts, setPayouts] = useState<Record<string, number>>({});
+  // kind: 'advance' — аванс (вычитается из зарплаты месяца), 'payout' — выплата зарплаты
+  const [payTarget, setPayTarget] = useState<{ id: string; name: string; amount: number; kind: 'advance' | 'payout' } | null>(null);
   const [payAmount, setPayAmount] = useState(0);
   const [payChannel, setPayChannel] = useState<string>('Наличные');
   const [paying, setPaying] = useState(false);
@@ -309,13 +317,13 @@ function SalaryAdmin() {
         expense_date: new Date().toISOString().slice(0, 10),
         amount: payAmount,
         channel: payChannel,
-        category: PAYOUT_CATEGORY,
-        description: `Зарплата за ${monthYearToLabel(monthYear)}: ${payTarget.name}`,
+        category: payTarget.kind === 'advance' ? ADVANCE_CATEGORY : PAYOUT_CATEGORY,
+        description: `${payTarget.kind === 'advance' ? 'Аванс' : 'Зарплата'} за ${monthYearToLabel(monthYear)}: ${payTarget.name}`,
         month_year: monthYear, // относится к месяцу начисления, даже если платим в следующем
         deal_id: null,
         manager_id: payTarget.id,
       });
-      toast.success(`Выплачено ${formatCurrency(payAmount)} — ${payTarget.name} (${payChannel})`);
+      toast.success(`${payTarget.kind === 'advance' ? 'Аванс выдан' : 'Выплачено'}: ${formatCurrency(payAmount)} — ${payTarget.name} (${payChannel})`);
       setPayTarget(null);
       await load();
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
@@ -332,10 +340,12 @@ function SalaryAdmin() {
       ]);
       setManagers(mgrs); setSettings(setts); setDeals(dls);
       // Авансы этого месяца по сотрудникам (вносятся в «Финансах» как расход «Аванс сотруднику»)
-      const adv: Record<string, number> = {};
-      exps.filter(e => SALARY_CATEGORIES.includes(e.category) && e.manager_id && (e.month_year ?? e.expense_date.slice(0, 7)) === monthYear)
-        .forEach(e => { adv[e.manager_id!] = (adv[e.manager_id!] ?? 0) + Number(e.amount); });
-      setAdvances(adv);
+      const adv: Record<string, number> = {}, out: Record<string, number> = {};
+      exps.filter(e => e.manager_id && (e.month_year ?? e.expense_date.slice(0, 7)) === monthYear).forEach(e => {
+        if (e.category === ADVANCE_CATEGORY) adv[e.manager_id!] = (adv[e.manager_id!] ?? 0) + Number(e.amount);
+        else if (e.category === PAYOUT_CATEGORY) out[e.manager_id!] = (out[e.manager_id!] ?? 0) + Number(e.amount);
+      });
+      setAdvances(adv); setPayouts(out);
     } catch { /* silent */ } finally { setLoading(false); }
   }, [monthYear]);
 
@@ -362,6 +372,9 @@ function SalaryAdmin() {
     const pct   = Number(sett?.commission_pct ?? 0);
     return s + base + rev * (pct / 100);
   }, 0);
+
+  const advTotal = Object.values(advances).reduce((x, y) => x + y, 0);
+  const paidTotal = Object.values(payouts).reduce((x, y) => x + y, 0);
 
   return (
     <AppLayout>
@@ -419,6 +432,7 @@ function SalaryAdmin() {
                       <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">% комиссии</th>
                       <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">Комиссия (₸)</th>
                       <th className="text-right whitespace-nowrap py-2 pl-3 font-medium text-muted-foreground">Итого ЗП</th>
+                      <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">Аванс</th>
                       <th className="text-right whitespace-nowrap py-2 px-3 font-medium text-muted-foreground">Выплачено</th>
                       <th className="text-right whitespace-nowrap py-2 pl-3 font-medium text-muted-foreground">К выплате</th>
                       <th className="whitespace-nowrap py-2 pl-3 w-16"></th>
@@ -434,14 +448,17 @@ function SalaryAdmin() {
                          companyRevenue={companyRevenue}
                          onSaved={load}
                          advance={advances[m.id] ?? 0}
-                         onPay={amount => { setPayTarget({ id: m.id, name: m.name, amount }); setPayAmount(amount); }}
+                         paid={payouts[m.id] ?? 0}
+                         onPay={amount => { setPayTarget({ id: m.id, name: m.name, amount, kind: 'payout' }); setPayAmount(amount); }}
+                         onAdvance={() => { setPayTarget({ id: m.id, name: m.name, amount: 0, kind: 'advance' }); setPayAmount(0); }}
                        />
                     ))}
                     <tr className="border-t border-border bg-muted/30">
                       <td className="py-2.5 pr-4 text-sm font-semibold" colSpan={6}>ИТОГО ФОТ</td>
                       <td className="py-2.5 pl-3 text-right text-sm font-semibold tabular-nums">{formatCurrency(totalSalary)}</td>
-                      <td className="py-2.5 px-3 text-right text-sm tabular-nums text-muted-foreground">{(() => { const a = Object.values(advances).reduce((x, y) => x + y, 0); return a > 0 ? `− ${formatCurrency(a)}` : '—'; })()}</td>
-                      <td className="py-2.5 pl-3 text-right text-sm font-semibold tabular-nums text-primary">{formatCurrency(totalSalary - Object.values(advances).reduce((x, y) => x + y, 0))}</td>
+                      <td className="py-2.5 px-3 text-right text-sm tabular-nums text-amber-700">{advTotal > 0 ? `− ${formatCurrency(advTotal)}` : '—'}</td>
+                      <td className="py-2.5 px-3 text-right text-sm tabular-nums text-muted-foreground">{paidTotal > 0 ? `− ${formatCurrency(paidTotal)}` : '—'}</td>
+                      <td className="py-2.5 pl-3 text-right text-sm font-semibold tabular-nums text-primary">{formatCurrency(totalSalary - advTotal - paidTotal)}</td>
                       <td></td>
                     </tr>
                   </tbody>
@@ -459,11 +476,12 @@ function SalaryAdmin() {
       </div>
       <Dialog open={!!payTarget} onOpenChange={v => !v && setPayTarget(null)}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Выплата зарплаты — {payTarget?.name}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{payTarget?.kind === 'advance' ? 'Аванс' : 'Выплата зарплаты'} — {payTarget?.name}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground">
-              За {monthYearToLabel(monthYear)}. Осталось выплатить {payTarget ? formatCurrency(payTarget.amount) : ''}.
-              Запишется расходом «Выплата зарплаты» — в прибыли второй раз не посчитается.
+              {payTarget?.kind === 'advance'
+                ? <>Аванс за {monthYearToLabel(monthYear)} — сумма вычтется из зарплаты этого месяца. Запишется расходом «Аванс сотруднику».</>
+                : <>За {monthYearToLabel(monthYear)}. Осталось выплатить {payTarget ? formatCurrency(payTarget.amount) : ''}. Запишется расходом «Выплата зарплаты» — в прибыли второй раз не посчитается.</>}
             </p>
             <div className="space-y-1">
               <Label className="text-xs">Сумма</Label>
@@ -479,7 +497,7 @@ function SalaryAdmin() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPayTarget(null)}>Отмена</Button>
-            <Button onClick={handlePay} disabled={paying || payAmount <= 0}>{paying ? 'Сохранение...' : 'Выплатить'}</Button>
+            <Button onClick={handlePay} disabled={paying || payAmount <= 0}>{paying ? 'Сохранение...' : payTarget?.kind === 'advance' ? 'Выдать аванс' : 'Выплатить'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

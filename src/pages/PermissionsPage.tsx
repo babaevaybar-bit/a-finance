@@ -24,6 +24,7 @@ const ROLE_LABELS: Record<Profile['role'], string> = {
   director: 'Главный админ',
   director_view: 'Директор',
   rop: 'РОП',
+  technolog: 'Технолог',
   manager: 'Менеджер',
   lidorub: 'Лидоруб',
 };
@@ -111,6 +112,7 @@ function RolesSection() {
                       <SelectItem value="director">Главный админ</SelectItem>
                       <SelectItem value="director_view">Директор</SelectItem>
                       <SelectItem value="rop">РОП</SelectItem>
+                      <SelectItem value="technolog">Технолог</SelectItem>
                       <SelectItem value="lidorub">Лидоруб</SelectItem>
                       <SelectItem value="manager">Менеджер</SelectItem>
                     </SelectContent>
