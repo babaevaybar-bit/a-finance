@@ -27,8 +27,9 @@ import { SALES_ROLES, ADVANCE_CATEGORY, PAYOUT_CATEGORY, CHANNELS } from '@/type
 // ─── Page ─────────────────────────────────────────────────────────────────────
 /** Менеджер видит только свою зарплату, остальные — расчёт по всем сотрудникам */
 export default function SalaryPage() {
-  const { isManager, isLidorub } = useAuth();
-  return isManager || isLidorub ? <MySalary /> : <SalaryAdmin />;
+  const { isManager, isLidorub, isRop, seesAll } = useAuth();
+  // РОП/Технолог с «Только свои» в зарплатах — видят только свою
+  return isManager || isLidorub || (isRop && !seesAll('salary')) ? <MySalary /> : <SalaryAdmin />;
 }
 
 interface MySalaryRow { manager_name: string; base_salary: number; commission_pct: number; use_personal: boolean; revenue_base: number; deals_count: number; commission: number; total: number; paid: number }

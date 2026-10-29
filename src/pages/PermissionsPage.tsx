@@ -150,10 +150,12 @@ function RolesSection() {
 }
 
 // ─── Типы ─────────────────────────────────────────────────────────────────────
-type Perm = { can_view: boolean; can_edit: boolean; can_approve: boolean; scope_all?: boolean };
+type Perm = { can_view: boolean; can_edit: boolean; can_approve: boolean; scope_all?: boolean; scope_own?: boolean };
 type PermMap = Record<string, Record<string, Perm>>;
 
 const isSalesRole = (r?: Profile['role']) => r === 'manager' || r === 'lidorub';
+/** РОП и Технолог: по умолчанию видят всех, в «Доступе» можно поставить «Только свои» */
+const isLeadRole = (r?: Profile['role']) => r === 'rop' || r === 'technolog';
 
 /** Права сотрудника на раздел: заданные вручную, иначе — по умолчанию (для менеджера — права его роли) */
 function getPerm(map: PermMap, managerId: string, page: string, role?: Profile['role']) {
@@ -236,11 +238,14 @@ export default function PermissionsPage() {
   async function setScope(managerId: string, page: string, all: boolean) {
     const key = `${managerId}:${page}:scope`;
     const cur = getPerm(permMap, managerId, page, roleByManager[managerId]);
-    const next = { ...cur, scope_all: all };
+    const lead = isLeadRole(roleByManager[managerId]);
+    const next = lead ? { ...cur, scope_own: !all } : { ...cur, scope_all: all };
     setSaving(s => ({ ...s, [key]: true }));
     setPermMap(prev => ({ ...prev, [managerId]: { ...(prev[managerId] ?? {}), [page]: next } }));
     try {
-      await upsertPermission({ manager_id: managerId, page, can_view: next.can_view, can_edit: next.can_edit, can_approve: next.can_approve, scope_all: all });
+      await upsertPermission(lead
+        ? { manager_id: managerId, page, can_view: next.can_view, can_edit: next.can_edit, can_approve: next.can_approve, scope_own: !all }
+        : { manager_id: managerId, page, can_view: next.can_view, can_edit: next.can_edit, can_approve: next.can_approve, scope_all: all });
     } catch {
       toast.error('Ошибка сохранения');
       await load();
@@ -338,6 +343,8 @@ export default function PermissionsPage() {
 
               const role = roleByManager[m.id];
               const sales = isSalesRole(role);
+              const lead = isLeadRole(role);
+              const scoped = sales || lead;   // у кого есть выбор «Только свои / Все»
               const hasOverrides = sales && Object.keys(managerPerms).length > 0;
               const isOpen = openId === m.id;
               const openCount = PERMISSION_PAGES.filter(({ key }) => getPerm(permMap, m.id, key, role).can_view).length;
@@ -399,7 +406,7 @@ export default function PermissionsPage() {
                             <th className="text-center py-2 px-4 font-medium text-muted-foreground whitespace-nowrap w-28">Просмотр</th>
                             <th className="text-center py-2 px-4 font-medium text-muted-foreground whitespace-nowrap w-28">Редактирование</th>
                             <th className="text-center py-2 px-4 font-medium text-muted-foreground whitespace-nowrap w-32">Подтверждение</th>
-                            {sales && <th className="text-center py-2 px-4 font-medium text-muted-foreground whitespace-nowrap w-44">Чьи данные</th>}
+                            {scoped && <th className="text-center py-2 px-4 font-medium text-muted-foreground whitespace-nowrap w-44">Чьи данные</th>}
                           </tr>
                         </thead>
                         <tbody>
@@ -449,10 +456,10 @@ export default function PermissionsPage() {
                                     <span className="text-muted-foreground/30 text-xs">—</span>
                                   )}
                                 </td>
-                                {sales && (
+                                {scoped && (
                                   <td className="py-3 px-4 text-center">
                                     {SCOPE_PAGES.has(key) && !locked ? (() => {
-                                      const all = !!perm.scope_all;
+                                      const all = lead ? !perm.scope_own : !!perm.scope_all;
                                       const busy = !!saving[`${m.id}:${key}:scope`];
                                       const off = !isDirector || busy || !perm.can_view;
                                       return (

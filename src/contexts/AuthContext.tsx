@@ -91,9 +91,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin    = isDirector || isDirectorView; // обратная совместимость со старым кодом + доступ ко всем adminOnly-разделам
 
   // Директор и РОП видят сделки/CRM всех менеджеров; обычный менеджер — только свои
-  const boss = isDirector || isDirectorView || isRop;
-  const seesAll = (page: string) => boss || permissions.some(p => p.page === page && p.can_view && p.scope_all);
-  const canViewAllManagers = boss || DEAL_SCOPE_PAGES.some(seesAll);
+  // РОП и Технолог по умолчанию видят всех; «Только свои» в «Доступе» (scope_own) ограничивает раздел
+  const fullAccess = isDirector || isDirectorView;
+  const seesAll = (page: string) => fullAccess
+    || (isRop ? !permissions.some(p => p.page === page && p.scope_own) : permissions.some(p => p.page === page && p.can_view && p.scope_all));
+  const canViewAllManagers = fullAccess || DEAL_SCOPE_PAGES.some(seesAll);
 
   // Может подтверждать/отклонять сделки: директор и РОП всегда, остальные — по разрешению can_approve
   const canApprove = isDirector || isDirectorView || isRop || permissions.some(p => p.page === 'approvals' && p.can_approve);
@@ -301,7 +303,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (perm) return perm.can_edit;
     return !RESTRICTED_BY_DEFAULT.has(page);
   }
-  const editsAll = (page: string) => boss || (seesAll(page) && canEdit(page));
+  const editsAll = (page: string) => fullAccess || (isRop ? seesAll(page) : (seesAll(page) && canEdit(page)));
 
   return (
     <AuthContext.Provider value={{

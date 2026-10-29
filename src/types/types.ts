@@ -206,6 +206,7 @@ export interface EmployeePermission {
   can_edit: boolean;
   can_approve: boolean;   // право подтверждать/отклонять сделки
   scope_all?: boolean;    // в разделе видит данные всех менеджеров, а не только свои
+  scope_own?: boolean;    // РОП/Технолог: в разделе только свои данные (по умолчанию у них — все)
   created_at: string;
   updated_at: string;
 }
