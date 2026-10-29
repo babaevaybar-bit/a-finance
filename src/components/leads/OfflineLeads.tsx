@@ -38,7 +38,11 @@ const showPhone = (d: string) => formatPhone('7' + d);
 const phoneDigits = (s: string) => s.replace(/\D/g, '').replace(/^[78]/, '').slice(0, 10);
 /** Не квал, который не оставил имя и телефон — сохраняется с таким именем */
 export const NO_NAME = 'Без имени';
-const nameView = (n: string) => n === NO_NAME ? <span className="italic text-muted-foreground">без имени</span> : n;
+/** Без имени — вместо имени показываем комментарий («искал дешёвые двери») */
+const nameView = (n: string, comment?: string | null) => n === NO_NAME
+  ? (comment ? <span>{comment}</span> : <span className="italic text-muted-foreground">без имени</span>)
+  : n;
+const restComment = (r: { client_name: string; comment: string | null }) => r.client_name === NO_NAME ? null : r.comment;
 const time = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Qyzylorda' });
 
 /** Блок на главной: кнопка «Добавить офлайн‑лида» и лиды салона за сегодняшний рабочий день */
@@ -68,18 +72,6 @@ export default function OfflineLeadsCard() {
   const q = list.filter(r => r.qualified).length;
   const mName = (id: string) => managers.find(m => m.id === id)?.name;
 
-  // Не квал зашёл и ушёл, данные не оставил — отмечаем одним нажатием
-  const [quick, setQuick] = useState(false);
-  async function quickNoQual() {
-    if (!myId || quick) return;
-    setQuick(true);
-    const { data, error } = await supabase.from('offline_leads').insert({ manager_id: myId, client_name: NO_NAME, client_phone: null, qualified: false, comment: null }).select('*').single();
-    setQuick(false);
-    if (error || !data) { toast.error('Не удалось сохранить'); return; }
-    toast.success('Отмечен не квал без данных');
-    setRows(p => [data as OfflineLead, ...(p ?? [])]);
-  }
-
   async function remove(r: OfflineLead) {
     if (!confirm(`Удалить «${r.client_name}» (${time(r.created_at)})?`)) return;
     const { error } = await supabase.from('offline_leads').delete().eq('id', r.id);
@@ -101,13 +93,8 @@ export default function OfflineLeadsCard() {
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
           <Button variant="outline" className="h-12 px-4 rounded-xl" onClick={() => setHistOpen(true)} title="Все офлайн‑лиды">
-            <History size={17} className="sm:mr-1.5" /><span className="hidden sm:inline">Все офлайн‑лиды</span>
+            <History size={17} className="mr-1.5" />Все офлайн‑лиды
           </Button>
-          {myId && (
-            <Button variant="outline" className="h-12 px-4 rounded-xl" onClick={quickNoQual} disabled={quick} title="Зашёл не квал, имя и номер не оставил">
-              <X size={17} className="mr-1.5" />Не квал
-            </Button>
-          )}
           <Button className="h-12 flex-1 sm:flex-none px-5 text-base rounded-xl" onClick={() => setOpen(true)}>
             <Plus size={18} className="mr-1.5" />Добавить
           </Button>
@@ -122,9 +109,9 @@ export default function OfflineLeadsCard() {
                 {r.qualified ? 'квал' : 'не квал'}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{nameView(r.client_name)}</div>
+                <div className="truncate font-medium">{nameView(r.client_name, r.comment)}</div>
                 <div className="text-xs text-muted-foreground truncate">
-                  {[time(r.created_at), r.client_phone ? showPhone(r.client_phone) : null, canViewAllManagers ? mName(r.manager_id) : null, r.comment].filter(Boolean).join(' · ')}
+                  {[time(r.created_at), r.client_phone ? showPhone(r.client_phone) : null, canViewAllManagers ? mName(r.manager_id) : null, restComment(r)].filter(Boolean).join(' · ')}
                 </div>
               </div>
               {r.client_phone && (
@@ -193,7 +180,7 @@ export function OfflineLeadDialog({ open, onOpenChange, managers, defaultManager
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Офлайн‑лид</DialogTitle>
-          <DialogDescription>Клиент, который пришёл в салон. Попадёт в вечерний отчёт. Не квал можно сохранить без имени и номера.</DialogDescription>
+          <DialogDescription>Клиент, который пришёл в салон. Попадёт в вечерний отчёт. Для «не квал» имя и номер необязательны — можно оставить только комментарий.</DialogDescription>
         </DialogHeader>
         <form className="space-y-4" onSubmit={e => { e.preventDefault(); save(); }}>
           <div className="space-y-1.5">
@@ -229,8 +216,8 @@ export function OfflineLeadDialog({ open, onOpenChange, managers, defaultManager
             </label>
           )}
           <label className="block space-y-1.5">
-            <span className="text-sm font-medium">Комментарий <span className="text-muted-foreground font-normal">— необязательно</span></span>
-            <Input value={comment} onChange={e => setComment(e.target.value)} placeholder="Что интересует, откуда узнал" maxLength={500} className="h-11" />
+            <span className="text-sm font-medium">Комментарий <span className="text-muted-foreground font-normal">{qual === false ? '— почему не квал' : '— необязательно'}</span></span>
+            <Input value={comment} onChange={e => setComment(e.target.value)} placeholder={qual === false ? 'Например: искал дешёвые двери' : 'Что интересует, откуда узнал'} maxLength={500} className="h-11" />
           </label>
           <Button type="submit" className="w-full h-12 text-base" disabled={!ready || saving}>{saving ? 'Сохраняю…' : 'Сохранить'}</Button>
         </form>
@@ -331,9 +318,9 @@ function OfflineLeadsHistory({ open, onOpenChange, managers, showAll, myId }: {
                       {r.qualified ? 'квал' : 'не квал'}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">{nameView(r.client_name)}</div>
+                      <div className="truncate font-medium">{nameView(r.client_name, r.comment)}</div>
                       <div className="text-xs text-muted-foreground truncate">
-                        {[time(r.created_at), r.client_phone ? showPhone(r.client_phone) : null, showAll ? mName(r.manager_id) : null, r.comment].filter(Boolean).join(' · ')}
+                        {[time(r.created_at), r.client_phone ? showPhone(r.client_phone) : null, showAll ? mName(r.manager_id) : null, restComment(r)].filter(Boolean).join(' · ')}
                       </div>
                     </div>
                     {r.client_phone && (
