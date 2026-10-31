@@ -7,13 +7,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
   Phone, MessageCircle, Trophy, XCircle, Check, Plus, Trash2, CalendarClock, StickyNote, ArrowRight,
-  UserRound, Sparkles, Pencil, ExternalLink, AlertTriangle, ChevronDown, Clock3,
+  UserRound, Sparkles, Pencil, ExternalLink, AlertTriangle, ChevronDown, Clock3, UserCheck,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Manager } from '@/types/types';
 import {
   type CrmLead, type CrmStage, type CrmTask, type CrmEvent, type TaskKind,
-  getLead, updateLead, getEvents, addNote, addEvent, getTasks, createTask, completeTask, deleteTask, rescheduleTask, winLead,
+  getLead, updateLead, handoffLead, getEvents, addNote, addEvent, getTasks, createTask, completeTask, deleteTask, rescheduleTask, winLead,
   TASK_KINDS, taskKindLabel, SOURCES, dueLabel, isOverdue, normPhone, showPhone, daysOnStage, DUE_PRESETS,
 } from '@/lib/crm';
 const toKzLocal = (iso: string) => { const d = new Date(iso); return `${d.toLocaleDateString('en-CA', { timeZone: 'Asia/Qyzylorda' })}T${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Qyzylorda' })}`; };
@@ -34,7 +34,7 @@ const kzLocalToIso = (v: string) => new Date(`${v}:00+05:00`).toISOString();
 
 const EVENT_ICON: Record<string, React.ElementType> = {
   created: Sparkles, note: StickyNote, stage: ArrowRight, task: CalendarClock, task_done: Check,
-  won: Trophy, lost: XCircle, edit: Pencil,
+  won: Trophy, lost: XCircle, edit: Pencil, handoff: UserCheck,
 };
 
 export default function LeadSheet({ leadId, initialTab = 'card', stages, lostReasons, managers, onClose, onChanged }: {
@@ -60,6 +60,8 @@ export default function LeadSheet({ leadId, initialTab = 'card', stages, lostRea
   const [lost, setLost] = useState<{ reason: string; comment: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<'card' | 'chat' | 'history'>('card');
+  // Передача лида менеджеру
+  const [handoff, setHandoff] = useState<{ to: string; comment: string; advance: boolean } | null>(null);
 
   const load = useCallback(async () => {
     if (!leadId) return;
@@ -168,6 +170,24 @@ export default function LeadSheet({ leadId, initialTab = 'card', stages, lostRea
     setEvents(await getEvents(lead.id));
   }
 
+  async function confirmHandoff() {
+    if (!lead || !handoff?.to) return;
+    const open = pipeStages.filter(s => s.kind === 'open');
+    const i = open.findIndex(s => s.id === lead.stage_id);
+    const advanceTo = handoff.advance && i === 0 && open[1] ? open[1].id : null;
+    setBusy(true);
+    try {
+      await handoffLead(lead.id, handoff.to, handoff.comment.trim() || null, advanceTo);
+      const toName = managerName(handoff.to);
+      setHandoff(null);
+      toast.success(`Лид передан: ${toName}`);
+      const l = await getLead(lead.id).catch(() => null);
+      if (l) { setLead(l); onChanged(l); const [ts, ev] = await Promise.all([getTasks({ leadId: lead.id }), getEvents(lead.id)]); setTasks(ts); setEvents(ev); }
+      else { onChanged({ ...lead, manager_id: handoff.to }); onClose(); }   // после передачи лид больше не виден — закрываем
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Не удалось передать'); }
+    finally { setBusy(false); }
+  }
+
   const phoneDigits = lead?.client_phone?.replace(/\D/g, '') ?? '';
   // Лид другого менеджера при доступе «все — только просмотр»: этап и данные не меняем
   const ro = !!lead && !canEditAllLeads && lead.manager_id !== (profile?.manager_id ?? null);
@@ -218,7 +238,7 @@ export default function LeadSheet({ leadId, initialTab = 'card', stages, lostRea
                   <div className="flex-1 flex gap-0.5">
                     {open.map((s, k) => <span key={s.id} className="h-1 flex-1 rounded-full" style={{ background: closed ? (stage?.kind === 'won' ? '#16a34a' : 'hsl(var(--muted))') : k <= i ? (stage?.color ?? '#94a3b8') : 'hsl(var(--muted))' }} />)}
                   </div>
-                  <span className="shrink-0 inline-flex items-center gap-1"><UserRound size={11} />{managerName(lead.manager_id)} · {daysOnStage(lead)} дн. на этапе</span>
+                  <span className="shrink-0">{daysOnStage(lead)} дн. на этапе</span>
                 </div>
                 {closed && (
                   <div className={`rounded-lg px-3 py-2 text-sm ${stage?.kind === 'won' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>
@@ -249,6 +269,19 @@ export default function LeadSheet({ leadId, initialTab = 'card', stages, lostRea
                 </div>
               </>);
             })()}
+            {/* Ответственный и передача другому менеджеру */}
+            <div className="flex items-center gap-2 rounded-lg border bg-muted/30 pl-3 pr-1.5 py-1.5">
+              <UserRound size={15} className="text-muted-foreground shrink-0" />
+              <div className="min-w-0 flex-1 text-sm">
+                <span className="text-muted-foreground">Ответственный: </span><span className="font-medium">{managerName(lead.manager_id)}</span>
+              </div>
+              {!ro && !closed && (
+                <Button size="sm" variant="outline" className="h-8 shrink-0" disabled={busy}
+                  onClick={() => setHandoff({ to: '', comment: '', advance: pipeStages.filter(s => s.kind === 'open')[0]?.id === lead.stage_id })}>
+                  <UserCheck size={14} className="mr-1.5" />Передать
+                </Button>
+              )}
+            </div>
             {ro && <p className="text-xs text-muted-foreground">Лид другого менеджера — только просмотр. Задачи и заметки добавлять можно.</p>}
             {lead.deal_id && <a href="/approvals" className="text-xs text-primary inline-flex items-center gap-1 hover:underline"><ExternalLink size={12} />Открыть сделку в «Подтверждениях»</a>}
           </div>
@@ -469,7 +502,52 @@ export default function LeadSheet({ leadId, initialTab = 'card', stages, lostRea
         </Dialog>
 
         {/* Отказ */}
-        <Dialog open={!!lost} onOpenChange={v => { if (!v) setLost(null); }}>
+        <Dialog open={!!handoff} onOpenChange={v => { if (!v) setHandoff(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Передать лида</DialogTitle>
+            <DialogDescription>{lead?.client_name} — сейчас у {managerName(lead?.manager_id ?? null)}. Задачи перейдут новому менеджеру, если их нет — поставим «Связаться с клиентом» через 30 минут.</DialogDescription>
+          </DialogHeader>
+          {handoff && (
+            <form className="space-y-3" onSubmit={e => { e.preventDefault(); confirmHandoff(); }}>
+              <div className="space-y-1.5">
+                <span className="text-sm font-medium">Кому</span>
+                <div className="grid grid-cols-2 gap-2">
+                  {[...managers].filter(m => m.id !== lead?.manager_id && m.is_active !== false)
+                    .sort((a, b) => Number(b.role === 'Менеджер по продажам') - Number(a.role === 'Менеджер по продажам') || a.name.localeCompare(b.name))
+                    .map(m => (
+                      <button key={m.id} type="button" onClick={() => setHandoff(h => h && { ...h, to: m.id })}
+                        className={`h-12 rounded-lg border px-3 text-left transition-colors ${handoff.to === m.id ? 'border-primary bg-primary/10 ring-1 ring-primary/40' : 'hover:bg-muted'}`}>
+                        <div className="text-sm font-medium truncate">{m.name}</div>
+                        <div className="text-[11px] text-muted-foreground truncate">{m.role}</div>
+                      </button>
+                    ))}
+                </div>
+              </div>
+              <label className="block space-y-1.5">
+                <span className="text-sm font-medium">Что важно знать <span className="text-muted-foreground font-normal">— необязательно</span></span>
+                <Textarea value={handoff.comment} onChange={e => setHandoff(h => h && { ...h, comment: e.target.value })} rows={2}
+                  placeholder="Например: хочет 5 скрытых дверей, перезвонить после 18:00" />
+              </label>
+              {(() => {
+                const open = pipeStages.filter(s => s.kind === 'open');
+                return open[0]?.id === lead?.stage_id && open[1] ? (
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={handoff.advance} onChange={e => setHandoff(h => h && { ...h, advance: e.target.checked })} />
+                    Перевести на этап «{open[1].name}»
+                  </label>
+                ) : null;
+              })()}
+              <div className="flex justify-end gap-2 pt-1">
+                <Button type="button" variant="ghost" onClick={() => setHandoff(null)}>Отмена</Button>
+                <Button type="submit" disabled={busy || !handoff.to}>{busy ? 'Передаю…' : handoff.to ? `Передать: ${managerName(handoff.to)}` : 'Выберите менеджера'}</Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!lost} onOpenChange={v => { if (!v) setLost(null); }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader><DialogTitle>Причина отказа</DialogTitle><DialogDescription>По причинам строится отчёт — почему теряем клиентов.</DialogDescription></DialogHeader>
             {lost && (
