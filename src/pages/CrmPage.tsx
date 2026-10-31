@@ -259,35 +259,53 @@ export default function CrmPage() {
   return (
     <AppLayout>
       <div className="space-y-3">
-        <div className="flex items-baseline gap-2">
-          <h1 className="text-xl font-semibold">CRM</h1>
-          <span className="text-sm text-muted-foreground">
-            {leads ? `${base.filter(isOpenLead).length} в работе · ${formatCurrency(base.filter(isOpenLead).reduce((a, l) => a + Number(l.amount || 0), 0))}` : ''}
-          </span>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h1 className="text-xl font-semibold">CRM</h1>
+            <p className="text-sm text-muted-foreground">Лиды по этапам: кто следующий шаг, что просрочено, кому ответить</p>
+          </div>
         </div>
         {toolbar}
         {leads && view === 'board' && (
-          <div className="tabs-scroll flex gap-1.5 overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+          /* Сводка — она же быстрые фильтры */
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
             {([
-              ['all', 'Все', base.filter(isOpenLead).length, ''],
-              ['overdue', 'Просрочено', quickCount('overdue'), 'red'],
-              ['today', 'Дела на сегодня', quickCount('today'), 'blue'],
-              ['notask', 'Без следующего шага', quickCount('notask'), 'amber'],
-              ['unread', 'Новые сообщения', quickCount('unread'), 'emerald'],
-            ] as const).map(([k, label, n, c]) => {
+              ['all', 'В работе', base.filter(isOpenLead).length, formatCurrency(base.filter(isOpenLead).reduce((a, l) => a + Number(l.amount || 0), 0)), 'text-foreground', LayoutGrid],
+              ['overdue', 'Просрочено', quickCount('overdue'), 'задача не сделана вовремя', 'text-red-600', AlertTriangle],
+              ['today', 'Дела на сегодня', quickCount('today'), 'звонки и встречи', 'text-blue-600', CalendarClock],
+              ['notask', 'Без следующего шага', quickCount('notask'), 'клиент может потеряться', 'text-amber-600', Clock],
+              ['unread', 'Новые сообщения', quickCount('unread'), 'ждут ответа', 'text-emerald-600', MessageCircle],
+            ] as const).map(([k, label, n, sub, tone, Icon]) => {
               const act = quick === k;
-              const tone = { red: 'text-red-700 border-red-200 bg-red-50', blue: 'text-blue-700 border-blue-200 bg-blue-50', amber: 'text-amber-800 border-amber-200 bg-amber-50', emerald: 'text-emerald-800 border-emerald-200 bg-emerald-50', '': '' }[c];
               return (
                 <button key={k} type="button" onClick={() => setQuick(act && k !== 'all' ? 'all' : k)}
-                  className={`shrink-0 h-8 px-3 rounded-full border text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${act ? 'bg-foreground text-background border-foreground' : n && c ? tone : 'bg-background text-muted-foreground hover:bg-muted'}`}>
-                  {label}<span className={`tabular-nums ${act ? 'opacity-80' : ''}`}>{n}</span>
+                  className={`text-left rounded-xl border px-3 py-2.5 transition-all ${act ? 'border-primary ring-1 ring-primary/40 bg-primary/5' : 'bg-card hover:border-primary/30'}`}>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Icon size={13} className={n ? tone : ''} />{label}</div>
+                  <div className={`text-xl font-semibold tabular-nums leading-tight mt-0.5 ${n && k !== 'all' ? tone : ''}`}>{n}</div>
+                  <div className="text-[11px] text-muted-foreground truncate">{sub}</div>
                 </button>
               );
             })}
           </div>
         )}
 
-        {leads === null ? (
+        {leads && leads.length === 0 && (
+          /* Пустая CRM — понятный старт вместо пустых колонок */
+          <div className="rounded-2xl border border-dashed bg-card px-6 py-10 text-center">
+            <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center"><UserRound size={22} /></div>
+            <h2 className="mt-3 text-base font-semibold">В CRM пока нет лидов</h2>
+            <p className="mt-1 text-sm text-muted-foreground max-w-md mx-auto">
+              Добавьте клиента вручную — он появится на первом этапе с задачей «связаться».
+              {isDirector ? ' Подключите WhatsApp — новые обращения будут попадать сюда сами.' : ''}
+            </p>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <Button onClick={() => setCreating({})}><Plus size={16} className="mr-1.5" />Новый лид</Button>
+              {isDirector && <Button variant="outline" onClick={() => setWaOpen(true)}><MessageCircle size={16} className="mr-1.5" />Подключить WhatsApp</Button>}
+            </div>
+          </div>
+        )}
+
+        {leads !== null && leads.length === 0 ? null : leads === null ? (
           <div className="flex gap-3 overflow-hidden">{[1, 2, 3, 4].map(i => <div key={i} className="h-64 w-72 shrink-0 rounded-xl bg-muted animate-pulse" />)}</div>
         ) : view === 'board' && isMobile ? (
           /* Телефон: этапы вкладками, лиды списком на всю ширину */
@@ -323,21 +341,21 @@ export default function CrmPage() {
           </div>
         ) : view === 'board' ? (
           /* Компьютер: канбан с перетаскиванием */
-          <div className="flex gap-3 overflow-x-auto pb-3" style={{ minHeight: 'calc(100dvh - 210px)' }}>
+          <div className="flex gap-2.5 overflow-x-auto pb-3 items-start">
             {visibleStages.map(s => {
               const items = sortLeads(filtered.filter(l => l.stage_id === s.id));
               const sum = items.reduce((a, l) => a + Number(l.amount || 0), 0);
               return (
-                <div key={s.id} className={`shrink-0 w-72 rounded-xl flex flex-col transition-colors ${dragOver === s.id ? 'bg-primary/5 ring-2 ring-primary/30' : 'bg-muted/40'}`}
-                  style={{ borderTop: `3px solid ${s.color}` }}
+                <div key={s.id} className={`shrink-0 ${items.length ? 'w-64' : 'w-52'} rounded-xl flex flex-col transition-all max-h-[calc(100dvh-260px)] ${dragOver === s.id ? 'bg-primary/5 ring-2 ring-primary/30' : 'bg-muted/40'}`}
                   onDragOver={e => { e.preventDefault(); setDragOver(s.id); }}
                   onDragLeave={() => setDragOver(p => (p === s.id ? null : p))}
                   onDrop={e => { e.preventDefault(); setDragOver(null); if (dragId.current) moveLead(dragId.current, s); dragId.current = null; }}>
-                  <div className="px-3 pt-2.5 pb-2 flex items-start gap-2">
+                  <div className="px-2.5 pt-2.5 pb-1.5 flex items-start gap-1.5">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-sm font-semibold truncate">{s.name}</span>
-                        <span className="text-xs text-muted-foreground tabular-nums">{items.length}</span>
+                      <div className="flex items-center gap-1.5" title={s.name}>
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
+                        <span className="text-[13px] font-semibold leading-tight line-clamp-2">{s.name}</span>
+                        <span className={`ml-auto text-[11px] tabular-nums px-1.5 rounded-full ${items.length ? 'bg-background text-foreground' : 'text-muted-foreground'}`}>{items.length}</span>
                       </div>
                       {sum > 0 && <div className="text-xs text-muted-foreground mt-0.5 tabular-nums">{formatCurrency(sum)}</div>}
                     </div>
@@ -348,7 +366,7 @@ export default function CrmPage() {
                   </div>
                   <div className="px-2 pb-2 space-y-2 flex-1 overflow-y-auto">
                     {items.map(l => <LeadCard key={l.id} l={l} s={s} />)}
-                    {!items.length && <div className="h-20 rounded-lg border border-dashed text-xs text-muted-foreground/70 flex items-center justify-center text-center px-3">{quick === 'all' ? 'Перетащите сюда лида' : 'Нет лидов по фильтру'}</div>}
+                    {!items.length && <div className="h-12 rounded-lg border border-dashed text-[11px] text-muted-foreground/70 flex items-center justify-center text-center px-2">{quick === 'all' ? 'пусто' : 'нет по фильтру'}</div>}
                   </div>
                 </div>
               );
