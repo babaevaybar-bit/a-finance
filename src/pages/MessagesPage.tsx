@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Banknote, Factory, CheckCheck, Scale, ClipboardList, KanbanSquare } from 'lucide-react';
+import { Banknote, Factory, CheckCheck, Scale, ClipboardList, KanbanSquare, CheckCircle2 } from 'lucide-react';
+import { dealCompleteness } from '@/components/sales/DealCompleteness';
 import { getNotifications, markNotificationRead, markNotificationsRead, getDealById, notifyCountersChanged } from '@/lib/api';
 import DealFormDialog from '@/components/sales/DealFormDialog';
 import { toast } from 'sonner';
@@ -23,12 +24,16 @@ function dayTitle(d: string) {
   return new Date(`${d}T12:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
 }
 
+const lineName = (line: string) => line.replace(/^•\s*/, '').split(' — ')[0].trim();
+
 export default function MessagesPage() {
   const { profile, canViewAllManagers } = useAuth();
   const navigate = useNavigate();
   const [items, setItems] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
+  // Текущие сделки из «Дозаполните сделки» — чтобы показать, что уже исправлено
+  const [lineDeals, setLineDeals] = useState<Record<string, Deal>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -41,6 +46,29 @@ export default function MessagesPage() {
   }, [profile?.manager_id, canViewAllManagers]);
 
   useEffect(() => { load(); }, [load]);
+
+  const refreshLineDeals = useCallback(async (list: AppNotification[]) => {
+    const names = [...new Set(list.filter(n => n.type === 'incomplete_deals')
+      .flatMap(n => (n.body ?? '').split('\n').filter(l => l.startsWith('•')).map(lineName)).filter(Boolean))];
+    if (!names.length) { setLineDeals({}); return; }
+    const map: Record<string, Deal> = {};
+    for (let i = 0; i < names.length; i += 100) {
+      const { data } = await supabase.from('deals').select('*').in('client_name', names.slice(i, i + 100))
+        .neq('status', 'rejected').order('created_at', { ascending: true });
+      for (const d of (data as Deal[] | null) ?? []) if (d.client_name) map[d.client_name] = d;   // самая новая сделка с этим именем
+    }
+    setLineDeals(map);
+  }, []);
+  useEffect(() => { refreshLineDeals(items).catch(() => {}); }, [items, refreshLineDeals]);
+
+  /** Что из перечисленного в строке ещё не заполнено; null — сделка не найдена */
+  function lineStatus(line: string): string[] | null {
+    const d = lineDeals[lineName(line)];
+    if (!d) return null;
+    const missing = dealCompleteness(d).missing;
+    const asked = (line.split(' — ')[1] ?? '').split(',').map(x => x.trim()).filter(Boolean);
+    return asked.filter(f => missing.includes(f) || (f === 'сумма' && missing.includes('сумма сделки')));
+  }
 
   async function handleOpen(n: AppNotification) {
     if (!n.is_read) {
@@ -64,7 +92,7 @@ export default function MessagesPage() {
 
   // «• Гульмира 4you — адрес» → открыть эту сделку (в сообщении нет id — ищем по имени клиента)
   async function openDealByLine(line: string) {
-    const name = line.replace(/^•\s*/, '').split(' — ')[0].trim();
+    const name = lineName(line);
     if (!name) { navigate('/sales'); return; }
     try {
       const { data } = await supabase.from('deals').select('*').eq('client_name', name)
@@ -191,12 +219,27 @@ export default function MessagesPage() {
                         <div className="flex items-center gap-2">
                           <p className={`text-sm ${unread ? 'font-semibold' : 'font-medium'}`}>{title}</p>
                           {unread && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+                          {e.type === 'incomplete_deals' && lines.length > 0 && lines.every(l => { const x = lineStatus(l); return x !== null && x.length === 0; }) && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5"><CheckCircle2 size={12} />всё исправлено</span>
+                          )}
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5">
-                          {shown.map((l, i) => e.type === 'incomplete_deals' && l.startsWith('•')
-                            ? <button key={i} type="button" className="block text-left break-words hover:text-primary hover:underline"
-                                onClick={ev => { ev.stopPropagation(); openDealByLine(l); }}>{l}</button>
-                            : <div key={i} className="break-words">{l}</div>)}
+                          {shown.map((l, i) => {
+                            if (!(e.type === 'incomplete_deals' && l.startsWith('•'))) return <div key={i} className="break-words">{l}</div>;
+                            const left = lineStatus(l);
+                            const fixed = left !== null && left.length === 0;
+                            return (
+                              <button key={i} type="button" onClick={ev => { ev.stopPropagation(); openDealByLine(l); }}
+                                className={`flex items-start gap-1.5 text-left break-words hover:underline ${fixed ? 'text-green-700' : 'hover:text-primary'}`}>
+                                {fixed
+                                  ? <CheckCircle2 size={13} className="mt-[1px] shrink-0 text-green-600" />
+                                  : <span className="mt-[5px] w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />}
+                                <span>
+                                  {lineName(l)} — {fixed ? <span>исправлено</span> : left && left.length ? <span>осталось: {left.join(', ')}</span> : (l.split(' — ')[1] ?? '')}
+                                </span>
+                              </button>
+                            );
+                          })}
                           {e.type === 'incomplete_deals' && lines.length > 4 && (
                             <div className="text-primary">{isOpen ? 'Свернуть' : `Показать ещё ${lines.length - 4}`}</div>
                           )}
@@ -221,7 +264,7 @@ export default function MessagesPage() {
           managerId={editDeal.manager_id}
           monthYear={editDeal.month_year}
           onClose={() => setEditDeal(null)}
-          onSaved={() => setEditDeal(null)}
+          onSaved={() => { setEditDeal(null); refreshLineDeals(items).catch(() => {}); }}
         />
       )}
     </AppLayout>
