@@ -9,6 +9,7 @@ import DealFormDialog from '@/components/sales/DealFormDialog';
 import { toast } from 'sonner';
 import type { AppNotification, Deal } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/db/supabase';
 
 type Tab = 'important' | 'production' | 'all';
 interface Entry { key: string; day: string; type: string; items: AppNotification[] }
@@ -61,6 +62,19 @@ export default function MessagesPage() {
     else navigate('/production');
   }
 
+  // «• Гульмира 4you — адрес» → открыть эту сделку (в сообщении нет id — ищем по имени клиента)
+  async function openDealByLine(line: string) {
+    const name = line.replace(/^•\s*/, '').split(' — ')[0].trim();
+    if (!name) { navigate('/sales'); return; }
+    try {
+      const { data } = await supabase.from('deals').select('*').eq('client_name', name)
+        .neq('status', 'rejected').order('created_at', { ascending: false }).limit(1);
+      const d = (data as Deal[] | null)?.[0];
+      if (d) { setEditDeal(d); return; }
+      toast.error(`Сделка «${name}» не найдена — возможно, переименована или удалена`);
+    } catch { toast.error('Не удалось открыть сделку'); }
+  }
+
   async function handleMarkAllRead() {
     const ids = items.filter(i => !i.is_read).map(i => i.id);
     if (!ids.length) return;
@@ -106,7 +120,11 @@ export default function MessagesPage() {
       setItems(prev => prev.map(i => unread.includes(i.id) ? { ...i, is_read: true } : i));
       markNotificationsRead(unread).then(notifyCountersChanged).catch(() => {});
     }
-    if (e.type === 'incomplete_deals' && e.items.length > 1) { setExpanded(x => x === e.key ? null : e.key); return; }
+    if (e.type === 'incomplete_deals') {
+      const deals = [...new Set(e.items.flatMap(i => (i.body ?? '').split('\n').filter(l => l.startsWith('•'))))];
+      if (deals.length === 1) { await openDealByLine(deals[0]); return; }
+      setExpanded(x => x === e.key ? null : e.key); return;
+    }
     const first = e.items[0];
     await handleOpen({ ...first, is_read: true });
   }
@@ -175,7 +193,10 @@ export default function MessagesPage() {
                           {unread && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5">
-                          {shown.map((l, i) => <div key={i} className="break-words">{l}</div>)}
+                          {shown.map((l, i) => e.type === 'incomplete_deals' && l.startsWith('•')
+                            ? <button key={i} type="button" className="block text-left break-words hover:text-primary hover:underline"
+                                onClick={ev => { ev.stopPropagation(); openDealByLine(l); }}>{l}</button>
+                            : <div key={i} className="break-words">{l}</div>)}
                           {e.type === 'incomplete_deals' && lines.length > 4 && (
                             <div className="text-primary">{isOpen ? 'Свернуть' : `Показать ещё ${lines.length - 4}`}</div>
                           )}
