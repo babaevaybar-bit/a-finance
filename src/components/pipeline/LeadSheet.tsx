@@ -61,7 +61,7 @@ export default function LeadSheet({ leadId, initialTab = 'card', stages, lostRea
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<'card' | 'chat' | 'history'>('card');
   // Передача лида менеджеру
-  const [handoff, setHandoff] = useState<{ to: string; comment: string; advance: boolean } | null>(null);
+  const [handoff, setHandoff] = useState<{ to: string; comment: string; advance: boolean; kind: TaskKind; title: string; due: string } | null>(null);
 
   const load = useCallback(async () => {
     if (!leadId) return;
@@ -177,7 +177,8 @@ export default function LeadSheet({ leadId, initialTab = 'card', stages, lostRea
     const advanceTo = handoff.advance && i === 0 && open[1] ? open[1].id : null;
     setBusy(true);
     try {
-      await handoffLead(lead.id, handoff.to, handoff.comment.trim() || null, advanceTo);
+      await handoffLead(lead.id, handoff.to, handoff.comment.trim() || null, advanceTo,
+        handoff.due ? { kind: handoff.kind, title: handoff.title.trim() || null, due_at: kzLocalToIso(handoff.due) } : null);
       const toName = managerName(handoff.to);
       setHandoff(null);
       toast.success(`Лид передан: ${toName}`);
@@ -277,7 +278,7 @@ export default function LeadSheet({ leadId, initialTab = 'card', stages, lostRea
               </div>
               {!ro && !closed && (
                 <Button size="sm" variant="outline" className="h-8 shrink-0" disabled={busy}
-                  onClick={() => setHandoff({ to: '', comment: '', advance: pipeStages.filter(s => s.kind === 'open')[0]?.id === lead.stage_id })}>
+                  onClick={() => setHandoff({ to: '', comment: '', advance: pipeStages.filter(s => s.kind === 'open')[0]?.id === lead.stage_id, kind: 'call', title: '', due: toKzLocal(DUE_PRESETS[0].at()) })}>
                   <UserCheck size={14} className="mr-1.5" />Передать
                 </Button>
               )}
@@ -503,10 +504,10 @@ export default function LeadSheet({ leadId, initialTab = 'card', stages, lostRea
 
         {/* Отказ */}
         <Dialog open={!!handoff} onOpenChange={v => { if (!v) setHandoff(null); }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Передать лида</DialogTitle>
-            <DialogDescription>{lead?.client_name} — сейчас у {managerName(lead?.manager_id ?? null)}. Задачи перейдут новому менеджеру, если их нет — поставим «Связаться с клиентом» через 30 минут.</DialogDescription>
+            <DialogDescription>{lead?.client_name} — сейчас у {managerName(lead?.manager_id ?? null)}. Выберите менеджера и поставьте ему задачу.</DialogDescription>
           </DialogHeader>
           {handoff && (
             <form className="space-y-3" onSubmit={e => { e.preventDefault(); confirmHandoff(); }}>
@@ -524,6 +525,27 @@ export default function LeadSheet({ leadId, initialTab = 'card', stages, lostRea
                     ))}
                 </div>
               </div>
+              <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                <span className="text-sm font-medium">Задача менеджеру</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {TASK_KINDS.map(k => (
+                    <button key={k.id} type="button" onClick={() => setHandoff(h => h && { ...h, kind: k.id })}
+                      className={`h-8 px-3 rounded-full text-xs border ${handoff.kind === k.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'}`}>{k.label}</button>
+                  ))}
+                </div>
+                <Input value={handoff.title} onChange={e => setHandoff(h => h && { ...h, title: e.target.value })} className="h-9"
+                  placeholder={`${taskKindLabel(handoff.kind)}: что сделать (необязательно)`} />
+                <div className="flex flex-wrap gap-1.5">
+                  {DUE_PRESETS.map(pr => {
+                    const v = toKzLocal(pr.at());
+                    return (
+                      <button key={pr.label} type="button" onClick={() => setHandoff(h => h && { ...h, due: v })}
+                        className={`h-8 px-2.5 rounded-full text-xs border ${handoff.due === v ? 'bg-primary/10 border-primary text-primary' : 'bg-background hover:bg-muted'}`}>{pr.label}</button>
+                    );
+                  })}
+                </div>
+                <Input type="datetime-local" value={handoff.due} onChange={e => setHandoff(h => h && { ...h, due: e.target.value })} className="h-9" />
+              </div>
               <label className="block space-y-1.5">
                 <span className="text-sm font-medium">Что важно знать <span className="text-muted-foreground font-normal">— необязательно</span></span>
                 <Textarea value={handoff.comment} onChange={e => setHandoff(h => h && { ...h, comment: e.target.value })} rows={2}
@@ -540,7 +562,7 @@ export default function LeadSheet({ leadId, initialTab = 'card', stages, lostRea
               })()}
               <div className="flex justify-end gap-2 pt-1">
                 <Button type="button" variant="ghost" onClick={() => setHandoff(null)}>Отмена</Button>
-                <Button type="submit" disabled={busy || !handoff.to}>{busy ? 'Передаю…' : handoff.to ? `Передать: ${managerName(handoff.to)}` : 'Выберите менеджера'}</Button>
+                <Button type="submit" disabled={busy || !handoff.to || !handoff.due}>{busy ? 'Передаю…' : handoff.to ? `Передать: ${managerName(handoff.to)}` : 'Выберите менеджера'}</Button>
               </div>
             </form>
           )}
