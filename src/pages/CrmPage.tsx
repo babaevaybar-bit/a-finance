@@ -16,6 +16,7 @@ import type { Manager } from '@/types/types';
 import { formatCurrency } from '@/lib/utils';
 import LeadSheet from '@/components/pipeline/LeadSheet';
 import WhatsAppSetup from '@/components/pipeline/WhatsAppSetup';
+import SuccessfulSales from '@/components/pipeline/SuccessfulSales';
 import {
   type CrmLead, type CrmStage, type CrmPipeline, type CrmTask, type TaskKind,
   getPipeline, getLeads, createLead, updateLead, getTasks, createTask, completeTask, addEvent, SOURCES, TASK_KINDS, taskKindLabel,
@@ -54,7 +55,7 @@ export default function CrmPage() {
   const [managers, setManagers] = useState<Manager[]>([]);
   const [q, setQ] = useState('');
   const [mgrFilter, setMgrFilter] = useState<string>('');
-  const [view, setView] = useState<'board' | 'tasks'>(params.get('view') === 'tasks' ? 'tasks' : 'board');
+  const [view, setView] = useState<'board' | 'tasks' | 'won'>(params.get('view') === 'tasks' ? 'tasks' : params.get('view') === 'won' ? 'won' : 'board');
   const [showClosed, setShowClosed] = useState(false);
   const [quick, setQuick] = useState<'all' | 'overdue' | 'notask' | 'unread' | 'today'>('all');
   const [openId, setOpenId] = useState<string | null>(params.get('lead'));
@@ -67,7 +68,7 @@ export default function CrmPage() {
   useEffect(() => {
     const n = new URLSearchParams(params);
     if (openId) n.set('lead', openId); else n.delete('lead');
-    if (view === 'tasks') n.set('view', 'tasks'); else n.delete('view');
+    if (view !== 'board') n.set('view', view); else n.delete('view');
     setParams(n, { replace: true });
   }, [openId, view]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -228,6 +229,7 @@ export default function CrmPage() {
         <button type="button" onClick={() => setView('tasks')} className={`h-9 px-3 rounded-md text-sm inline-flex items-center gap-1.5 ${view === 'tasks' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`}>
           <ListChecks size={14} />Задачи{(overdue.length + today.length) > 0 && <span className={`ml-1 text-[10px] px-1.5 rounded-full text-white ${overdue.length ? 'bg-red-500' : 'bg-primary'}`}>{overdue.length + today.length}</span>}
         </button>
+        <button type="button" onClick={() => setView('won')} className={`h-9 px-3 rounded-md text-sm inline-flex items-center gap-1.5 ${view === 'won' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`}><Trophy size={14} />Успешные</button>
       </div>
       {pipelines.length > 1 && (
         <select value={pipelineId} onChange={e => setPipelineId(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
@@ -289,7 +291,9 @@ export default function CrmPage() {
           </div>
         )}
 
-        {leads && leads.length === 0 && (
+        {view === 'won' ? (
+          <SuccessfulSales managers={managers} mgrFilter={mgrFilter} search={q} />
+        ) : leads && leads.length === 0 && (
           /* Пустая CRM — понятный старт вместо пустых колонок */
           <div className="rounded-2xl border border-dashed bg-card px-6 py-10 text-center">
             <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center"><UserRound size={22} /></div>
@@ -305,7 +309,7 @@ export default function CrmPage() {
           </div>
         )}
 
-        {leads !== null && leads.length === 0 ? null : leads === null ? (
+        {view === 'won' || (leads !== null && leads.length === 0) ? null : leads === null ? (
           <div className="flex gap-3 overflow-hidden">{[1, 2, 3, 4].map(i => <div key={i} className="h-64 w-72 shrink-0 rounded-xl bg-muted animate-pulse" />)}</div>
         ) : view === 'board' && isMobile ? (
           /* Телефон: этапы вкладками, лиды списком на всю ширину */
