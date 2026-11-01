@@ -200,3 +200,13 @@ export async function getCrmSettings() {
   const { data } = await supabase.from('crm_settings').select('wa_channel_id, wa_phone, new_lead_manager_id').eq('id', 1).maybeSingle();
   return (data ?? null) as CrmSettings | null;
 }
+
+/** Передать лида другому менеджеру: задачи переходят к нему, в истории — «Передан» с комментарием */
+export async function handoffLead(leadId: string, toManagerId: string, comment: string | null, stageId: string | null,
+  task: { kind: TaskKind; title: string | null; due_at: string } | null) {
+  const { error } = await supabase.rpc('crm_handoff', {
+    p_lead: leadId, p_to: toManagerId, p_comment: comment, p_stage: stageId,
+    p_task_kind: task?.kind ?? null, p_task_title: task?.title ?? null, p_task_due: task?.due_at ?? null,
+  });
+  if (error) throw new Error(error.message);
+}
