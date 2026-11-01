@@ -110,7 +110,7 @@ function NavLinks({ onClose, mini = false }: { onClose?: () => void; mini?: bool
       {IN_DEVELOPMENT.has(pageKey) && (
         <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold shrink-0 whitespace-nowrap">в разработке</span>
       )}
-      {path === '/boards' && (
+      {(path === '/boards' || path === '/estimate') && (
         <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold shrink-0">бета</span>
       )}
       {path === '/approvals' && pendingCount > 0 && (

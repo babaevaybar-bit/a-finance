@@ -35,7 +35,7 @@ interface AuthContextType {
 }
 
 /** Разделы «в разработке»: менеджеры видят заглушку, руководители работают как обычно */
-export const IN_DEVELOPMENT = new Set(['estimate', 'training', 'crm']);
+export const IN_DEVELOPMENT = new Set(['training', 'crm']);
 
 /** Разделы, которые менеджеру не открыть даже вручную: там данные всей компании и управление людьми.
  *  Нужен такой доступ — смените роль на РОП или Директор. */
@@ -50,7 +50,7 @@ export const MANAGER_POLICY: Record<string, 'edit' | 'view' | 'none'> = {
   sales: 'edit',
   debtors: 'edit',
   approvals: 'view',       // только статус своих сделок
-  estimate: 'edit',        // пока «в разработке»
+  estimate: 'none',        // бета: руководитель включает в «Доступе» тем, кто пробует считать
   finance: 'none',
   reports: 'view',
   salary: 'view',          // своя зарплата; «Все» в «Доступе» — зарплаты всех (только просмотр)
