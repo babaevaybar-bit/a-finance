@@ -187,6 +187,8 @@ function SalaryAdmin() {
   const [payTarget, setPayTarget] = useState<{ id: string; name: string; rest: number; kind: PayKind } | null>(null);
   const [payAmount, setPayAmount] = useState('');
   const [payChannel, setPayChannel] = useState<string>('Наличные');
+  const kzToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Qyzylorda' });
+  const [payDate, setPayDate] = useState<string>(kzToday());
   const [paying, setPaying] = useState(false);
   const [editTarget, setEditTarget] = useState<Calc | null>(null);
 
@@ -230,15 +232,16 @@ function SalaryAdmin() {
   function openPay(r: Calc, kind: PayKind) {
     setPayTarget({ id: r.m.id, name: r.m.name, rest: Math.max(0, r.rest), kind });
     setPayAmount(kind === 'payout' && r.rest > 0 ? String(Math.round(r.rest)) : '');
+    setPayDate(kzToday());
   }
 
   async function handlePay() {
     const amount = Number(payAmount);
-    if (!payTarget || !(amount > 0)) return;
+    if (!payTarget || !(amount > 0) || !payDate) return;
     setPaying(true);
     try {
       await createExpense({
-        expense_date: new Date().toISOString().slice(0, 10),
+        expense_date: payDate,   // дата, когда фактически выдали
         amount, channel: payChannel,
         category: payTarget.kind === 'advance' ? ADVANCE_CATEGORY : PAYOUT_CATEGORY,
         description: `${payTarget.kind === 'advance' ? 'Аванс' : 'Зарплата'} за ${monthYearToLabel(monthYear)}: ${payTarget.name}`,
@@ -416,6 +419,10 @@ function SalaryAdmin() {
               )}
             </div>
             <div className="space-y-1">
+              <Label className="text-xs">Дата выдачи</Label>
+              <Input type="date" value={payDate} max={kzToday()} onChange={e => setPayDate(e.target.value)} className="h-10" />
+            </div>
+            <div className="space-y-1">
               <Label className="text-xs">Из какой кассы</Label>
               <Select value={payChannel} onValueChange={setPayChannel}>
                 <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
@@ -424,7 +431,7 @@ function SalaryAdmin() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setPayTarget(null)}>Отмена</Button>
-              <Button type="submit" disabled={paying || !(Number(payAmount) > 0)}>{paying ? 'Сохранение…' : payTarget?.kind === 'advance' ? 'Выдать аванс' : 'Выплатить'}</Button>
+              <Button type="submit" disabled={paying || !(Number(payAmount) > 0) || !payDate}>{paying ? 'Сохранение…' : payTarget?.kind === 'advance' ? 'Выдать аванс' : 'Выплатить'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
