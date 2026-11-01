@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,9 +10,11 @@ import DealFormDialog from '@/components/sales/DealFormDialog';
 import { toast } from 'sonner';
 import type { AppNotification, Deal } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
+import AssignmentsPanel from '@/components/assignments/AssignmentsPanel';
+import { waitingCount } from '@/lib/assignments';
 import { supabase } from '@/db/supabase';
 
-type Tab = 'important' | 'production' | 'all';
+type Tab = 'tasks' | 'important' | 'production' | 'all';
 interface Entry { key: string; day: string; type: string; items: AppNotification[] }
 const kzDay = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Qyzylorda' }).format(new Date(iso));
 const hm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Qyzylorda' });
@@ -118,7 +120,17 @@ export default function MessagesPage() {
   }
 
   const unreadCount = items.filter(i => !i.is_read).length;
-  const [tab, setTab] = useState<Tab>('important');
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(params.get('tab') === 'tasks' ? 'tasks' : 'important');
+  // поручения, которые ждут моего действия: сделать или проверить
+  const [waiting, setWaiting] = useState(0);
+  useEffect(() => {
+    const upd = () => waitingCount().then(n => { setWaiting(n); }).catch(() => {});
+    upd(); window.addEventListener('afin:counters', upd);
+    return () => window.removeEventListener('afin:counters', upd);
+  }, []);
+  const autoTab = useRef(false);
+  useEffect(() => { if (!autoTab.current && waiting > 0 && !params.get('tab')) { autoTab.current = true; setTab('tasks'); } }, [waiting]); // eslint-disable-line react-hooks/exhaustive-deps
   const [expanded, setExpanded] = useState<string | null>(null);
 
   // Склеиваем однотипные сообщения, чтобы не было «простыни»:
@@ -164,7 +176,7 @@ export default function MessagesPage() {
           <div>
             <h1 className="text-xl font-semibold">Сообщения</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Оплаты, расхождения сумм и этапы производства{unreadEntries > 0 ? ` · ${unreadEntries} новых` : ''}
+              Поручения, оплаты, расхождения сумм и этапы производства{unreadEntries > 0 ? ` · ${unreadEntries} новых` : ''}
             </p>
           </div>
           {unreadCount > 0 && (
@@ -175,7 +187,7 @@ export default function MessagesPage() {
         </div>
 
         <div className="flex gap-1.5">
-          {([['important', 'Важное', unreadIn(isImportant)], ['production', 'Производство', unreadIn(t => !isImportant(t))], ['all', 'Все', 0]] as const).map(([k, l, c]) => (
+          {([['tasks', 'Поручения', waiting], ['important', 'Важное', unreadIn(isImportant)], ['production', 'Производство', unreadIn(t => !isImportant(t))], ['all', 'Все', 0]] as const).map(([k, l, c]) => (
             <button key={k} type="button" onClick={() => setTab(k as Tab)}
               className={`h-8 px-3 rounded-full text-sm border inline-flex items-center gap-1.5 ${tab === k ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted/50'}`}>
               {l}{c > 0 && <span className={`text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center ${tab === k ? 'bg-white/25' : 'bg-destructive text-destructive-foreground'}`}>{c}</span>}
@@ -183,7 +195,7 @@ export default function MessagesPage() {
           ))}
         </div>
 
-        {loading ? (
+        {tab === 'tasks' ? <AssignmentsPanel /> : loading ? (
           <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}</div>
         ) : visible.length === 0 ? (
           <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">{items.length === 0 ? 'Пока нет сообщений' : 'Здесь пусто 👌'}</CardContent></Card>
