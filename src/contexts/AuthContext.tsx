@@ -108,6 +108,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch { setPermissions([]); }
   }
 
+  // Права из «Доступа» подтягиваются сами: при возврате на вкладку и раз в минуту —
+  // руководитель поменял настройки, сотруднику не нужно перезаходить
+  useEffect(() => {
+    const mid = profile?.manager_id;
+    if (!mid) return;
+    const upd = () => { if (document.visibilityState === 'visible') loadPermissions(mid); };
+    window.addEventListener('focus', upd);
+    document.addEventListener('visibilitychange', upd);
+    const t = setInterval(upd, 60_000);
+    return () => { window.removeEventListener('focus', upd); document.removeEventListener('visibilitychange', upd); clearInterval(t); };
+  }, [profile?.manager_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const refreshProfile = async () => {
     if (!user) { setProfile(null); setPermissions([]); return; }
     const p = await fetchProfile(user.id);

@@ -30,6 +30,7 @@ import {
 } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Expense, Income, Manager, Transfer, Deal } from '@/types/types';
+import { useAuth } from '@/contexts/AuthContext';
 import { CHANNELS, EXPENSE_CATEGORIES, SALARY_CATEGORIES } from '@/types/types';
 import { getCashCounts, addCashCount } from '@/lib/api';
 import type { CashCount } from '@/lib/api';
@@ -504,6 +505,11 @@ function RowActions({ onEdit, onDelete, deleteTitle }: { onEdit: () => void; onD
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function FinancePage() {
+  // У кого в «Зарплатах» «Только свои» — в расходах не видно, кому выдана чужая зарплата/аванс (сумма остаётся — она нужна для кассы)
+  const { seesAll, profile } = useAuth();
+  const hideSalaryNames = !seesAll('salary');
+  const expDescription = (e: Expense) => hideSalaryNames && SALARY_CATEGORIES.includes(e.category) && e.manager_id !== (profile?.manager_id ?? null)
+    ? `${e.category} — сотруднику` : e.description;
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [income, setIncome] = useState<Income[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -645,7 +651,7 @@ export default function FinancePage() {
                             <TableRow key={e.id}>
                               <TableCell className="whitespace-nowrap text-sm">{formatDate(e.expense_date)}</TableCell>
                               <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{e.category || '—'}</TableCell>
-                              <TableCell className="text-sm">{e.description}</TableCell>
+                              <TableCell className="text-sm">{expDescription(e)}</TableCell>
                               <TableCell className="whitespace-nowrap text-sm">{e.channel}</TableCell>
                               <TableCell className="whitespace-nowrap text-sm text-right text-destructive">{formatCurrency(e.amount)}</TableCell>
                               <TableCell className="whitespace-nowrap">
