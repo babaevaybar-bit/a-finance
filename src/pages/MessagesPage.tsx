@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Banknote, Factory, CheckCheck, Scale, ClipboardList, KanbanSquare, CheckCircle2, ClipboardCheck, Bell, Inbox } from 'lucide-react';
 import { dealCompleteness } from '@/components/sales/DealCompleteness';
-import { getNotifications, markNotificationRead, markNotificationsRead, getDealById, notifyCountersChanged } from '@/lib/api';
+import { getNotifications, markNotificationRead, markNotificationsRead, getDealById, notifyCountersChanged, getManagers } from '@/lib/api';
 import DealFormDialog from '@/components/sales/DealFormDialog';
 import { toast } from 'sonner';
 import type { AppNotification, Deal } from '@/types/types';
@@ -42,6 +42,9 @@ export default function MessagesPage() {
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
   // Текущие сделки из «Дозаполните сделки» — чтобы показать, что уже исправлено
   const [lineDeals, setLineDeals] = useState<Record<string, Deal>>({});
+  // руководитель видит «Дозаполните сделки» всех — подписываем, чьё это
+  const [mgrNames, setMgrNames] = useState<Record<string, string>>({});
+  useEffect(() => { if (canViewAllManagers) getManagers().then(ms => setMgrNames(Object.fromEntries(ms.map(m => [m.id, m.name])))).catch(() => {}); }, [canViewAllManagers]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -227,7 +230,7 @@ export default function MessagesPage() {
               let lines: string[] = (n.body ?? '').split('\n').filter(Boolean);
               if (e.type === 'incomplete_deals') {
                 const all = [...new Set(e.items.flatMap(i => (i.body ?? '').split('\n').filter(l => l.startsWith('•'))))];
-                title = `Дозаполните сделки (${all.length})`;
+                title = `Дозаполните сделки (${all.length})${canViewAllManagers && mgrNames[n.manager_id] ? ` — ${mgrNames[n.manager_id]}` : ''}`;
                 lines = all;
               } else if (e.type === 'stage_changed' && e.items.length > 1) {
                 const chain = [...e.items].reverse().map(i => (i.body ?? '').split(' → '));
