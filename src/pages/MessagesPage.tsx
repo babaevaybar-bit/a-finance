@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Banknote, Factory, CheckCheck, Scale, ClipboardList, KanbanSquare, CheckCircle2 } from 'lucide-react';
+import { Banknote, Factory, CheckCheck, Scale, ClipboardList, KanbanSquare, CheckCircle2, ClipboardCheck, Bell, Inbox } from 'lucide-react';
 import { dealCompleteness } from '@/components/sales/DealCompleteness';
 import { getNotifications, markNotificationRead, markNotificationsRead, getDealById, notifyCountersChanged } from '@/lib/api';
 import DealFormDialog from '@/components/sales/DealFormDialog';
@@ -171,30 +171,24 @@ export default function MessagesPage() {
 
   return (
     <AppLayout>
-      <div className="space-y-4 max-w-2xl">
-        <div className="flex items-center justify-between">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold">Сообщения</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               Поручения, оплаты, расхождения сумм и этапы производства{unreadEntries > 0 ? ` · ${unreadEntries} новых` : ''}
             </p>
           </div>
-          {unreadCount > 0 && (
+          {unreadCount > 0 && tab !== 'tasks' && (
             <Button variant="outline" size="sm" onClick={handleMarkAllRead}>
               <CheckCheck size={14} className="mr-1.5" />Прочитать всё
             </Button>
           )}
         </div>
 
-        <div className="flex gap-1.5">
-          {([['tasks', 'Поручения', waiting], ['important', 'Важное', unreadIn(isImportant)], ['production', 'Производство', unreadIn(t => !isImportant(t))], ['all', 'Все', 0]] as const).map(([k, l, c]) => (
-            <button key={k} type="button" onClick={() => setTab(k as Tab)}
-              className={`h-8 px-3 rounded-full text-sm border inline-flex items-center gap-1.5 ${tab === k ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted/50'}`}>
-              {l}{c > 0 && <span className={`text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center ${tab === k ? 'bg-white/25' : 'bg-destructive text-destructive-foreground'}`}>{c}</span>}
-            </button>
-          ))}
-        </div>
-
+        {/* Слева — содержимое раздела, справа — разделы (на телефоне — вкладки сверху) */}
+        <div className="flex flex-col-reverse lg:flex-row gap-4 items-start">
+        <div className="flex-1 min-w-0 w-full">
         {tab === 'tasks' ? <AssignmentsPanel /> : loading ? (
           <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}</div>
         ) : visible.length === 0 ? (
@@ -268,6 +262,28 @@ export default function MessagesPage() {
             })}
           </div>
         )}
+        </div>
+        <aside className="w-full lg:w-64 shrink-0 lg:sticky lg:top-4">
+          <nav className="tabs-scroll flex lg:flex-col gap-1.5 lg:gap-1 overflow-x-auto lg:overflow-visible rounded-xl lg:border lg:bg-card lg:p-1.5">
+            {([
+              ['tasks', 'Поручения', waiting, ClipboardCheck, 'задания сотрудникам'],
+              ['important', 'Важное', unreadIn(isImportant), Bell, 'оплаты, суммы, сделки'],
+              ['production', 'Производство', unreadIn(t => !isImportant(t)), Factory, 'этапы заказов'],
+              ['all', 'Все', 0, Inbox, 'вся лента'],
+            ] as const).map(([k, l, c, Icon, sub]) => (
+              <button key={k} type="button" onClick={() => setTab(k as Tab)}
+                className={`shrink-0 lg:w-full text-left rounded-lg px-3 py-2 lg:py-2.5 inline-flex items-center gap-2.5 border lg:border-0 transition-colors ${tab === k ? 'bg-primary text-primary-foreground border-primary' : 'bg-background lg:bg-transparent hover:bg-muted/60'}`}>
+                <Icon size={16} className="shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium leading-tight">{l}</span>
+                  <span className={`hidden lg:block text-[11px] leading-tight ${tab === k ? 'text-primary-foreground/75' : 'text-muted-foreground'}`}>{sub}</span>
+                </span>
+                {c > 0 && <span className={`text-[10px] min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center font-semibold ${tab === k ? 'bg-white/25' : 'bg-destructive text-destructive-foreground'}`}>{c}</span>}
+              </button>
+            ))}
+          </nav>
+        </aside>
+        </div>
       </div>
       {editDeal && (
         <DealFormDialog

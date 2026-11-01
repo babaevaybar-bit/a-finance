@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  Plus, Check, X, Send, ArrowRight, CalendarClock, Trash2, ChevronRight, RotateCcw, ClipboardCheck, UserRound, Phone, MapPin, Cake,
+  Plus, Check, X, Send, ArrowRight, CalendarClock, Trash2, ChevronRight, RotateCcw, ClipboardCheck, Phone, MapPin, Cake,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import { supabase } from '@/db/supabase';
 import { getManagers, notifyCountersChanged } from '@/lib/api';
 import type { Manager, Profile } from '@/types/types';
 import {
-  type Assignment, type AssignmentTarget, type AssignmentMessage, STATUS, LINKS, TEMPLATES,
+  type Assignment, type AssignmentTarget, type AssignmentMessage, STATUS, LINKS,
   loadAssignments, createAssignment, deleteAssignment, getThread, act,
 } from '@/lib/assignments';
 
@@ -131,7 +131,7 @@ export default function AssignmentsPanel() {
           </div>
         )
       ) : (
-        given.length === 0 ? <Empty text="Поручений пока нет. Нажмите «Новое поручение» — например, заполнить профиль и поставить фото." /> : (
+        given.length === 0 ? <Empty text="Поручений пока нет. Нажмите «Новое поручение»." /> : (
           <div className="space-y-2">
             {given.map(a => {
               const ts = (byAssignment.get(a.id) ?? []).filter(t => t.manager_id !== myId || a.created_by !== profile?.id);
@@ -420,15 +420,9 @@ function NewAssignmentDialog({ open, onOpenChange, managers, profiles, me, onCre
           <DialogDescription>Сотрудники увидят его в «Сообщениях», сделают и нажмут «Готово» — вы проверите и подтвердите или вернёте.</DialogDescription>
         </DialogHeader>
         <form className="space-y-3" onSubmit={e => { e.preventDefault(); save(); }}>
-          <div className="flex flex-wrap gap-1.5">
-            {TEMPLATES.map(t => (
-              <button key={t.title} type="button" onClick={() => { setTitle(t.title); setDesc(t.description); setLink(t.link); }}
-                className="h-8 px-3 rounded-full border text-xs hover:bg-muted inline-flex items-center gap-1"><UserRound size={12} />{t.title}</button>
-            ))}
-          </div>
           <label className="block space-y-1">
             <span className="text-sm font-medium">Что сделать</span>
-            <Input value={title} onChange={e => setTitle(e.target.value)} maxLength={200} placeholder="Например: заполнить профиль и поставить фото" className="h-10" />
+            <Input value={title} onChange={e => setTitle(e.target.value)} maxLength={200} placeholder="Что нужно сделать сотруднику" className="h-10" />
           </label>
           <label className="block space-y-1">
             <span className="text-sm font-medium">Подробнее <span className="text-muted-foreground font-normal">— необязательно</span></span>
