@@ -166,6 +166,13 @@ function getPerm(map: PermMap, managerId: string, page: string, role?: Profile['
     const a = MANAGER_POLICY[page] ?? 'none';
     return { can_view: a !== 'none', can_edit: a === 'edit', can_approve: false, scope_all: false };
   }
+  // РОП/Технолог без ручных настроек: как на сайте — финансы, ФОТ, прибыль закрыты; Сотрудники и Доступ — только Главный админ
+  if (isLeadRole(role)) {
+    if (MANAGER_LOCKED.has(page)) return { can_view: false, can_edit: false, can_approve: false, scope_all: false };
+    if (row) return row;
+    const off = ['finance', 'profit', 'salary'].includes(page);
+    return { can_view: !off, can_edit: !off, can_approve: page === 'approvals', scope_all: true };
+  }
   return row ?? { can_view: true, can_edit: true, can_approve: false, scope_all: true };
 }
 
@@ -412,7 +419,7 @@ export default function PermissionsPage() {
                         <tbody>
                           {PERMISSION_PAGES.map(({ key, label }) => {
                             const perm = getPerm(permMap, m.id, key, role);
-                            const locked = sales && MANAGER_LOCKED.has(key);
+                            const locked = (sales || lead) && MANAGER_LOCKED.has(key);
                             const changed = sales && !locked && !!managerPerms[key] && (() => {
                               const a = MANAGER_POLICY[key] ?? 'none';
                               return managerPerms[key].can_view !== (a !== 'none') || managerPerms[key].can_edit !== (a === 'edit') || managerPerms[key].can_approve || !!managerPerms[key].scope_all;

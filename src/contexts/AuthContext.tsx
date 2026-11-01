@@ -284,9 +284,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const perm = permissions.find(p => p.page === page);   // поднятые вручную в «Доступе»
       return perm ? perm.can_view : (MANAGER_POLICY[page] ?? 'none') !== 'none';
     }
-    if (isRop && ROP_PAGES.has(page)) return true;
+    // РОП/Технолог: что Главный админ явно задал в «Доступе» — то и действует; иначе — права роли.
+    // Сотрудники и Доступ — только у Главного админа.
+    if (isRop && MANAGER_LOCKED.has(page)) return false;
     const perm = permissions.find(p => p.page === page);
     if (perm) return perm.can_view;
+    if (isRop && ROP_PAGES.has(page)) return true;
     return !RESTRICTED_BY_DEFAULT.has(page);
   }
 
@@ -298,9 +301,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return perm ? perm.can_edit : MANAGER_POLICY[page] === 'edit';
     }
     if (isDirectorView) return !DIRECTOR_ONLY_EDIT_PAGES.has(page);
-    if (isRop && ROP_PAGES.has(page)) return true;
     const perm = permissions.find(p => p.page === page);
     if (perm) return perm.can_edit;
+    if (isRop && ROP_PAGES.has(page)) return true;
     return !RESTRICTED_BY_DEFAULT.has(page);
   }
   const editsAll = (page: string) => fullAccess || (isRop ? seesAll(page) : (seesAll(page) && canEdit(page)));
