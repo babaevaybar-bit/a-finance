@@ -45,7 +45,7 @@ function AccessDenied() {
 }
 
 export function RouteGuard({ children, adminOnly, pageKey }: RouteGuardProps) {
-  const { user, isAdmin, loading, canView, isManager, isLidorub, isRop } = useAuth();
+  const { user, isAdmin, isDirector, loading, canView, isManager, isLidorub, isRop } = useAuth();
   const salesRole = isManager || isLidorub;  // менеджеру разделы открываются по его роли (MANAGER_POLICY)
   const location = useLocation();
 
@@ -70,7 +70,7 @@ export function RouteGuard({ children, adminOnly, pageKey }: RouteGuardProps) {
   }
 
   // Проверка per-employee разрешения по pageKey
-  if (pageKey && !isAdmin && !canView(pageKey)) {
+  if (pageKey && !isDirector && !canView(pageKey)) {
     return <AccessDenied />;
   }
 

@@ -69,11 +69,11 @@ function readCollapsed(): string[] {
 
 function NavLinks({ onClose, mini = false }: { onClose?: () => void; mini?: boolean }) {
   const { pathname } = useLocation();
-  const { isAdmin, canView } = useAuth();
+  const { isDirector, canView } = useAuth();
   const { pendingCount } = useCounters();
   const [collapsed, setCollapsed] = useState<string[]>(readCollapsed);
 
-  const visibleItems = navItems.filter(item => item.group !== 'hidden' && (isAdmin || canView(item.pageKey)));
+  const visibleItems = navItems.filter(item => item.group !== 'hidden' && (isDirector || canView(item.pageKey)));
   const isActive = (path: string) => pathname === path || (path === '/boards' && pathname.startsWith('/boards/'));
   // Мало разделов (например, у менеджера) — без групп, простым списком
   const flat = visibleItems.length <= 6;

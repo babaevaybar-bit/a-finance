@@ -155,7 +155,7 @@ type PermMap = Record<string, Record<string, Perm>>;
 
 const isSalesRole = (r?: Profile['role']) => r === 'manager' || r === 'lidorub';
 /** РОП и Технолог: по умолчанию видят всех, в «Доступе» можно поставить «Только свои» */
-const isLeadRole = (r?: Profile['role']) => r === 'rop' || r === 'technolog';
+const isLeadRole = (r?: Profile['role']) => r === 'rop' || r === 'technolog' || r === 'director_view';
 
 /** Права сотрудника на раздел: заданные вручную, иначе — по умолчанию (для менеджера — права его роли) */
 function getPerm(map: PermMap, managerId: string, page: string, role?: Profile['role']) {
@@ -167,6 +167,11 @@ function getPerm(map: PermMap, managerId: string, page: string, role?: Profile['
     return { can_view: a !== 'none', can_edit: a === 'edit', can_approve: false, scope_all: false };
   }
   // РОП/Технолог без ручных настроек: как на сайте — финансы, ФОТ, прибыль закрыты; Сотрудники и Доступ — только Главный админ
+  // Директор без ручных настроек — видит всё; Сотрудников и Доступ может только смотреть
+  if (role === 'director_view') {
+    if (MANAGER_LOCKED.has(page)) return { can_view: row?.can_view ?? true, can_edit: false, can_approve: false, scope_all: true };
+    return row ?? { can_view: true, can_edit: true, can_approve: page === 'approvals', scope_all: true };
+  }
   if (isLeadRole(role)) {
     if (MANAGER_LOCKED.has(page)) return { can_view: false, can_edit: false, can_approve: false, scope_all: false };
     if (row) return row;
@@ -276,9 +281,11 @@ export default function PermissionsPage() {
     keys.forEach(k => batching[k] = true);
     setSaving(s => ({ ...s, ...batching }));
 
+    // РОП/Технолог/Директор: «Открыть всё» включает и подтверждение сделок
+    const approve = (key: string) => grantAll && key === 'approvals' && isLeadRole(roleByManager[managerId]);
     const nextMap: Record<string, { can_view: boolean; can_edit: boolean; can_approve: boolean }> = {};
     PERMISSION_PAGES.forEach(({ key }) => {
-      nextMap[key] = { can_view: grantAll, can_edit: grantAll, can_approve: false };
+      nextMap[key] = { can_view: grantAll, can_edit: grantAll, can_approve: approve(key) };
     });
 
     setPermMap(prev => ({ ...prev, [managerId]: nextMap }));
@@ -286,7 +293,7 @@ export default function PermissionsPage() {
     try {
       await Promise.all(
         PERMISSION_PAGES.map(({ key }) =>
-          upsertPermission({ manager_id: managerId, page: key, can_view: grantAll, can_edit: grantAll, can_approve: false })
+          upsertPermission({ manager_id: managerId, page: key, can_view: grantAll, can_edit: grantAll, can_approve: approve(key) })
         )
       );
       toast.success(grantAll ? 'Доступ открыт ко всем разделам' : 'Доступ закрыт ко всем разделам');
@@ -338,11 +345,13 @@ export default function PermissionsPage() {
               const managerPerms = permMap[m.id] ?? {};
               const hasRestrictions = PERMISSION_PAGES.some(({ key }) => {
                 const p = getPerm(permMap, m.id, key, roleByManager[m.id]);
-                return !p.can_view || !p.can_edit;
+                const viewOnly = roleByManager[m.id] === 'director_view' && MANAGER_LOCKED.has(key);
+                return !p.can_view || (!p.can_edit && !viewOnly);
               });
               const allGranted = PERMISSION_PAGES.every(({ key }) => {
                 const p = getPerm(permMap, m.id, key, roleByManager[m.id]);
-                return p.can_view && p.can_edit;
+                const viewOnly = roleByManager[m.id] === 'director_view' && MANAGER_LOCKED.has(key);
+                return p.can_view && (p.can_edit || viewOnly);
               });
               const isBatching = PERMISSION_PAGES.some(({ key }) =>
                 saving[`${m.id}:${key}:batch`]
@@ -419,7 +428,9 @@ export default function PermissionsPage() {
                         <tbody>
                           {PERMISSION_PAGES.map(({ key, label }) => {
                             const perm = getPerm(permMap, m.id, key, role);
-                            const locked = (sales || lead) && MANAGER_LOCKED.has(key);
+                            const dirView = role === 'director_view';
+                            const locked = (sales || lead) && !dirView && MANAGER_LOCKED.has(key);
+                            const viewOnly = dirView && MANAGER_LOCKED.has(key);   // Директор: только просмотр, править — Главный админ
                             const changed = sales && !locked && !!managerPerms[key] && (() => {
                               const a = MANAGER_POLICY[key] ?? 'none';
                               return managerPerms[key].can_view !== (a !== 'none') || managerPerms[key].can_edit !== (a === 'edit') || managerPerms[key].can_approve || !!managerPerms[key].scope_all;
@@ -434,6 +445,7 @@ export default function PermissionsPage() {
                                 <td className="py-3 pr-6 whitespace-nowrap">
                                   {label}
                                   {locked && <span className="block text-[11px] text-muted-foreground">только Главный админ</span>}
+                                  {viewOnly && <span className="block text-[11px] text-muted-foreground">только просмотр</span>}
                                   {sales && !locked && key === 'profit' && perm.can_view && !['dashboard', 'sales', 'debtors', 'approvals', 'reports'].some(k => managerPerms[k]?.scope_all && managerPerms[k]?.can_view) && <span className="block text-[11px] text-amber-700">поставьте «Все» хотя бы в Продажах, иначе раздел будет пустым</span>}
                                   {changed && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 align-middle">изменено</span>}
                                   {sales && !locked && IN_DEVELOPMENT.has(key) && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground align-middle">в разработке</span>}
@@ -448,7 +460,7 @@ export default function PermissionsPage() {
                                 <td className="py-3 px-4 text-center">
                                   <Switch
                                     checked={perm.can_edit}
-                                    disabled={!isDirector || locked || !perm.can_view || !!savingEdit}
+                                    disabled={!isDirector || locked || viewOnly || !perm.can_view || !!savingEdit}
                                     onCheckedChange={v => toggle(m.id, key, 'can_edit', v)}
                                   />
                                 </td>

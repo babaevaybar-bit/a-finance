@@ -92,13 +92,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Директор и РОП видят сделки/CRM всех менеджеров; обычный менеджер — только свои
   // РОП и Технолог по умолчанию видят всех; «Только свои» в «Доступе» (scope_own) ограничивает раздел
-  const fullAccess = isDirector || isDirectorView;
+  // Директор (director_view) — так же: по умолчанию всё, но Главный админ может ограничить в «Доступе»
+  const fullAccess = isDirector;
+  const leadLike = isRop || isDirectorView;
   const seesAll = (page: string) => fullAccess
-    || (isRop ? !permissions.some(p => p.page === page && p.scope_own) : permissions.some(p => p.page === page && p.can_view && p.scope_all));
+    || (leadLike ? !permissions.some(p => p.page === page && p.scope_own) : permissions.some(p => p.page === page && p.can_view && p.scope_all));
   const canViewAllManagers = fullAccess || DEAL_SCOPE_PAGES.some(seesAll);
 
   // Может подтверждать/отклонять сделки: директор и РОП всегда, остальные — по разрешению can_approve
-  const canApprove = isDirector || isDirectorView || isRop || permissions.some(p => p.page === 'approvals' && p.can_approve);
+  const approvalsRow = permissions.find(p => p.page === 'approvals');
+  const canApprove = isDirector || (isDirectorView && (approvalsRow ? approvalsRow.can_view && approvalsRow.can_approve : true))
+    || isRop || permissions.some(p => p.page === 'approvals' && p.can_approve);
 
   async function loadPermissions(managerId: string | null | undefined) {
     if (!managerId) { setPermissions([]); return; }
@@ -107,6 +111,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPermissions(perms);
     } catch { setPermissions([]); }
   }
+
+  // Права из «Доступа» подтягиваются сами: при возврате на вкладку и раз в минуту —
+  // руководитель поменял настройки, сотруднику не нужно перезаходить
+  useEffect(() => {
+    const mid = profile?.manager_id;
+    if (!mid) return;
+    const upd = () => { if (document.visibilityState === 'visible') loadPermissions(mid); };
+    window.addEventListener('focus', upd);
+    document.addEventListener('visibilitychange', upd);
+    const t = setInterval(upd, 60_000);
+    return () => { window.removeEventListener('focus', upd); document.removeEventListener('visibilitychange', upd); clearInterval(t); };
+  }, [profile?.manager_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refreshProfile = async () => {
     if (!user) { setProfile(null); setPermissions([]); return; }
@@ -278,7 +294,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const DIRECTOR_ONLY_EDIT_PAGES = new Set(['managers', 'permissions']);
 
   function canView(page: string): boolean {
-    if (isDirector || isDirectorView) return true;
+    if (isDirector) return true;
+    // Директор: всё видит, пока Главный админ не выключил раздел в «Доступе»
+    if (isDirectorView) { const perm = permissions.find(p => p.page === page); return perm ? perm.can_view : true; }
     if (salesPolicy) {
       if (MANAGER_LOCKED.has(page)) return false;
       const perm = permissions.find(p => p.page === page);   // поднятые вручную в «Доступе»
@@ -300,13 +318,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const perm = permissions.find(p => p.page === page);
       return perm ? perm.can_edit : MANAGER_POLICY[page] === 'edit';
     }
-    if (isDirectorView) return !DIRECTOR_ONLY_EDIT_PAGES.has(page);
+    if (isDirectorView) {
+      if (DIRECTOR_ONLY_EDIT_PAGES.has(page)) return false;
+      const perm = permissions.find(p => p.page === page);
+      return perm ? perm.can_edit : true;
+    }
     const perm = permissions.find(p => p.page === page);
     if (perm) return perm.can_edit;
     if (isRop && ROP_PAGES.has(page)) return true;
     return !RESTRICTED_BY_DEFAULT.has(page);
   }
-  const editsAll = (page: string) => fullAccess || (isRop ? seesAll(page) : (seesAll(page) && canEdit(page)));
+  const editsAll = (page: string) => fullAccess || (leadLike ? seesAll(page) && canEdit(page) : (seesAll(page) && canEdit(page)));
 
   return (
     <AuthContext.Provider value={{
