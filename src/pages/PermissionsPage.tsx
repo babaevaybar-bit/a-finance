@@ -206,7 +206,7 @@ export default function PermissionsPage() {
       const map: PermMap = {};
       (perms as EmployeePermission[]).forEach(p => {
         if (!map[p.manager_id]) map[p.manager_id] = {};
-        map[p.manager_id][p.page] = { can_view: p.can_view, can_edit: p.can_edit, can_approve: p.can_approve ?? false, scope_all: p.scope_all ?? false };
+        map[p.manager_id][p.page] = { can_view: p.can_view, can_edit: p.can_edit, can_approve: p.can_approve ?? false, scope_all: p.scope_all ?? false, scope_own: p.scope_own ?? false };
       });
       setPermMap(map);
     } catch { toast.error('Ошибка загрузки'); }
@@ -283,9 +283,10 @@ export default function PermissionsPage() {
 
     // РОП/Технолог/Директор: «Открыть всё» включает и подтверждение сделок
     const approve = (key: string) => grantAll && key === 'approvals' && isLeadRole(roleByManager[managerId]);
-    const nextMap: Record<string, { can_view: boolean; can_edit: boolean; can_approve: boolean }> = {};
+    const nextMap: Record<string, Perm> = {};
     PERMISSION_PAGES.forEach(({ key }) => {
-      nextMap[key] = { can_view: grantAll, can_edit: grantAll, can_approve: approve(key) };
+      const prev = permMap[managerId]?.[key];   // «Только свои / Все» не трогаем
+      nextMap[key] = { can_view: grantAll, can_edit: grantAll, can_approve: approve(key), scope_all: prev?.scope_all ?? false, scope_own: prev?.scope_own ?? false };
     });
 
     setPermMap(prev => ({ ...prev, [managerId]: nextMap }));
