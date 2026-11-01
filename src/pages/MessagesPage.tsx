@@ -141,8 +141,10 @@ export default function MessagesPage() {
     const order: string[] = [];
     for (const n of items) {
       const day = kzDay(n.created_at);
-      const key = n.type === 'incomplete_deals' ? `inc|${day}`
+      // «Дозаполните сделки» — одно живое сообщение на сотрудника (самое свежее), без повторов по дням
+      const key = n.type === 'incomplete_deals' ? `inc|${n.manager_id}`
         : n.type === 'stage_changed' ? `st|${day}|${n.title}` : `one|${n.id}`;
+      if (n.type === 'incomplete_deals' && map.has(key)) continue;
       let e = map.get(key);
       if (!e) { e = { key, day, type: n.type, items: [] }; map.set(key, e); order.push(key); }
       e.items.push(n);
@@ -169,6 +171,16 @@ export default function MessagesPage() {
     await handleOpen({ ...first, is_read: true });
   }
 
+  // «Дозаполните сделки»: горит наверху, пока есть что исправить; всё исправлено — исчезает
+  const allFixed = (e: Entry) => {
+    const ls = [...new Set(e.items.flatMap(i => (i.body ?? '').split('\n').filter(l => l.startsWith('•'))))];
+    return ls.length > 0 && ls.every(l => { const x = lineStatus(l); return x !== null && x.length === 0; });
+  };
+  const list = [
+    ...visible.filter(e => e.type === 'incomplete_deals' && !allFixed(e)),
+    ...visible.filter(e => e.type !== 'incomplete_deals'),
+  ];
+
   return (
     <AppLayout>
       <div className="space-y-4">
@@ -191,11 +203,11 @@ export default function MessagesPage() {
         <div className="flex-1 min-w-0 w-full">
         {tab === 'tasks' ? <AssignmentsPanel /> : loading ? (
           <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}</div>
-        ) : visible.length === 0 ? (
+        ) : list.length === 0 ? (
           <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">{items.length === 0 ? 'Пока нет сообщений' : 'Здесь пусто 👌'}</CardContent></Card>
         ) : (
           <div className="space-y-2">
-            {visible.map((e, idx) => {
+            {list.map((e, idx) => {
               const n = e.items[0];
               const unread = e.items.some(i => !i.is_read);
               const Icon = n.type === 'payment_due' ? Banknote : n.type === 'amount_mismatch' ? Scale : n.type === 'incomplete_deals' ? ClipboardList : n.type === 'card_due' ? KanbanSquare : Factory;
@@ -212,9 +224,11 @@ export default function MessagesPage() {
               }
               const isOpen = expanded === e.key;
               const shown = e.type === 'incomplete_deals' && !isOpen ? lines.slice(0, 4) : lines;
-              const showDay = idx === 0 || visible[idx - 1].day !== e.day;
+              const showDay = e.type !== 'incomplete_deals' && (idx === 0 || list[idx - 1].day !== e.day || list[idx - 1].type === 'incomplete_deals');
+              const pinHead = e.type === 'incomplete_deals' && idx === 0;
               return (
                 <React.Fragment key={e.key}>
+                  {pinHead && <div className="text-[11px] font-medium text-amber-700 pt-0">Нужно исправить — сообщение горит, пока не исправите</div>}
                   {showDay && <div className="text-[11px] font-medium text-muted-foreground pt-2 first:pt-0">{dayTitle(e.day)}</div>}
                   <Card className={`cursor-pointer transition-colors hover:border-primary/40 ${unread ? 'border-primary/40' : ''}`} onClick={() => openEntry(e)}>
                     <CardContent className="py-3 px-4 flex items-start gap-3">
