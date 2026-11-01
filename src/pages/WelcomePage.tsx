@@ -159,7 +159,7 @@ export default function WelcomePage() {
   const pct = s.plan && s.revenue != null ? (s.revenue / s.plan) * 100 : 0;
   const missing = s.plan && s.revenue != null ? Math.max(0, s.plan - s.revenue) : 0;
 
-  const allowed = (key: string) => isAdmin || canView(key);
+  const allowed = (key: string) => canView(key);
   const sections = navItems.filter(i => allowed(i.pageKey));
   const last = s.reports && s.reports.length ? s.reports[s.reports.length - 1] : null;
 

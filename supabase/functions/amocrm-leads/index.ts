@@ -70,11 +70,11 @@ Deno.serve(async (req) => {
     let ownAmoId: string | null = null;
     let ownOnly = false;
     const role = profile?.role ?? '';
-    if (['manager', 'lidorub', 'rop', 'technolog'].includes(role)) {
+    if (['manager', 'lidorub', 'rop', 'technolog', 'director_view'].includes(role)) {
       const { data: perm } = await supabaseAdmin.from('employee_permissions')
         .select('scope_all, scope_own, can_view').eq('manager_id', profile?.manager_id ?? '').eq('page', 'amocrm').maybeSingle();
       // РОП/Технолог по умолчанию видят всех, «Только свои» — scope_own; менеджер — наоборот, «Все» — scope_all
-      const own = ['rop', 'technolog'].includes(role) ? !!perm?.scope_own : !(perm?.scope_all && perm?.can_view);
+      const own = ['rop', 'technolog', 'director_view'].includes(role) ? !!perm?.scope_own : !(perm?.scope_all && perm?.can_view);
       if (own) {
         ownOnly = true;
         const { data: me } = await supabaseAdmin.from('managers').select('amocrm_user_id').eq('id', profile?.manager_id ?? '').maybeSingle();
