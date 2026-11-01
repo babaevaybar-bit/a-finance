@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { Store, Plus, Trash2, Phone, Check, X, History } from 'lucide-react';
+import { Store, Plus, Trash2, Phone, Check, X, History, Pencil } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getManagers } from '@/lib/api';
 import { supabase } from '@/db/supabase';
@@ -51,6 +51,7 @@ export default function OfflineLeadsCard() {
   const canViewAllManagers = seesAll('crm'), canEditAllLeads = editsAll('crm');
   const [open, setOpen] = useState(false);
   const [histOpen, setHistOpen] = useState(false);
+  const [editing, setEditing] = useState<OfflineLead | null>(null);
   const [rows, setRows] = useState<OfflineLead[] | null>(null);
   const [managers, setManagers] = useState<Manager[]>([]);
   const myId = profile?.manager_id ?? null;
@@ -118,6 +119,9 @@ export default function OfflineLeadsCard() {
                 <a href={`tel:+7${r.client_phone}`} className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground shrink-0" aria-label="Позвонить"><Phone size={14} /></a>
               )}
               {(canEditAllLeads || r.manager_id === myId) && (
+                <button type="button" onClick={() => setEditing(r)} className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0" aria-label="Изменить" title="Изменить"><Pencil size={14} /></button>
+              )}
+              {(canEditAllLeads || r.manager_id === myId) && (
                 <button type="button" onClick={() => remove(r)} className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-destructive shrink-0" aria-label="Удалить"><Trash2 size={14} /></button>
               )}
             </div>
@@ -125,15 +129,20 @@ export default function OfflineLeadsCard() {
         </div>
       )}
 
-      <OfflineLeadsHistory open={histOpen} onOpenChange={setHistOpen} managers={managers} showAll={canViewAllManagers} myId={myId} />
+      <OfflineLeadsHistory open={histOpen} onOpenChange={setHistOpen} managers={managers} showAll={canViewAllManagers} myId={myId}
+        canEdit={r => canEditAllLeads || r.manager_id === myId} onEdit={r => setEditing(r)} />
       <OfflineLeadDialog open={open} onOpenChange={setOpen} managers={canEditAllLeads ? managers : []} defaultManager={myId}
         onSaved={r => setRows(p => [r, ...(p ?? [])])} />
+      <OfflineLeadDialog open={!!editing} onOpenChange={v => { if (!v) setEditing(null); }} editing={editing}
+        managers={canEditAllLeads ? managers : []} defaultManager={editing?.manager_id ?? myId}
+        onSaved={r => { setRows(p => (p ?? []).map(x => x.id === r.id ? r : x)); window.dispatchEvent(new Event('afin:offline-changed')); }} />
     </section>
   );
 }
 
-export function OfflineLeadDialog({ open, onOpenChange, managers, defaultManager, onSaved }: {
+export function OfflineLeadDialog({ open, onOpenChange, managers, defaultManager, onSaved, editing = null }: {
   open: boolean; onOpenChange: (v: boolean) => void; managers: Manager[]; defaultManager: string | null; onSaved: (r: OfflineLead) => void;
+  editing?: OfflineLead | null;   // передан — изменяем этого лида, иначе добавляем нового
 }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -143,13 +152,21 @@ export function OfflineLeadDialog({ open, onOpenChange, managers, defaultManager
   const [saving, setSaving] = useState(false);
   const [dup, setDup] = useState<string | null>(null);
 
-  useEffect(() => { if (open) { setName(''); setPhone(''); setQual(null); setComment(''); setDup(null); setManager(defaultManager ?? ''); } }, [open, defaultManager]);
+  useEffect(() => {
+    if (!open) return;
+    setDup(null);
+    if (editing) {
+      setName(editing.client_name === NO_NAME ? '' : editing.client_name);
+      setPhone(editing.client_phone ? showPhone(editing.client_phone) : '');
+      setQual(editing.qualified); setComment(editing.comment ?? ''); setManager(editing.manager_id);
+    } else { setName(''); setPhone(''); setQual(null); setComment(''); setManager(defaultManager ?? ''); }
+  }, [open, defaultManager, editing]);
 
   // Уже был в салоне за последние 60 дней?
   const digits = phoneDigits(phone);
   useEffect(() => {
     setDup(null);
-    if (digits.length !== 10) return;
+    if (digits.length !== 10 || (editing && editing.client_phone === digits)) return;
     const since = new Date(Date.now() - 60 * 86400000).toISOString();
     supabase.from('offline_leads').select('client_name, created_at').eq('client_phone', digits).gte('created_at', since).order('created_at', { ascending: false }).limit(1)
       .then(({ data }) => {
@@ -165,12 +182,16 @@ export function OfflineLeadDialog({ open, onOpenChange, managers, defaultManager
   async function save() {
     if (!ready) return;
     setSaving(true);
-    const { data, error } = await supabase.from('offline_leads').insert({
-      manager_id: manager, client_name: name.trim() || NO_NAME, client_phone: digits || null, qualified: qual, comment: comment.trim() || null,
-    }).select('*').single();
+    const row = { manager_id: manager, client_name: name.trim() || NO_NAME, client_phone: digits || null, qualified: qual, comment: comment.trim() || null };
+    const { data, error } = editing
+      ? await supabase.from('offline_leads').update(row).eq('id', editing.id).select('*').maybeSingle()
+      : await supabase.from('offline_leads').insert(row).select('*').single();
     setSaving(false);
-    if (error || !data) { toast.error('Не удалось сохранить'); return; }
-    toast.success('Офлайн‑лид добавлен');
+    if (error || !data) {
+      toast.error(editing && !error ? 'Изменить нельзя — прошло больше суток. Попросите руководителя' : 'Не удалось сохранить');
+      return;
+    }
+    toast.success(editing ? 'Сохранено' : 'Офлайн‑лид добавлен');
     onSaved(data as OfflineLead);
     onOpenChange(false);
   }
@@ -179,7 +200,7 @@ export function OfflineLeadDialog({ open, onOpenChange, managers, defaultManager
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Офлайн‑лид</DialogTitle>
+          <DialogTitle>{editing ? 'Изменить офлайн‑лида' : 'Офлайн‑лид'}</DialogTitle>
           <DialogDescription>Клиент, который пришёл в салон. Попадёт в вечерний отчёт. Для «не квал» имя и номер необязательны — можно оставить только комментарий.</DialogDescription>
         </DialogHeader>
         <form className="space-y-4" onSubmit={e => { e.preventDefault(); save(); }}>
@@ -234,9 +255,12 @@ const dayTitle = (k: string) => new Date(k + 'T00:00:00Z').toLocaleDateString('r
 const isoDay = (d: Date) => new Date(d.getTime() + KZ).toISOString().slice(0, 10);
 
 /** Все офлайн‑лиды за выбранные даты: по дням, с телефонами, фильтр по менеджеру и квал/не квал */
-function OfflineLeadsHistory({ open, onOpenChange, managers, showAll, myId }: {
+function OfflineLeadsHistory({ open, onOpenChange, managers, showAll, myId, canEdit, onEdit }: {
   open: boolean; onOpenChange: (v: boolean) => void; managers: Manager[]; showAll: boolean; myId: string | null;
+  canEdit: (r: OfflineLead) => boolean; onEdit: (r: OfflineLead) => void;
 }) {
+  const [rev, setRev] = useState(0);
+  useEffect(() => { const on = () => setRev(x => x + 1); window.addEventListener('afin:offline-changed', on); return () => window.removeEventListener('afin:offline-changed', on); }, []);
   const [from, setFrom] = useState(() => isoDay(new Date(Date.now() - 29 * 86400000)));
   const [to, setTo] = useState(() => isoDay(new Date()));
   const [mgr, setMgr] = useState('');
@@ -256,7 +280,7 @@ function OfflineLeadsHistory({ open, onOpenChange, managers, showAll, myId }: {
       if (error) toast.error('Не удалось загрузить офлайн‑лидов');
       setRows((data as OfflineLead[]) ?? []);
     });
-  }, [open, from, to, mgr, showAll, myId]);
+  }, [open, from, to, mgr, showAll, myId, rev]);
 
   const all = rows ?? [];
   const list = all.filter(r => qf === 'all' || (qf === 'q' ? r.qualified : !r.qualified));
@@ -325,6 +349,9 @@ function OfflineLeadsHistory({ open, onOpenChange, managers, showAll, myId }: {
                     </div>
                     {r.client_phone && (
                       <a href={`tel:+7${r.client_phone}`} className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground shrink-0" aria-label="Позвонить"><Phone size={14} /></a>
+                    )}
+                    {canEdit(r) && (
+                      <button type="button" onClick={() => onEdit(r)} className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0" aria-label="Изменить" title="Изменить"><Pencil size={14} /></button>
                     )}
                   </div>
                 ))}

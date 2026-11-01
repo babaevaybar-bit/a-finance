@@ -12,6 +12,7 @@ import {
   Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell, HandCoins, KanbanSquare, Contact, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { useAuth, IN_DEVELOPMENT } from '@/contexts/AuthContext';
+import { waitingCount } from '@/lib/assignments';
 import { countPendingDeals, countUnreadNotifications } from '@/lib/api';
 import { supabase } from '@/db/supabase';
 import { UserAvatar } from '@/components/common/UserAvatar';
@@ -50,7 +51,9 @@ function useCounters() {
     const managerFilter = canViewAllManagers ? null : (profile?.manager_id ?? null);
     const refresh = () => {
       if (canApprove) countPendingDeals().then(setPendingCount).catch(() => {});
-      countUnreadNotifications(managerFilter).then(setUnreadCount).catch(() => {});
+      // непрочитанные сообщения + поручения, которые ждут моего действия
+      Promise.all([countUnreadNotifications(managerFilter).catch(() => 0), waitingCount().catch(() => 0)])
+        .then(([n, w]) => setUnreadCount(n + w));
     };
     refresh();
     window.addEventListener('afin:counters', refresh);

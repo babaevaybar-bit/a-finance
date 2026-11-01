@@ -1,18 +1,20 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Banknote, Factory, CheckCheck, Scale, ClipboardList, KanbanSquare, CheckCircle2 } from 'lucide-react';
+import { Banknote, Factory, CheckCheck, Scale, ClipboardList, KanbanSquare, CheckCircle2, ClipboardCheck, Bell, Inbox } from 'lucide-react';
 import { dealCompleteness } from '@/components/sales/DealCompleteness';
-import { getNotifications, markNotificationRead, markNotificationsRead, getDealById, notifyCountersChanged } from '@/lib/api';
+import { getNotifications, markNotificationRead, markNotificationsRead, getDealById, notifyCountersChanged, getManagers } from '@/lib/api';
 import DealFormDialog from '@/components/sales/DealFormDialog';
 import { toast } from 'sonner';
 import type { AppNotification, Deal } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
+import AssignmentsPanel from '@/components/assignments/AssignmentsPanel';
+import { waitingCount } from '@/lib/assignments';
 import { supabase } from '@/db/supabase';
 
-type Tab = 'important' | 'production' | 'all';
+type Tab = 'tasks' | 'important' | 'production' | 'all';
 interface Entry { key: string; day: string; type: string; items: AppNotification[] }
 const kzDay = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Qyzylorda' }).format(new Date(iso));
 const hm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Qyzylorda' });
@@ -25,6 +27,12 @@ function dayTitle(d: string) {
 }
 
 const lineName = (line: string) => line.replace(/^•\s*/, '').split(' — ')[0].trim();
+async function findDealByPrefix(name: string): Promise<Deal | null> {
+  const safe = name.replace(/[%_\\]/g, m => `\\${m}`);
+  const { data } = await supabase.from('deals').select('*').ilike('client_name', `${safe}%`)
+    .neq('status', 'rejected').order('created_at', { ascending: false }).limit(1);
+  return (data as Deal[] | null)?.[0] ?? null;
+}
 
 export default function MessagesPage() {
   const { profile, canViewAllManagers } = useAuth();
@@ -34,6 +42,9 @@ export default function MessagesPage() {
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
   // Текущие сделки из «Дозаполните сделки» — чтобы показать, что уже исправлено
   const [lineDeals, setLineDeals] = useState<Record<string, Deal>>({});
+  // руководитель видит «Дозаполните сделки» всех — подписываем, чьё это
+  const [mgrNames, setMgrNames] = useState<Record<string, string>>({});
+  useEffect(() => { if (canViewAllManagers) getManagers().then(ms => setMgrNames(Object.fromEntries(ms.map(m => [m.id, m.name])))).catch(() => {}); }, [canViewAllManagers]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,6 +67,11 @@ export default function MessagesPage() {
       const { data } = await supabase.from('deals').select('*').in('client_name', names.slice(i, i + 100))
         .neq('status', 'rejected').order('created_at', { ascending: true });
       for (const d of (data as Deal[] | null) ?? []) if (d.client_name) map[d.client_name] = d;   // самая новая сделка с этим именем
+    }
+    // клиента потом переименовали («Перизат» → «Перизат Тулпар») — ищем по началу имени
+    for (const n of names.filter(x => !map[x])) {
+      const d = await findDealByPrefix(n);
+      if (d) map[n] = d;
     }
     setLineDeals(map);
   }, []);
@@ -97,7 +113,7 @@ export default function MessagesPage() {
     try {
       const { data } = await supabase.from('deals').select('*').eq('client_name', name)
         .neq('status', 'rejected').order('created_at', { ascending: false }).limit(1);
-      const d = (data as Deal[] | null)?.[0];
+      const d = (data as Deal[] | null)?.[0] ?? lineDeals[name] ?? await findDealByPrefix(name);
       if (d) { setEditDeal(d); return; }
       toast.error(`Сделка «${name}» не найдена — возможно, переименована или удалена`);
     } catch { toast.error('Не удалось открыть сделку'); }
@@ -118,7 +134,17 @@ export default function MessagesPage() {
   }
 
   const unreadCount = items.filter(i => !i.is_read).length;
-  const [tab, setTab] = useState<Tab>('important');
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(params.get('tab') === 'tasks' ? 'tasks' : 'important');
+  // поручения, которые ждут моего действия: сделать или проверить
+  const [waiting, setWaiting] = useState(0);
+  useEffect(() => {
+    const upd = () => waitingCount().then(n => { setWaiting(n); }).catch(() => {});
+    upd(); window.addEventListener('afin:counters', upd);
+    return () => window.removeEventListener('afin:counters', upd);
+  }, []);
+  const autoTab = useRef(false);
+  useEffect(() => { if (!autoTab.current && waiting > 0 && !params.get('tab')) { autoTab.current = true; setTab('tasks'); } }, [waiting]); // eslint-disable-line react-hooks/exhaustive-deps
   const [expanded, setExpanded] = useState<string | null>(null);
 
   // Склеиваем однотипные сообщения, чтобы не было «простыни»:
@@ -129,8 +155,10 @@ export default function MessagesPage() {
     const order: string[] = [];
     for (const n of items) {
       const day = kzDay(n.created_at);
-      const key = n.type === 'incomplete_deals' ? `inc|${day}`
+      // «Дозаполните сделки» — одно живое сообщение на сотрудника (самое свежее), без повторов по дням
+      const key = n.type === 'incomplete_deals' ? `inc|${n.manager_id}`
         : n.type === 'stage_changed' ? `st|${day}|${n.title}` : `one|${n.id}`;
+      if (n.type === 'incomplete_deals' && map.has(key)) continue;
       let e = map.get(key);
       if (!e) { e = { key, day, type: n.type, items: [] }; map.set(key, e); order.push(key); }
       e.items.push(n);
@@ -157,39 +185,43 @@ export default function MessagesPage() {
     await handleOpen({ ...first, is_read: true });
   }
 
+  // «Дозаполните сделки»: горит наверху, пока есть что исправить; всё исправлено — исчезает
+  const allFixed = (e: Entry) => {
+    const ls = [...new Set(e.items.flatMap(i => (i.body ?? '').split('\n').filter(l => l.startsWith('•'))))];
+    return ls.length > 0 && ls.every(l => { const x = lineStatus(l); return x !== null && x.length === 0; });
+  };
+  const list = [
+    ...visible.filter(e => e.type === 'incomplete_deals' && !allFixed(e)),
+    ...visible.filter(e => e.type !== 'incomplete_deals'),
+  ];
+
   return (
     <AppLayout>
-      <div className="space-y-4 max-w-2xl">
-        <div className="flex items-center justify-between">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold">Сообщения</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Оплаты, расхождения сумм и этапы производства{unreadEntries > 0 ? ` · ${unreadEntries} новых` : ''}
+              Поручения, оплаты, расхождения сумм и этапы производства{unreadEntries > 0 ? ` · ${unreadEntries} новых` : ''}
             </p>
           </div>
-          {unreadCount > 0 && (
+          {unreadCount > 0 && tab !== 'tasks' && (
             <Button variant="outline" size="sm" onClick={handleMarkAllRead}>
               <CheckCheck size={14} className="mr-1.5" />Прочитать всё
             </Button>
           )}
         </div>
 
-        <div className="flex gap-1.5">
-          {([['important', 'Важное', unreadIn(isImportant)], ['production', 'Производство', unreadIn(t => !isImportant(t))], ['all', 'Все', 0]] as const).map(([k, l, c]) => (
-            <button key={k} type="button" onClick={() => setTab(k as Tab)}
-              className={`h-8 px-3 rounded-full text-sm border inline-flex items-center gap-1.5 ${tab === k ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted/50'}`}>
-              {l}{c > 0 && <span className={`text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center ${tab === k ? 'bg-white/25' : 'bg-destructive text-destructive-foreground'}`}>{c}</span>}
-            </button>
-          ))}
-        </div>
-
-        {loading ? (
+        {/* Слева — содержимое раздела, справа — разделы (на телефоне — вкладки сверху) */}
+        <div className="flex flex-col-reverse lg:flex-row gap-4 items-start">
+        <div className="flex-1 min-w-0 w-full">
+        {tab === 'tasks' ? <AssignmentsPanel /> : loading ? (
           <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}</div>
-        ) : visible.length === 0 ? (
+        ) : list.length === 0 ? (
           <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">{items.length === 0 ? 'Пока нет сообщений' : 'Здесь пусто 👌'}</CardContent></Card>
         ) : (
           <div className="space-y-2">
-            {visible.map((e, idx) => {
+            {list.map((e, idx) => {
               const n = e.items[0];
               const unread = e.items.some(i => !i.is_read);
               const Icon = n.type === 'payment_due' ? Banknote : n.type === 'amount_mismatch' ? Scale : n.type === 'incomplete_deals' ? ClipboardList : n.type === 'card_due' ? KanbanSquare : Factory;
@@ -198,7 +230,7 @@ export default function MessagesPage() {
               let lines: string[] = (n.body ?? '').split('\n').filter(Boolean);
               if (e.type === 'incomplete_deals') {
                 const all = [...new Set(e.items.flatMap(i => (i.body ?? '').split('\n').filter(l => l.startsWith('•'))))];
-                title = `Дозаполните сделки (${all.length})`;
+                title = `Дозаполните сделки (${all.length})${canViewAllManagers && mgrNames[n.manager_id] ? ` — ${mgrNames[n.manager_id]}` : ''}`;
                 lines = all;
               } else if (e.type === 'stage_changed' && e.items.length > 1) {
                 const chain = [...e.items].reverse().map(i => (i.body ?? '').split(' → '));
@@ -206,9 +238,11 @@ export default function MessagesPage() {
               }
               const isOpen = expanded === e.key;
               const shown = e.type === 'incomplete_deals' && !isOpen ? lines.slice(0, 4) : lines;
-              const showDay = idx === 0 || visible[idx - 1].day !== e.day;
+              const showDay = e.type !== 'incomplete_deals' && (idx === 0 || list[idx - 1].day !== e.day || list[idx - 1].type === 'incomplete_deals');
+              const pinHead = e.type === 'incomplete_deals' && idx === 0;
               return (
                 <React.Fragment key={e.key}>
+                  {pinHead && <div className="text-[11px] font-medium text-amber-700 pt-0">Нужно исправить — сообщение горит, пока не исправите</div>}
                   {showDay && <div className="text-[11px] font-medium text-muted-foreground pt-2 first:pt-0">{dayTitle(e.day)}</div>}
                   <Card className={`cursor-pointer transition-colors hover:border-primary/40 ${unread ? 'border-primary/40' : ''}`} onClick={() => openEntry(e)}>
                     <CardContent className="py-3 px-4 flex items-start gap-3">
@@ -256,6 +290,28 @@ export default function MessagesPage() {
             })}
           </div>
         )}
+        </div>
+        <aside className="w-full lg:w-64 shrink-0 lg:sticky lg:top-4">
+          <nav className="tabs-scroll flex lg:flex-col gap-1.5 lg:gap-1 overflow-x-auto lg:overflow-visible rounded-xl lg:border lg:bg-card lg:p-1.5">
+            {([
+              ['tasks', 'Поручения', waiting, ClipboardCheck, 'задания сотрудникам'],
+              ['important', 'Важное', unreadIn(isImportant), Bell, 'оплаты, суммы, сделки'],
+              ['production', 'Производство', unreadIn(t => !isImportant(t)), Factory, 'этапы заказов'],
+              ['all', 'Все', 0, Inbox, 'вся лента'],
+            ] as const).map(([k, l, c, Icon, sub]) => (
+              <button key={k} type="button" onClick={() => setTab(k as Tab)}
+                className={`shrink-0 lg:w-full text-left rounded-lg px-3 py-2 lg:py-2.5 inline-flex items-center gap-2.5 border lg:border-0 transition-colors ${tab === k ? 'bg-primary text-primary-foreground border-primary' : 'bg-background lg:bg-transparent hover:bg-muted/60'}`}>
+                <Icon size={16} className="shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium leading-tight">{l}</span>
+                  <span className={`hidden lg:block text-[11px] leading-tight ${tab === k ? 'text-primary-foreground/75' : 'text-muted-foreground'}`}>{sub}</span>
+                </span>
+                {c > 0 && <span className={`text-[10px] min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center font-semibold ${tab === k ? 'bg-white/25' : 'bg-destructive text-destructive-foreground'}`}>{c}</span>}
+              </button>
+            ))}
+          </nav>
+        </aside>
+        </div>
       </div>
       {editDeal && (
         <DealFormDialog
