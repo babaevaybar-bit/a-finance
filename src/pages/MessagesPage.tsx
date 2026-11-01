@@ -27,6 +27,12 @@ function dayTitle(d: string) {
 }
 
 const lineName = (line: string) => line.replace(/^•\s*/, '').split(' — ')[0].trim();
+async function findDealByPrefix(name: string): Promise<Deal | null> {
+  const safe = name.replace(/[%_\\]/g, m => `\\${m}`);
+  const { data } = await supabase.from('deals').select('*').ilike('client_name', `${safe}%`)
+    .neq('status', 'rejected').order('created_at', { ascending: false }).limit(1);
+  return (data as Deal[] | null)?.[0] ?? null;
+}
 
 export default function MessagesPage() {
   const { profile, canViewAllManagers } = useAuth();
@@ -58,6 +64,11 @@ export default function MessagesPage() {
       const { data } = await supabase.from('deals').select('*').in('client_name', names.slice(i, i + 100))
         .neq('status', 'rejected').order('created_at', { ascending: true });
       for (const d of (data as Deal[] | null) ?? []) if (d.client_name) map[d.client_name] = d;   // самая новая сделка с этим именем
+    }
+    // клиента потом переименовали («Перизат» → «Перизат Тулпар») — ищем по началу имени
+    for (const n of names.filter(x => !map[x])) {
+      const d = await findDealByPrefix(n);
+      if (d) map[n] = d;
     }
     setLineDeals(map);
   }, []);
@@ -99,7 +110,7 @@ export default function MessagesPage() {
     try {
       const { data } = await supabase.from('deals').select('*').eq('client_name', name)
         .neq('status', 'rejected').order('created_at', { ascending: false }).limit(1);
-      const d = (data as Deal[] | null)?.[0];
+      const d = (data as Deal[] | null)?.[0] ?? lineDeals[name] ?? await findDealByPrefix(name);
       if (d) { setEditDeal(d); return; }
       toast.error(`Сделка «${name}» не найдена — возможно, переименована или удалена`);
     } catch { toast.error('Не удалось открыть сделку'); }
