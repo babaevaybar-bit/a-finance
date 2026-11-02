@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { UserAvatar, ROLE_LABELS } from '@/components/common/UserAvatar';
+import { compressImage } from '@/lib/image';
+import { IdDocuments } from '@/components/common/IdDocuments';
 import { Camera, Loader2, Mail, ShieldCheck, KeyRound, Home, Trash2, Cake, Phone, MapPin } from 'lucide-react';
 
 /** «Мой профиль»: информация о себе и личные настройки — у каждого сотрудника своя. */
@@ -58,13 +60,14 @@ export default function ProfilePage() {
 
   async function uploadAvatar(file: File) {
     if (!user) return;
-    if (!file.type.startsWith('image/')) { toast.error('Выберите изображение'); return; }
-    if (file.size > 5 * 1024 * 1024) { toast.error('Фото больше 5 МБ'); return; }
+    if (!file.type.startsWith('image/') && !/\.(heic|heif)$/i.test(file.name)) { toast.error('Выберите фото'); return; }
     setUploading(true);
     try {
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      const path = `${user.id}/avatar-${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type });
+      // фото с телефона бывает 5–10 МБ — уменьшаем до 600 px, получается ~50–100 КБ
+      const small = await compressImage(file, 600, 0.85);
+      if (!small) { toast.error('Не удалось открыть фото. Сохраните его как JPG и попробуйте ещё раз'); return; }
+      const path = `${user.id}/avatar-${Date.now()}.jpg`;
+      const { error } = await supabase.storage.from('avatars').upload(path, small, { contentType: 'image/jpeg' });
       if (error) throw error;
       const url = supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
       const next = { ...form, avatar_url: url };
@@ -104,7 +107,7 @@ export default function ProfilePage() {
                 title="Загрузить фото">
                 {uploading ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
               </button>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden"
+              <input ref={fileRef} type="file" accept="image/*,.heic,.heif" className="hidden"
                 onChange={e => { const f = e.target.files?.[0]; if (f) uploadAvatar(f); e.target.value = ''; }} />
             </div>
             <div className="min-w-0">
@@ -157,6 +160,11 @@ export default function ProfilePage() {
             <p className="text-xs text-muted-foreground">Должность и доступ к разделам назначает директор в «Сотрудниках» и «Доступе».</p>
           </CardContent>
         </Card>
+
+        {/* Удостоверение личности — закрыто: видят только сам сотрудник и Главный админ */}
+        {profile.manager_id && (
+          <Card><CardContent className="pt-5"><IdDocuments managerId={profile.manager_id} /></CardContent></Card>
+        )}
 
         {/* Настройки */}
         <Card>
