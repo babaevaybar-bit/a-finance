@@ -8,11 +8,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from 'sonner';
 import {
   loadPrice, PriceIndex, calcEstimate, calcOpening, emptyEstimate, newOpening, itemLabel, money,
-  suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, type EstimateData, type Opening, type Item, type Line,
+  suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, finishBlocks, insertBlocks, categoryOption, sizeWarnings, sizeNotes,
+  type InfoBlock, type EstimateData, type Opening, type Item, type Line,
 } from '@/lib/price';
 import { listEstimates, saveEstimate, deleteEstimate, type EstimateRow } from '@/lib/estimates';
 import { openKp } from '@/lib/kp';
-import { Calculator, Copy, FileText, FolderOpen, Loader2, Plus, Save, Search, Trash2, X, ChevronDown } from 'lucide-react';
+import { Info, Calculator, Copy, FileText, FolderOpen, Loader2, Plus, Save, Search, Trash2, X, ChevronDown } from 'lucide-react';
 
 const PICK_GROUPS: { key: string; label: string; sheets: string[] | null }[] = [
   { key: 'box', label: 'Короба', sheets: ['Короба INVISIBLE', 'Короб INVISIBLE 60U', 'Короб SLIM', 'INTEGRAL', 'INTEGRAL Reverse', 'Моноблок ЭМАЛЬ', 'Моноблок REVERSE ЭМАЛЬ', 'Моноблок PE.O, NE.O', 'Моноблок Reverse PE.O, NE.O', 'Моноблок Шпон', 'Моноблок Шпон Reverse'] },
@@ -229,7 +230,28 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
   const options = (s?.options ?? []).map(id => idx.byId.get(id)).filter((x): x is Item => !!x);
   const [showOpts, setShowOpts] = useState(o.options.length > 0);
   const [gridOpen, setGridOpen] = useState(false);
-  const wood = /дуб|орех|шпон/i.test(o.color);
+  const wood = /дуб|орех|шпон|карамель|сонома|тобакко/i.test(`${o.finish ?? ''} ${o.color}`);
+  const [finishOpen, setFinishOpen] = useState(false);
+  const [insertOpen, setInsertOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const variant = model?.variants.find(v => v.id === o.variantId);
+  const fBlocks = s ? finishBlocks(s) : [];
+  const iBlocks = s && o.model ? insertBlocks(s, o.model, variant?.label ?? '') : [];
+  const sizeWarn = s ? sizeWarnings(s, o) : [];
+  const notes = s ? sizeNotes(s, o.model, o.group) : [];
+  const catNow = variant?.label.match(/Категория (\d)/)?.[1];
+  /** Выбор покрытия/стекла: сам переключает категорию (вариант цены) или ставит/снимает наценку за категорию */
+  const applyFinish = (finish: string, cat: number | null) => onChange(x => {
+    x.finish = finish;
+    if (!s || cat == null) return;
+    const m = s.models.find(mm => mm.code === x.model);
+    const v = m?.variants.find(vv => new RegExp(`Категория ${cat}(\\D|$)`).test(vv.label));
+    if (v) { x.variantId = v.id; return; }
+    const catOpts = [1, 2, 3, 4].map(c => categoryOption(idx, s, c)).filter((it): it is Item => !!it);
+    x.options = x.options.filter(l => !catOpts.some(it => it.id === l.itemId));
+    const need = cat >= 2 ? categoryOption(idx, s, cat) : null;
+    if (need) x.options.push({ itemId: need.id, qty: 1 });
+  });
   const pics = o.model ? modelPhotos(photos, o.sheet, o.model, wood) : [];
   const pic = o.photo && pics.some(p => p.url === o.photo) ? { url: o.photo, name: o.photoName ?? '' } : pics[0];
   const chooseModel = (code: string, photo?: { name: string; url: string }) => onChange(x => {
@@ -281,7 +303,7 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
         </label>
         <label className="text-xs text-muted-foreground space-y-1">Покрытие / вариант
           <select className={selCls} value={o.variantId ?? ''} disabled={!model || model.variants.length < 2}
-            onChange={e => onChange(x => { x.variantId = Number(e.target.value) || null; })}>
+            onChange={e => onChange(x => { x.variantId = Number(e.target.value) || null; x.finish = undefined; })}>
             {model?.variants.map(v => <option key={v.id} value={v.id}>{v.label || 'стандарт'} — {money(v.price)}</option>)}
             {!model && <option value="">—</option>}
           </select>
@@ -292,6 +314,16 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
         <label className="text-xs text-muted-foreground space-y-1">Ширина, мм
           <Input type="number" step={50} className="h-9" value={o.width || ''} onChange={e => onSize('width', Number(e.target.value) || 0)} />
         </label>
+        {s && (s.info?.h || s.info?.w || notes.length > 0) && (
+          <div className="col-span-2 md:col-span-6 -mt-1 text-[11px] text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-0.5">
+            {s.info?.h && <span>Высота: {s.info.h[0]}–{s.info.h[1]} мм</span>}
+            {s.info?.w && <span>Ширина (распашная): {s.info.w[0]}–{s.info.w[1]} мм</span>}
+            {s.height.length > 0 && <span>Наценка с {Math.min(...s.height.filter(m => m.range && !m.group).map(m => m.range!.min))} мм по высоте</span>}
+            {notes.length > 0 && <button type="button" className="inline-flex items-center gap-0.5 text-primary hover:underline" onClick={() => setRulesOpen(v => !v)}><Info size={11} />{rulesOpen ? 'скрыть правила' : 'все правила по размерам'}</button>}
+            {sizeWarn.map(w => <span key={w} className="w-full text-amber-700">⚠ {w}</span>)}
+            {rulesOpen && <ul className="w-full list-disc pl-4 space-y-0.5 text-foreground/80">{notes.map(t => <li key={t}>{t}</li>)}</ul>}
+          </div>
+        )}
         {groups.length > 0 && (
           <label className="col-span-2 text-xs text-muted-foreground space-y-1">Вид полотна
             <select className={selCls} value={o.group} onChange={e => onChange(x => { x.group = e.target.value; })}>
@@ -300,11 +332,48 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
             </select>
           </label>
         )}
-        <label className={`${groups.length ? 'col-span-2 md:col-span-4' : 'col-span-2 md:col-span-6'} text-xs text-muted-foreground space-y-1`}>Цвет, стекло, кромка (для КП)
-          <Input className="h-9" placeholder="Например: Вайт, профиль Черный, стекло Монохром Блэк" value={o.color} onChange={e => onChange(x => { x.color = e.target.value; })} />
-        </label>
+        {s && (
+          <div className="col-span-2 md:col-span-6 grid gap-2 md:grid-cols-[auto_1fr] items-start">
+            <div className="flex flex-wrap gap-2">
+              {fBlocks.length > 0 && (
+                <button type="button" onClick={() => setFinishOpen(true)}
+                  className={`h-9 rounded-md border px-3 text-sm text-left ${o.finish ? 'border-primary bg-primary/5' : 'border-dashed border-border text-muted-foreground'}`}>
+                  {o.finish ? <>{/стекл|зеркал|мору|монохром|лак/i.test(o.finish) ? 'Стекло' : 'Покрытие'}: <b>{o.finish}</b></> : (/AG|AT|AGN|AGX/.test(s.sheet) ? 'Выбрать стекло' : 'Выбрать покрытие')}
+                </button>
+              )}
+              {iBlocks.length > 0 && (
+                <button type="button" onClick={() => setInsertOpen(true)}
+                  className={`h-9 rounded-md border px-3 text-sm ${o.insert ? 'border-primary bg-primary/5' : 'border-dashed border-border text-muted-foreground'}`}>
+                  {o.insert ? <>Вставка: <b>{o.insert}</b></> : 'Выбрать вставку'}
+                </button>
+              )}
+            </div>
+            <Input className="h-9" placeholder="Доп. к отделке (кромка, сторонность, комментарий для КП)" value={o.color} onChange={e => onChange(x => { x.color = e.target.value; })} />
+            {(s.info?.profile.length ?? 0) > 0 && (
+              <div className="md:col-span-2 flex flex-wrap items-center gap-1">
+                <span className="text-[11px] text-muted-foreground mr-1">Профиль:</span>
+                {s.info!.profile.map(c => (
+                  <button key={c} type="button" onClick={() => onChange(x => { x.profile = x.profile === c ? undefined : c; })}
+                    className={`text-xs rounded-full border px-2.5 py-0.5 ${o.profile === c ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted'}`}>{c}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       </div>
+      {s && <ChipsDialog open={finishOpen} onClose={() => setFinishOpen(false)} title={`Серия ${s.sheet}: покрытие / стекло`} blocks={fBlocks} current={o.finish}
+        hint={catNow ? `Сейчас выбрана Категория ${catNow}. Выбор из другой категории сам поменяет цену.` : 'Категория 2 и выше — сайт сам добавит наценку за покрытие.'}
+        priceFor={b => {
+          if (b.cat == null) return '';
+          const v = model?.variants.find(vv => new RegExp(`Категория ${b.cat}(\\D|$)`).test(vv.label));
+          if (v) return money(v.price);
+          const opt = b.cat >= 2 ? categoryOption(idx, s, b.cat) : null;
+          return opt ? (opt.kind === 'pct' ? `+${opt.pct}%` : `+${money(opt.price ?? 0)}`) : '';
+        }}
+        onPick={(item, b) => { applyFinish(item, b.cat); setFinishOpen(false); }} />}
+      {s && <ChipsDialog open={insertOpen} onClose={() => setInsertOpen(false)} title="Вставка в полотно" blocks={iBlocks} current={o.insert}
+        onPick={item => { onChange(x => { x.insert = item; }); setInsertOpen(false); }} />}
       {s && <ModelGrid open={gridOpen} onClose={() => setGridOpen(false)} sheet={s.sheet} models={s.models.map(m => m.code)} photos={photos} wood={wood}
         current={o.model} onPick={(code, p) => { chooseModel(code, p); setGridOpen(false); }} priceOf={code => s.models.find(m => m.code === code)?.variants[0]?.price ?? 0} />}
 
@@ -423,6 +492,47 @@ function LineRow({ idx, l, hint, onQty, onMods, onRemove }: { idx: PriceIndex; l
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Выбор покрытия / стекла / вставки ───────────────────────────────────────
+function ChipsDialog({ open, onClose, title, blocks, current, hint, priceFor, onPick }: {
+  open: boolean; onClose: () => void; title: string; blocks: InfoBlock[]; current?: string; hint?: string;
+  priceFor?: (b: InfoBlock) => string; onPick: (item: string, b: InfoBlock) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+        <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
+        {hint && <p className="text-xs text-muted-foreground -mt-2">{hint}</p>}
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+          {blocks.map(b => {
+            const pr = priceFor?.(b);
+            return (
+              <div key={b.title}>
+                <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                  <p className="text-sm font-semibold">{b.title.replace(/^Серия \S+ · /, '') || 'Варианты'}</p>
+                  {pr && <span className="text-xs text-muted-foreground whitespace-nowrap">{pr}</span>}
+                </div>
+                <div className="space-y-2">
+                  {b.lists.map(l => (
+                    <div key={l.type}>
+                      {(b.lists.length > 1 || !/^(Цвета|Варианты)$/.test(l.type)) && <p className="text-[11px] text-muted-foreground mb-1">{l.type}</p>}
+                      <div className="flex flex-wrap gap-1">
+                        {l.items.map(it => (
+                          <button key={it} type="button" onClick={() => onPick(it, b)}
+                            className={`text-xs rounded-full border px-2.5 py-1 ${current === it ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted'}`}>{it}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

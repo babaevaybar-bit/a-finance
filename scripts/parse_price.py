@@ -104,8 +104,75 @@ def parse(text):
     return sheets
 
 
+def series_info(body):
+    """Подсказки серии из шапки листа и примечаний: цвета профиля, покрытия/стёкла по категориям, допустимые размеры."""
+    lines = [clean(l.strip().strip('"').replace('""', '"')) for l in body.split('\n')]
+    head = []
+    for l in lines:
+        if l.startswith('Модель,') or l.startswith('Модель '):
+            break
+        head.append(l)
+    profile, blocks, ctx_series, ctx = [], [], '', ''
+    for l in head:
+        if not l or l == 'Вернуться к содержанию':
+            continue
+        m = re.match(r'^Порошковая окраска( под эмаль)?:\s*(.+?)\.?$', l)
+        if m:
+            for c in re.split(r',\s*', m.group(2)):
+                c = c.strip().rstrip('.')
+                if c and c not in profile:
+                    profile.append(c)
+            continue
+        if re.match(r'^Серия\s+\S+$', l):
+            ctx_series, ctx = l, ''
+            continue
+        if re.match(r'^(Категория \d|Вставки|Цвета алюминиевого)', l) and ':' not in l.rstrip(':'):
+            ctx = l.rstrip(':').strip()
+            continue
+        if l.startswith('Толщина'):
+            continue
+        m = re.match(r'^([^:]{2,160}):\s*(.+)$', l)
+        if m and ',' in m.group(2) or (m and re.search(r'NCS|RAL', m.group(2))):
+            typ = m.group(1).strip()
+            items = [x.strip().rstrip('.:').strip() for x in re.split(r',\s*', m.group(2)) if x.strip().rstrip('.:').strip()]
+            if typ.startswith('Вставки') or typ.startswith('Цвета алюминиевого'):
+                ctx, typ = typ, 'Варианты'
+            title = ' · '.join(x for x in (ctx_series, ctx) if x)
+            cat = re.search(r'Категория (\d)', ctx)
+            blk = next((b for b in blocks if b['title'] == title), None)
+            if not blk:
+                blk = {'title': title, 'cat': int(cat.group(1)) if cat else None, 'insert': ctx.startswith('Вставки'), 'lists': []}
+                blocks.append(blk)
+            if typ == 'Варианты' and all(re.match(r'^[\d.]+$', x) for x in items):
+                blk['models'] = items          # «Вставки стекла в полотно для моделей: 18, 19, 21»
+            else:
+                blk['lists'].append({'type': typ, 'items': items})
+            if blk['insert'] and 'models' not in blk:
+                nums = re.findall(r'\b\d+(?:\.\d+)?\b', ctx)
+                if nums:
+                    blk['models'] = nums
+    sizes = []
+    for l in lines:
+        if re.search(r'(изготавлива\w*|производ\w*)\s+по\s+(высоте|ширине)', l) or re.search(r'^Стандартный шаг|^Шаг полотна', l):
+            t = l.strip()
+            if t and t not in sizes:
+                sizes.append(t)
+    def rng_of(kind):
+        for t in sizes:
+            if 'модел' in t.lower() and not re.search(r'модел\w*:\s*0 ', t):
+                continue
+            if kind == 'ширине' and not re.search(r'распашн', t):
+                continue
+            m = re.search(r'по ' + kind + r'[^0-9]*от (\d{3,4}) мм до (\d{3,4}) мм', t)
+            if m:
+                return [int(m.group(1)), int(m.group(2))]
+        return None
+    return {'profile': profile, 'blocks': blocks, 'sizes': sizes, 'h': rng_of('высоте'), 'w': rng_of('ширине')}
+
+
 def build(text):
     sheets = parse(text)
+    bodies = dict(split_sheets(text))
     out = {'title': '', 'series': [], 'catalog': []}
     m = re.search(r'Прайс-лист на территории[^\n]*', text)
     out['title'] = clean(m.group(0)) if m else ''
@@ -145,7 +212,8 @@ def build(text):
                 if is_door:
                     options.append(uid)
         if is_door:
-            out['series'].append({'sheet': sh['sheet'], 'models': models, 'height': hmk, 'width': wmk, 'options': options})
+            out['series'].append({'sheet': sh['sheet'], 'models': models, 'height': hmk, 'width': wmk, 'options': options,
+                                  'info': series_info(bodies[sh['sheet']])})
     return out
 
 

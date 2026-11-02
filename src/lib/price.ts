@@ -14,7 +14,10 @@ export interface Range { min: number; max: number; strict: boolean; below?: bool
 export interface Markup { id: number; name: string; pct: number; range: Range | null; group: string }
 export interface Variant { id: number; label: string; price: number; unit: string }
 export interface Model { code: string; variants: Variant[] }
-export interface Series { sheet: string; models: Model[]; height: Markup[]; width: Markup[]; options: number[] }
+export interface InfoList { type: string; items: string[] }
+export interface InfoBlock { title: string; cat: number | null; insert: boolean; models?: string[]; lists: InfoList[] }
+export interface SeriesInfo { profile: string[]; blocks: InfoBlock[]; sizes: string[]; h: [number, number] | null; w: [number, number] | null }
+export interface Series { sheet: string; models: Model[]; height: Markup[]; width: Markup[]; options: number[]; info?: SeriesInfo }
 export interface Item {
   id: number; sheet: string; section: string; sub: string; name: string; attrs: string[];
   unit: string; price: number | null; pct: number | null; kind: 'price' | 'pct'; range?: Range | null;
@@ -47,6 +50,9 @@ export interface Opening {
   options: Line[];         // опции полотна из этого же листа
   extras: Line[];          // короб, петли, замок, ручка, система… — из любого листа
   note: string;
+  finish?: string;         // покрытие / стекло / шпон (из списка категории)
+  profile?: string;        // цвет алюминиевого профиля
+  insert?: string;         // стекло или молдинг во вставке
   photo?: string;          // выбранное фото модели с profildoors.ru
   photoName?: string;      // точное название на сайте (например, «2.3SE»)
 }
@@ -165,8 +171,7 @@ export function calcOpening(idx: PriceIndex, o: Opening): Breakdown {
     }
     for (const { l, it } of opts) if (it.kind === 'price' && isMirror(it)) out.fixedOptions.push({ item: it, qty: l.qty || 1, sum: 0 });
     out.door = door;
-    const hs = s.height.filter(m => m.range).map(m => m.range!.max);
-    if (hs.length && o.height > Math.max(...hs)) out.warnings.push(`Высота ${o.height} мм больше, чем есть в наценках серии (до ${Math.max(...hs)} мм) — проверьте, производится ли`);
+
   } else if (o.sheet) {
     out.error = 'Выберите модель';
   }
@@ -273,4 +278,83 @@ export function modelPhotos(photos: Record<string, string>, sheet: string, code:
     if (hit) out.push(hit);
   }
   return out;
+}
+
+// ─── Подсказки по серии ──────────────────────────────────────────────────────
+const modelBase = (code: string) => code.trim().split(/[\s/(]/)[0];
+
+/** Блоки покрытий/стёкол для выбора отделки (без вставок) */
+export const finishBlocks = (s: Series) => (s.info?.blocks ?? []).filter(b => !b.insert && b.lists.length);
+
+/** Вставки (стекло/молдинг), которые относятся к выбранной модели */
+export function insertBlocks(s: Series, model: string, variantLabel = ''): InfoBlock[] {
+  const base = modelBase(model);
+  return (s.info?.blocks ?? []).filter(b => {
+    if (!b.insert) return false;
+    if (b.models?.length) return b.models.some(m => m === base || model.includes(m));
+    const glass = /стекл/i.test(b.title), mold = /молдинг/i.test(b.title);
+    return (glass && /стекл/i.test(variantLabel)) || (mold && /молдинг/i.test(variantLabel));
+  });
+}
+
+/** Номер категории, в которой есть такое покрытие/стекло */
+export function finishCategory(s: Series, finish: string): number | null {
+  for (const b of finishBlocks(s)) if (b.lists.some(l => l.items.includes(finish))) return b.cat;
+  return null;
+}
+
+/** Опция-наценка за категорию покрытия («Наценка за покрытия Категория 2 и 3», «выкрас эмали под заказ (Категория 2)») */
+export function categoryOption(idx: PriceIndex, s: Series, cat: number): Item | null {
+  for (const id of s.options) {
+    const it = idx.byId.get(id);
+    if (!it) continue;
+    if (!/категори/i.test(it.name) || /погонаж|короб|наличник|добор|планк|плинтус/i.test(it.name)) continue;
+    const nums = (it.name.match(/\d/g) ?? []).map(Number);
+    if (nums.includes(cat)) return it;
+  }
+  return null;
+}
+
+/** Предупреждения по размерам из правил серии */
+export function sizeWarnings(s: Series, o: Opening): string[] {
+  const w: string[] = [];
+  const h = s.info?.h, ww = s.info?.w;
+  if (h && o.height && (o.height < h[0] || o.height > h[1])) w.push(`Высота ${o.height} мм вне диапазона серии ${h[0]}–${h[1]} мм`);
+  if (ww && o.width && (o.width < ww[0] || o.width > ww[1])) w.push(`Ширина ${o.width} мм вне диапазона распашных полотен ${ww[0]}–${ww[1]} мм (для раздвижных бывает до 1200 мм)`);
+  // особые ограничения: для этой модели, этого стекла/покрытия (например, «Мору… до 3000 мм», «модель 12 до 2750 мм», «шпон Эбен до 2600 мм»)
+  const low = (x: string) => x.toLowerCase().replace(/["«»]/g, '');
+  const fin = o.finish ? low(o.finish) : '';
+  const finType = o.finish ? low(finishBlocks(s).flatMap(b => b.lists).find(l => l.items.includes(o.finish!))?.type ?? '') : '';
+  const base = modelBase(o.model);
+  const parts = (s.info?.sizes ?? []).flatMap(t => t.split(/\.\s+(?=[А-ЯA-Z])/));
+  const finTypeQ = finType.replace(/\s*\(.*\)$/, '');
+  for (const t of parts) {
+    const tl = low(t);
+    const tq = t.toLowerCase();
+    if (/^[defgс]-полотн/.test(tl) && !o.group) continue;
+    const nums: string[] = tl.match(/модел\S*:?\s*([\d.,\sи]+)/)?.[1].match(/\d+(?:\.\d+)?/g) ?? [];
+    const byModel = /модел/.test(tl) && !/0 (pe|se|st|agn)/.test(tl) && nums.includes(base);
+    const word = (x: string) => new RegExp(`(^|[\\s:,"«])${x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s,."»])`, 'i').test(tq);
+    const cat = o.finish ? finishCategory(s, o.finish) : null;
+    const byFinish = !!fin && ((!!finTypeQ && tq.includes(`"${finTypeQ}"`)) || word(fin) || (cat != null && tq.includes(`"категория ${cat}"`)));
+    if (!byModel && !byFinish) continue;
+    if (/кроме/.test(tl) && !byModel) continue;   // «…до 3000 мм, кроме полотен со стеклами X» — это про остальные
+    const mh = tl.match(/по высоте[^.]*?до (\d{3,4}) мм/) ?? tl.match(/изготавлива\S* до (\d{3,4}) мм/);
+    if (mh && o.height > Number(mh[1])) w.push(`${o.finish && byFinish ? o.finish : `Модель ${base}`}: по высоте до ${mh[1]} мм`);
+    const mw = tl.match(/по ширине[^.]*?до (\d{3,4}) мм/);
+    if (mw && /распашн/.test(tl) && o.width > Number(mw[1])) w.push(`${o.finish && byFinish ? o.finish : `Модель ${base}`}: распашное полотно по ширине до ${mw[1]} мм`);
+  }
+  return [...new Set(w)];
+}
+
+/** Правила по размерам, которые относятся к модели (общие + где упомянута эта модель) */
+export function sizeNotes(s: Series, model: string, group = ''): string[] {
+  const base = modelBase(model);
+  return (s.info?.sizes ?? []).filter(t => {
+    if (/^[DEFGС]-полотн/i.test(t) && !group) return false;   // правила стационарных полотен — только когда выбран такой вид
+    const m = t.match(/модел\S*:?\s*([\d.,\s"«»и]+)/i);
+    if (!m || /0 (PE|SE|ST|AGN)/.test(t)) return true;
+    const nums: string[] = m[1].match(/\d+(?:\.\d+)?/g) ?? [];
+    return nums.includes(base);
+  });
 }

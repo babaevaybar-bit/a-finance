@@ -16,7 +16,7 @@ export function openKp(idx: PriceIndex, e: EstimateData, photos: Record<string, 
       const ph = o.photo ?? modelPhotos(photos, o.sheet, o.model, /дуб|орех|шпон/i.test(o.color))[0]?.url;
       const title = `Полотно ${esc(vv.series.sheet)}, модель ${esc(o.photoName || vv.model.code)}${vv.v.label ? ` · ${esc(vv.v.label)}` : ''}`;
       lines.push([
-        `${ph ? `<img class="door" src="${esc(ph)}" referrerpolicy="no-referrer">` : ''}${title}${o.color ? `<br><small>Цвет: ${esc(o.color)}</small>` : ''}${opts.length ? `<br><small>${esc(opts.join('; '))}</small>` : ''}`,
+        `${ph ? `<img class="door" src="${esc(ph)}" referrerpolicy="no-referrer">` : ''}${title}${[o.finish && `Отделка: ${o.finish}`, o.insert && `Вставка: ${o.insert}`, o.profile && `Профиль: ${o.profile}`, o.color].filter(Boolean).map(t => `<br><small>${esc(t)}</small>`).join('')}${opts.length ? `<br><small>${esc(opts.join('; '))}</small>` : ''}`,
         `${o.height}×${o.width}`, 'шт', money(b.door), String(o.qty), money(b.door * o.qty),
       ]);
     }
