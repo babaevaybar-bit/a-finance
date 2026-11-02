@@ -47,6 +47,8 @@ export interface Opening {
   options: Line[];         // опции полотна из этого же листа
   extras: Line[];          // короб, петли, замок, ручка, система… — из любого листа
   note: string;
+  photo?: string;          // выбранное фото модели с profildoors.ru
+  photoName?: string;      // точное название на сайте (например, «2.3SE»)
 }
 
 export interface EstimateData {
@@ -213,3 +215,62 @@ export function suggestHinges(hingeName: string, sheet: string, model: string, h
 /** Нужна ли +1 петля: шумоизоляция или зеркало */
 export const hasExtraLoad = (idx: PriceIndex, o: Opening) =>
   o.options.some(l => { const it = idx.byId.get(l.itemId); return !!it && /(шумоизоляц|зеркальн)/i.test(it.name); });
+
+// ─── Фото моделей с profildoors.ru ───────────────────────────────────────────
+// src/data/door-photos.json: «название модели на сайте» (без пробелов, строчными) → превью 135×321.
+let photoCache: Promise<Record<string, string>> | null = null;
+export function loadPhotos(): Promise<Record<string, string>> {
+  if (!photoCache) photoCache = import('@/data/door-photos.json').then(m => (m.default ?? m) as unknown as Record<string, string>).catch(() => ({}));
+  return photoCache;
+}
+
+const SUFFIX: Record<string, string[]> = {
+  AG: ['ag'], AGX: ['agx'], AGN: [''], AT: ['at'], SE: ['se'], ST: ['st'], VE: ['ve'], VT: ['vt'],
+  'Под покраску': [''], 'PE.O, NE.O': ['pe.o', 'ne.o'], 'SE.O': ['se.o'], GE: ['ge'], 'P, N': ['p.o', 'n.o'], PD: ['pd'],
+};
+
+/** «2.1 - 2.4» → 2.1, 2.2, 2.3, 2.4; «3 - 7» → 3…7; «1.1.1 / 1.2.1» → оба; «1.1.2 (р.8 / р.15)» → 1.1.2(р.8), 1.1.2(р.15) */
+export function expandModelCode(code: string): string[] {
+  const c = code.trim();
+  const par = c.match(/^(.+?)\s*\((.+)\)$/);
+  if (par) {
+    const bases = par[1].split('/').map(s => s.trim()).filter(Boolean);
+    const tails = par[2].split('/').map(s => s.trim()).filter(Boolean);
+    return bases.flatMap(b => tails.map(t => `${b}(${t})`));
+  }
+  return c.split('/').map(s => s.trim()).filter(Boolean).flatMap(tok => {
+    const r = tok.match(/^([\d.]+)\s*-\s*([\d.]+)$/);
+    if (!r) return [tok];
+    const a = r[1].split('.'), b = r[2].split('.');
+    const prefix = a.slice(0, -1).join('.');
+    const from = Number(a[a.length - 1]), to = Number(b[b.length - 1]);
+    if (!(to >= from) || to - from > 20) return [tok];
+    return Array.from({ length: to - from + 1 }, (_, i) => (prefix ? `${prefix}.` : '') + (from + i));
+  });
+}
+
+/** Все фото модели (у кода вида «2.1 - 2.4» их несколько). wood=true — сначала NE.O / N.O (древесные) */
+export function modelPhotos(photos: Record<string, string>, sheet: string, code: string, wood = false): { name: string; url: string }[] {
+  const suf = SUFFIX[sheet];
+  if (!suf) return [];
+  const order = wood ? [...suf].reverse() : suf;
+  const out: { name: string; url: string }[] = [];
+  for (const m of expandModelCode(code)) {
+    const base = m.toLowerCase().replace(/\s+/g, '');
+    let hit: { name: string; url: string } | null = null;
+    for (const s of order) {
+      const key = /\(р\./.test(base) ? base : base + s;
+      if (photos[key]) { hit = { name: m + (s ? s.toUpperCase() : ''), url: photos[key] }; break; }
+    }
+    if (!hit) {
+      // нет точного фото: «2 AGN» → «2AGN ГЛЯНЕЦ», «2.2.2 (р.6)» → «2.2.2PD»
+      const plain = base.replace(/\(.*\)$/, '');
+      for (const s of order) {
+        const k = Object.keys(photos).find(x => x === plain + s || x.startsWith(plain + s));
+        if (k) { hit = { name: m + (s ? s.toUpperCase() : ''), url: photos[k] }; break; }
+      }
+    }
+    if (hit) out.push(hit);
+  }
+  return out;
+}

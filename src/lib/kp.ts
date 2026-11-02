@@ -1,11 +1,11 @@
-import { calcEstimate, itemLabel, money, type EstimateData, type PriceIndex } from '@/lib/price';
+import { calcEstimate, itemLabel, money, modelPhotos, type EstimateData, type PriceIndex } from '@/lib/price';
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
 export interface KpMeta { number?: number | null; clientName: string; clientPhone: string; managerName: string; date: string; priceTitle: string }
 
 /** Коммерческое предложение по просчёту — открывается в новом окне, оттуда печать или «Сохранить как PDF». */
-export function openKp(idx: PriceIndex, e: EstimateData, meta: KpMeta) {
+export function openKp(idx: PriceIndex, e: EstimateData, photos: Record<string, string>, meta: KpMeta) {
   const t = calcEstimate(idx, e);
   const rows: string[] = [];
   t.openings.forEach(({ o, b }, i) => {
@@ -13,9 +13,10 @@ export function openKp(idx: PriceIndex, e: EstimateData, meta: KpMeta) {
     const lines: string[][] = [];
     if (vv) {
       const opts = [...b.fixedOptions.map(x => x.item.name + (x.qty > 1 ? ` ×${x.qty}` : '')), ...b.pctOptions.map(x => x.item.name)];
-      const title = `Полотно ${esc(vv.series.sheet)}, модель ${esc(vv.model.code)}${vv.v.label ? ` · ${esc(vv.v.label)}` : ''}`;
+      const ph = o.photo ?? modelPhotos(photos, o.sheet, o.model, /дуб|орех|шпон/i.test(o.color))[0]?.url;
+      const title = `Полотно ${esc(vv.series.sheet)}, модель ${esc(o.photoName || vv.model.code)}${vv.v.label ? ` · ${esc(vv.v.label)}` : ''}`;
       lines.push([
-        `${title}${o.color ? `<br><small>Цвет: ${esc(o.color)}</small>` : ''}${opts.length ? `<br><small>${esc(opts.join('; '))}</small>` : ''}`,
+        `${ph ? `<img class="door" src="${esc(ph)}" referrerpolicy="no-referrer">` : ''}${title}${o.color ? `<br><small>Цвет: ${esc(o.color)}</small>` : ''}${opts.length ? `<br><small>${esc(opts.join('; '))}</small>` : ''}`,
         `${o.height}×${o.width}`, 'шт', money(b.door), String(o.qty), money(b.door * o.qty),
       ]);
     }
@@ -47,6 +48,8 @@ export function openKp(idx: PriceIndex, e: EstimateData, meta: KpMeta) {
   td.r, th.r { text-align: right; white-space: nowrap; }
   td.num { text-align: center; font-weight: 700; }
   small { color: #6b7280; }
+  img.door { float: left; height: 90px; width: 38px; object-fit: contain; margin: 0 8px 2px 0; background: #fff; }
+  tr { page-break-inside: avoid; }
   .total { margin-top: 12px; margin-left: auto; width: 320px; }
   .total td { border: none; padding: 3px 0; font-size: 13px; }
   .total tr.big td { font-size: 16px; font-weight: 800; border-top: 2px solid #1f2937; padding-top: 6px; }

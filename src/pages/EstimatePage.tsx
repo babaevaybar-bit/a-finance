@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from 'sonner';
 import {
   loadPrice, PriceIndex, calcEstimate, calcOpening, emptyEstimate, newOpening, itemLabel, money,
-  suggestHinges, hasExtraLoad, type EstimateData, type Opening, type Item, type Line,
+  suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, type EstimateData, type Opening, type Item, type Line,
 } from '@/lib/price';
 import { listEstimates, saveEstimate, deleteEstimate, type EstimateRow } from '@/lib/estimates';
 import { openKp } from '@/lib/kp';
@@ -38,6 +38,8 @@ export default function EstimatePage() {
   const [picker, setPicker] = useState<{ target: { opening: string | null }; group: string } | null>(null);
 
   useEffect(() => { loadPrice().then(d => setIdx(new PriceIndex(d))).catch(() => toast.error('Не удалось загрузить прайс')); }, []);
+  const [photos, setPhotos] = useState<Record<string, string>>({});
+  useEffect(() => { loadPhotos().then(setPhotos); }, []);
 
   // несохранённые изменения не теряем при случайном закрытии вкладки
   useEffect(() => {
@@ -145,7 +147,7 @@ export default function EstimatePage() {
 
         {/* Проёмы */}
         {est.openings.map((o, i) => (
-          <OpeningCard key={o.id} idx={idx} o={o} n={i + 1}
+          <OpeningCard key={o.id} idx={idx} photos={photos} o={o} n={i + 1}
             onChange={fn => updOpening(o.id, fn)}
             onSize={(k, v) => setSize(o, k, v)}
             onRemove={() => update(e => { e.openings = e.openings.filter(x => x.id !== o.id); })}
@@ -198,7 +200,7 @@ export default function EstimatePage() {
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => {
-              if (!openKp(idx, est, { number: meta.number, clientName: meta.client_name, clientPhone: meta.client_phone, managerName: profile?.name && !profile.name.includes('@') ? profile.name : '', date: new Date().toLocaleDateString('ru-RU'), priceTitle: idx.data.title }))
+              if (!openKp(idx, est, photos, { number: meta.number, clientName: meta.client_name, clientPhone: meta.client_phone, managerName: profile?.name && !profile.name.includes('@') ? profile.name : '', date: new Date().toLocaleDateString('ru-RU'), priceTitle: idx.data.title }))
                 toast.error('Браузер заблокировал новое окно — разрешите всплывающие окна');
             }} disabled={totals.total <= 0}><FileText size={15} className="mr-1.5" />КП</Button>
             <Button onClick={save} disabled={saving || (!dirty && !!meta.id)}>{saving ? <Loader2 size={15} className="mr-1.5 animate-spin" /> : <Save size={15} className="mr-1.5" />}Сохранить</Button>
@@ -214,8 +216,8 @@ export default function EstimatePage() {
 }
 
 // ─── Проём ───────────────────────────────────────────────────────────────────
-function OpeningCard({ idx, o, n, onChange, onSize, onRemove, onDuplicate, onPick }: {
-  idx: PriceIndex; o: Opening; n: number;
+function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicate, onPick }: {
+  idx: PriceIndex; photos: Record<string, string>; o: Opening; n: number;
   onChange: (fn: (o: Opening) => void) => void;
   onSize: (k: 'height' | 'width', v: number) => void;
   onRemove: () => void; onDuplicate: () => void; onPick: (group: string) => void;
@@ -226,6 +228,16 @@ function OpeningCard({ idx, o, n, onChange, onSize, onRemove, onDuplicate, onPic
   const groups = s ? [...new Set(s.width.map(m => m.group).filter(Boolean))] : [];
   const options = (s?.options ?? []).map(id => idx.byId.get(id)).filter((x): x is Item => !!x);
   const [showOpts, setShowOpts] = useState(o.options.length > 0);
+  const [gridOpen, setGridOpen] = useState(false);
+  const wood = /дуб|орех|шпон/i.test(o.color);
+  const pics = o.model ? modelPhotos(photos, o.sheet, o.model, wood) : [];
+  const pic = o.photo && pics.some(p => p.url === o.photo) ? { url: o.photo, name: o.photoName ?? '' } : pics[0];
+  const chooseModel = (code: string, photo?: { name: string; url: string }) => onChange(x => {
+    x.model = code;
+    const m = s?.models.find(mm => mm.code === code);
+    x.variantId = m && m.variants.length === 1 ? m.variants[0].id : (m?.variants.find(v => v.id === x.variantId)?.id ?? m?.variants[0]?.id ?? null);
+    x.photo = photo?.url; x.photoName = photo?.name;
+  });
   const chosen = new Map(o.options.map(l => [l.itemId, l]));
   const sections = useMemo(() => {
     const m = new Map<string, Item[]>();
@@ -246,7 +258,15 @@ function OpeningCard({ idx, o, n, onChange, onSize, onRemove, onDuplicate, onPic
         <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive" title="Удалить проём" onClick={onRemove}><Trash2 size={14} /></Button>
       </div>
 
-      <div className="grid gap-2 grid-cols-2 md:grid-cols-6">
+      <div className="flex gap-3">
+      {s && (
+        <button type="button" onClick={() => setGridOpen(true)} title="Выбрать модель по фото"
+          className="shrink-0 w-[72px] rounded-lg border border-border bg-muted/30 overflow-hidden flex flex-col items-center justify-center text-[10px] text-muted-foreground hover:border-primary">
+          {pic ? <img src={pic.url} alt="" referrerPolicy="no-referrer" className="w-full h-[150px] object-contain bg-white" /> : <span className="h-[150px] flex items-center px-1 text-center">Выбрать по фото</span>}
+          {pic?.name && <span className="py-0.5 truncate w-full text-center">{pic.name}</span>}
+        </button>
+      )}
+      <div className="flex-1 min-w-0 grid gap-2 grid-cols-2 md:grid-cols-6 content-start">
         <label className="col-span-2 md:col-span-2 text-xs text-muted-foreground space-y-1">Серия
           <select className={selCls} value={o.sheet} onChange={e => onChange(x => { x.sheet = e.target.value; x.model = ''; x.variantId = null; x.group = ''; x.options = []; })}>
             <option value="">— выберите —</option>
@@ -254,11 +274,7 @@ function OpeningCard({ idx, o, n, onChange, onSize, onRemove, onDuplicate, onPic
           </select>
         </label>
         <label className="text-xs text-muted-foreground space-y-1">Модель
-          <select className={selCls} value={o.model} disabled={!s} onChange={e => onChange(x => {
-            x.model = e.target.value;
-            const m = s?.models.find(mm => mm.code === x.model);
-            x.variantId = m && m.variants.length === 1 ? m.variants[0].id : (m?.variants.find(v => v.id === x.variantId)?.id ?? m?.variants[0]?.id ?? null);
-          })}>
+          <select className={selCls} value={o.model} disabled={!s} onChange={e => chooseModel(e.target.value)}>
             <option value="">—</option>
             {s?.models.map(m => <option key={m.code} value={m.code}>{m.code}</option>)}
           </select>
@@ -288,6 +304,9 @@ function OpeningCard({ idx, o, n, onChange, onSize, onRemove, onDuplicate, onPic
           <Input className="h-9" placeholder="Например: Вайт, профиль Черный, стекло Монохром Блэк" value={o.color} onChange={e => onChange(x => { x.color = e.target.value; })} />
         </label>
       </div>
+      </div>
+      {s && <ModelGrid open={gridOpen} onClose={() => setGridOpen(false)} sheet={s.sheet} models={s.models.map(m => m.code)} photos={photos} wood={wood}
+        current={o.model} onPick={(code, p) => { chooseModel(code, p); setGridOpen(false); }} priceOf={code => s.models.find(m => m.code === code)?.variants[0]?.price ?? 0} />}
 
       {/* Опции полотна */}
       {s && (
@@ -404,6 +423,36 @@ function LineRow({ idx, l, hint, onQty, onMods, onRemove }: { idx: PriceIndex; l
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Выбор модели по фото ────────────────────────────────────────────────────
+function ModelGrid({ open, onClose, sheet, models, photos, wood, current, onPick, priceOf }: {
+  open: boolean; onClose: () => void; sheet: string; models: string[]; photos: Record<string, string>; wood: boolean;
+  current: string; onPick: (code: string, p?: { name: string; url: string }) => void; priceOf: (code: string) => number;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+        <DialogHeader><DialogTitle>Серия {sheet} — выберите модель</DialogTitle></DialogHeader>
+        <div className="flex-1 overflow-y-auto grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-2 p-0.5">
+          {models.flatMap(code => {
+            const ps = modelPhotos(photos, sheet, code, wood);
+            const list = ps.length ? ps : [undefined];
+            return list.map((p, k) => (
+              <button key={code + k} type="button" onClick={() => onPick(code, p)}
+                className={`rounded-lg border p-1 flex flex-col items-center gap-1 hover:border-primary ${current === code ? 'border-primary ring-1 ring-primary' : 'border-border'}`}>
+                {p ? <img src={p.url} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-36 w-full object-contain bg-white rounded" />
+                  : <span className="h-36 w-full flex items-center justify-center text-[11px] text-muted-foreground bg-muted/40 rounded">нет фото</span>}
+                <span className="text-xs font-medium leading-tight text-center">{p?.name || code}</span>
+                <span className="text-[10px] text-muted-foreground">от {money(priceOf(code))}</span>
+              </button>
+            ));
+          })}
+        </div>
+        <p className="text-[11px] text-muted-foreground">Фото с сайта profildoors.ru. Цвет на фото может отличаться от выбранного.</p>
+      </DialogContent>
+    </Dialog>
   );
 }
 
