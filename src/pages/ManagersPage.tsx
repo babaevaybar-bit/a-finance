@@ -16,11 +16,12 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Users, KeyRound, Check, X, Mail, Phone, Calendar, Wallet, ShieldCheck, Layers } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users, KeyRound, Check, X, Mail, Phone, Calendar, Wallet, ShieldCheck, Layers, IdCard } from 'lucide-react';
 import { getManagers, createManager, updateManager, deleteManager, getSalarySettings, upsertSalarySetting, getAllProfiles, updateProfile, getAllDeals } from '@/lib/api';
 import type { Profile } from '@/types/types';
 import { supabase } from '@/db/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { IdDocuments } from '@/components/common/IdDocuments';
 import type { Manager, SalarySetting } from '@/types/types';
 import { ROLES } from '@/types/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -105,11 +106,12 @@ const SYSTEM_ROLE_LABELS: Record<string, string> = {
 
 // Полный профиль сотрудника — вся информация в одном месте, а не
 // разрозненно по строке списка.
-function EmployeeProfileDialog({ manager, setting, profile, onClose }: {
+function EmployeeProfileDialog({ manager, setting, profile, onClose, showId = false }: {
   manager: Manager | null;
   setting?: SalarySetting;
   profile?: Profile;
   onClose: () => void;
+  showId?: boolean;   // удостоверение — только Главному админу
 }) {
   const [stats, setStats] = useState<{ monthRevenue: number; monthDeals: number; totalDeals: number; debt: number } | null>(null);
   useEffect(() => {
@@ -209,6 +211,8 @@ function EmployeeProfileDialog({ manager, setting, profile, onClose }: {
           </div>
         </div>
 
+        {showId && <div className="border-t border-border pt-4"><IdDocuments managerId={manager.id} compact /></div>}
+
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Закрыть</Button>
         </DialogFooter>
@@ -233,6 +237,7 @@ export default function ManagersPage() {
   const [settings, setSettings]     = useState<SalarySetting[]>([]);
   const [profiles, setProfiles]     = useState<Profile[]>([]);
   const [profileTarget, setProfileTarget] = useState<Manager | null>(null); // открытый профиль сотрудника
+  const [idTarget, setIdTarget] = useState<Manager | null>(null);
   // Существующий аккаунт в окне редактирования
   const [accountStatus, setAccountStatus] = useState<{ email: string; confirmed: boolean } | null | 'loading'>(null);
   const [replaceAccount, setReplaceAccount] = useState(false);
@@ -572,6 +577,9 @@ export default function ManagersPage() {
                           </div>
                           {isDirector && (
                           <div className="flex gap-1 shrink-0">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Удостоверение личности" onClick={() => setIdTarget(m)}>
+                              <IdCard size={14} />
+                            </Button>
                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(m)}>
                               <Pencil size={14} />
                             </Button>
@@ -755,7 +763,16 @@ export default function ManagersPage() {
         setting={profileTarget ? settings.find(s => s.manager_id === profileTarget.id) : undefined}
         profile={profileTarget ? profiles.find(p => p.id === profileTarget.user_id) : undefined}
         onClose={() => setProfileTarget(null)}
+        showId={isDirector}
       />
+      {/* Удостоверение личности сотрудника — загружает Главный админ */}
+      <Dialog open={!!idTarget} onOpenChange={v => { if (!v) setIdTarget(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>{idTarget?.name}</DialogTitle></DialogHeader>
+          {idTarget && <IdDocuments managerId={idTarget.id} />}
+          <DialogFooter><Button variant="outline" onClick={() => setIdTarget(null)}>Закрыть</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
       {/* Данные для входа — сразу отправить сотруднику */}
       <Dialog open={!!creds} onOpenChange={v => { if (!v) setCreds(null); }}>
         <DialogContent className="max-w-sm">
