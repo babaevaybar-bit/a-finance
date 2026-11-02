@@ -51,6 +51,7 @@ export interface Opening {
   extras: Line[];          // короб, петли, замок, ручка, система… — из любого листа
   note: string;
   openKind?: string;       // открывание: swing | slide | pivot | penal | magic | book
+  leaves?: number;         // полотен в проёме (двустворчатые, раздвижные на 2–4 полотна); ширина — одного полотна
   finish?: string;         // покрытие / стекло / шпон (из списка категории)
   profile?: string;        // цвет алюминиевого профиля
   insert?: string;         // стекло или молдинг во вставке
@@ -104,6 +105,7 @@ export interface Breakdown {
   unit: number;            // один проём целиком
   total: number;           // × количество проёмов
   warnings: string[];
+  leaves?: number;
 }
 
 export class PriceIndex {
@@ -123,10 +125,18 @@ export class PriceIndex {
     return this.data.catalog.filter(x => x.kind === 'pct' && x.sheet === it.sheet && x.id !== it.id && (!door || x.section === it.section));
   }
   /** Наценки, которые сами подходят по высоте/ширине полотна */
-  autoMods(it: Item, height: number, width: number): number[] {
+  autoMods(it: Item, height: number, width: number, leaves = 1, kind = 'swing'): number[] {
+    const total = width * leaves;   // ширина проёма по полотнам
     return this.modsFor(it).filter(m => {
-      const r = m.range; if (!r) return false;
       const n = m.name.toLowerCase();
+      // двустворчатый распашной проём: «Наценка за распашное исполнение», «Распашное исполнение короба до 2000 мм / свыше 2000 до 4000 мм»
+      if (/распашн/.test(n) && /(исполнени|короб)/.test(n)) {
+        if (leaves < 2 || kind !== 'swing') return false;
+        const r0 = m.range;
+        if (!r0) return true;
+        return r0.min === r0.max ? total <= r0.max : total > r0.min && total <= r0.max;
+      }
+      const r = m.range; if (!r) return false;
       // «к полотну шириной 1000 мм» — по ширине полотна; «для полотна свыше 2400 мм до 3000 мм» — по высоте.
       // Длина короба/погонажа и распашное исполнение по размеру полотна однозначно не определяются — их отмечает менеджер.
       if (/полотн\S* шириной/.test(n)) return r.min === r.max ? width >= r.min : (r.strict ? width > r.min : width >= r.min) && width <= r.max;
@@ -156,21 +166,27 @@ export function calcOpening(idx: PriceIndex, o: Opening): Breakdown {
   if (vv) {
     const s = vv.series;
     const opts = o.options.map(l => ({ l, it: idx.byId.get(l.itemId) })).filter(x => x.it) as { l: Line; it: Item }[];
+    const leaves = Math.max(1, o.leaves || 1);
+    out.leaves = leaves;
     out.base = vv.v.price;
-    for (const { l, it } of opts) if (it.kind === 'price' && isMirror(it)) out.base += (it.price ?? 0) * (l.qty || 1);
     out.heightMk = pickMarkup(s.height, o.height, o.group);
     out.widthMk = pickMarkup(s.width, o.width, o.group);
-    out.afterSize = out.base * (1 + (out.heightMk?.pct ?? 0) / 100) * (1 + (out.widthMk?.pct ?? 0) / 100);
-    let door = out.afterSize;
+    const k = (1 + (out.heightMk?.pct ?? 0) / 100) * (1 + (out.widthMk?.pct ?? 0) / 100);
+    out.afterSize = out.base * k;                       // одно полотно с наценками
+    let door = out.afterSize * leaves;
+    // зеркальная панель «плюсуется до наценки» — на столько полотен, сколько указано
+    for (const { l, it } of opts) if (it.kind === 'price' && isMirror(it)) {
+      const sum = (it.price ?? 0) * k * (l.qty || 1);
+      out.fixedOptions.push({ item: it, qty: l.qty || 1, sum }); door += sum;
+    }
     for (const { it } of opts) if (it.kind === 'pct') {
-      const sum = out.afterSize * (it.pct ?? 0) / 100;
+      const sum = out.afterSize * leaves * (it.pct ?? 0) / 100;
       out.pctOptions.push({ item: it, sum }); door += sum;
     }
     for (const { l, it } of opts) if (it.kind === 'price' && !isMirror(it)) {
       const sum = (it.price ?? 0) * (l.qty || 1);
       out.fixedOptions.push({ item: it, qty: l.qty || 1, sum }); door += sum;
     }
-    for (const { l, it } of opts) if (it.kind === 'price' && isMirror(it)) out.fixedOptions.push({ item: it, qty: l.qty || 1, sum: 0 });
     out.door = door;
 
   } else if (o.sheet) {

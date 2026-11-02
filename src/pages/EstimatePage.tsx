@@ -96,9 +96,9 @@ export default function EstimatePage() {
         let qty = 1;
         if (it.sheet === 'Петли') {
           const vv = o.variantId != null ? idx.variant.get(o.variantId) : undefined;
-          qty = suggestHinges(it.name, o.sheet, vv?.model.code ?? '', o.height, o.width, hasExtraLoad(idx, o)) ?? 2;
+          qty = (suggestHinges(it.name, o.sheet, vv?.model.code ?? '', o.height, o.width, hasExtraLoad(idx, o)) ?? 2) * Math.max(1, o.leaves || 1);
         }
-        o.extras.push({ itemId: it.id, qty, mods: idx.autoMods(it, o.height, o.width) });
+        o.extras.push({ itemId: it.id, qty, mods: idx.autoMods(it, o.height, o.width, o.leaves || 1, o.openKind || 'swing') });
       } else {
         e.items.push({ itemId: it.id, qty: 1, mods: [] });
       }
@@ -106,19 +106,19 @@ export default function EstimatePage() {
     toast.success(`Добавлено: ${it.name}`);
   }
 
-  function setSize(o: Opening, key: 'height' | 'width', v: number) {
+  /** Наценки комплектующих, зависящие от размера и числа полотен (короб для полотна свыше 2400 мм, распашное исполнение короба) — пересчитываем сами */
+  function recalcMods(x: Opening) {
     if (!idx) return;
-    updOpening(o.id, x => {
-      x[key] = v;
-      // наценки комплектующих по размеру (например, короб для полотна свыше 2400 мм) — пересчитываем сами
-      for (const l of x.extras) {
-        const it = idx.byId.get(l.itemId); if (!it) continue;
-        const all = idx.modsFor(it).filter(m => m.range).map(m => m.id);
-        if (!all.length) continue;
-        const keep = (l.mods ?? []).filter(id => !all.includes(id));
-        l.mods = [...keep, ...idx.autoMods(it, x.height, x.width)];
-      }
-    });
+    for (const l of x.extras) {
+      const it = idx.byId.get(l.itemId); if (!it) continue;
+      const all = idx.modsFor(it).filter(m => m.range || /распашн/i.test(m.name)).map(m => m.id);
+      if (!all.length) continue;
+      const keep = (l.mods ?? []).filter(id => !all.includes(id));
+      l.mods = [...keep, ...idx.autoMods(it, x.height, x.width, x.leaves || 1, x.openKind || 'swing')];
+    }
+  }
+  function setSize(o: Opening, key: 'height' | 'width' | 'leaves' | 'openKind', v: number | string) {
+    updOpening(o.id, x => { (x as unknown as Record<string, unknown>)[key] = v; recalcMods(x); });
   }
 
   if (!idx || !totals) {
@@ -239,11 +239,20 @@ export default function EstimatePage() {
   );
 }
 
+/** Сколько ставить по умолчанию при выборе опции в проёме из нескольких полотен */
+function defaultOptQty(it: Item, leaves: number): number {
+  if (leaves <= 1) return 1;
+  if (/[BВ]["»]?[\s-]*полотн|Притворная планка/i.test(it.name)) return Math.max(1, leaves - 1); // ответные полотна
+  if (/Комплектаци|замок|TOUCH|WAVE|Vitra|Krona/i.test(it.name)) return leaves === 2 ? 1 : Math.ceil(leaves / 2); // замок — на активное полотно
+  if (/верхняя фрамуга/i.test(it.name)) return 1;
+  return leaves;
+}
+
 // ─── Проём ───────────────────────────────────────────────────────────────────
 function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicate, onPick }: {
   idx: PriceIndex; photos: Record<string, string>; o: Opening; n: number;
   onChange: (fn: (o: Opening) => void) => void;
-  onSize: (k: 'height' | 'width', v: number) => void;
+  onSize: (k: 'height' | 'width' | 'leaves' | 'openKind', v: number | string) => void;
   onRemove: () => void; onDuplicate: () => void; onPick: (group: string) => void;
 }) {
   const b = calcOpening(idx, o);
@@ -339,7 +348,7 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
         <label className="text-xs text-muted-foreground space-y-1">Высота, мм
           <Input type="number" step={50} className="h-9" value={o.height || ''} onChange={e => onSize('height', Number(e.target.value) || 0)} />
         </label>
-        <label className="text-xs text-muted-foreground space-y-1">Ширина, мм
+        <label className="text-xs text-muted-foreground space-y-1">{(o.leaves ?? 1) > 1 ? 'Ширина 1 полотна' : 'Ширина, мм'}
           <Input type="number" step={50} className="h-9" value={o.width || ''} onChange={e => onSize('width', Number(e.target.value) || 0)} />
         </label>
         {s && lim && (
@@ -364,9 +373,17 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
         )}
         {s && (
           <label className="col-span-2 text-xs text-muted-foreground space-y-1">Открывание
-            <select className={selCls} value={o.openKind ?? 'swing'} onChange={e => onChange(x => { x.openKind = e.target.value; })}>
+            <select className={selCls} value={o.openKind ?? 'swing'} onChange={e => onSize('openKind', e.target.value)}>
               {kinds.map(k => <option key={k.key} value={k.key}>{k.label}</option>)}
             </select>
+          </label>
+        )}
+        {s && (
+          <label className="col-span-2 text-xs text-muted-foreground space-y-1">Полотен в проёме
+            <select className={selCls} value={o.leaves ?? 1} onChange={e => onSize('leaves', Number(e.target.value))}>
+              {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n === 1 ? '1 — одно полотно' : n === 2 ? '2 — двустворчатая / 2 полотна' : `${n} полотна`}</option>)}
+            </select>
+            {(o.leaves ?? 1) > 1 && <span className="block text-[11px]">Проём по полотнам ≈ {(o.leaves ?? 1) * (o.width || 0)} мм. Опции — укажите, на сколько полотен.</span>}
           </label>
         )}
         {groups.length > 0 && (
@@ -440,10 +457,10 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
                       return (
                         <label key={it.id} className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer ${l ? 'bg-primary/10' : 'hover:bg-muted/60'}`}>
                           <input type="checkbox" checked={!!l} onChange={e => onChange(x => {
-                            if (e.target.checked) x.options.push({ itemId: it.id, qty: 1 }); else x.options = x.options.filter(y => y.itemId !== it.id);
+                            if (e.target.checked) x.options.push({ itemId: it.id, qty: defaultOptQty(it, x.leaves || 1) }); else x.options = x.options.filter(y => y.itemId !== it.id);
                           })} />
                           <span className="flex-1 min-w-0">{itemLabel(it)}</span>
-                          {l && it.kind === 'price' && /к-кт|шт|компл/.test(it.unit) && (
+                          {l && it.kind === 'price' && (/к-кт|шт|компл/.test(it.unit) || (o.leaves ?? 1) > 1) && (
                             <Input type="number" min={1} className="h-7 w-14 px-1 text-xs" value={l.qty} onClick={e => e.preventDefault()}
                               onChange={e => onChange(x => { const y = x.options.find(z => z.itemId === it.id); if (y) y.qty = Math.max(1, Number(e.target.value) || 1); })} />
                           )}
@@ -470,7 +487,8 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
         {o.extras.map((l, k) => {
           const it = idx.byId.get(l.itemId);
           const vv = o.variantId != null ? idx.variant.get(o.variantId) : undefined;
-          const hint = it?.sheet === 'Петли' ? suggestHinges(it.name, o.sheet, vv?.model.code ?? '', o.height, o.width, hasExtraLoad(idx, o)) : null;
+          const per = it?.sheet === 'Петли' ? suggestHinges(it.name, o.sheet, vv?.model.code ?? '', o.height, o.width, hasExtraLoad(idx, o)) : null;
+          const hint = per != null ? per * Math.max(1, o.leaves || 1) : null;
           return (
             <LineRow key={k} idx={idx} l={l} hint={hint != null && hint !== l.qty ? `по прайсу ${hint} шт` : undefined}
               onQty={q => onChange(x => { x.extras[k].qty = q; })}
@@ -484,10 +502,11 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
       <div className="rounded-lg border border-border/70 px-3 py-2 text-xs space-y-0.5">
         {b.error && <p className="text-amber-700">{b.error}</p>}
         {o.variantId != null && <>
-          <Row l="Полотно по прайсу" v={money(b.base)} />
+          <Row l={`Полотно по прайсу${(b.leaves ?? 1) > 1 ? ' (одно)' : ''}`} v={money(b.base)} />
           {b.heightMk && <Row l={`Наценка на высоту ${o.height} мм`} v={`+${b.heightMk.pct}%`} />}
           {b.widthMk && <Row l={`${b.widthMk.pct < 0 ? 'Уценка' : 'Наценка'} на ширину ${o.width} мм`} v={`${b.widthMk.pct > 0 ? '+' : ''}${b.widthMk.pct}%`} />}
-          {(b.heightMk || b.widthMk) && <Row l="Полотно с наценками" v={money(b.afterSize)} />}
+          {(b.heightMk || b.widthMk) && <Row l={`Полотно с наценками${(b.leaves ?? 1) > 1 ? ' (одно)' : ''}`} v={money(b.afterSize)} />}
+          {(b.leaves ?? 1) > 1 && <Row l={`× ${b.leaves} полотна в проёме`} v={money(b.afterSize * (b.leaves ?? 1))} />}
           {b.pctOptions.map(x => <Row key={x.item.id} l={x.item.name} v={`+${money(x.sum)}`} />)}
           {b.fixedOptions.filter(x => x.sum > 0).map(x => <Row key={x.item.id} l={`${x.item.name}${x.qty > 1 ? ` ×${x.qty}` : ''}`} v={`+${money(x.sum)}`} />)}
           <Row l="Полотно итого" v={money(b.door)} bold />

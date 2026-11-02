@@ -15,7 +15,7 @@ export function openKp(idx: PriceIndex, e: EstimateData, photos: Record<string, 
     if (vv) {
       const opts = [...b.fixedOptions.map(x => x.item.name + (x.qty > 1 ? ` ×${x.qty}` : '')), ...b.pctOptions.map(x => x.item.name)];
       const ph = o.photo ?? modelPhotos(photos, o.sheet, o.model, /дуб|орех|шпон/i.test(o.color))[0]?.url;
-      const title = `Полотно ${esc(vv.series.sheet)}, модель ${esc(o.photoName || vv.model.code)}${vv.v.label ? ` · ${esc(vv.v.label)}` : ''}`;
+      const title = `${(b.leaves ?? 1) > 1 ? `<b>${b.leaves} полотна в проёме</b><br>` : ''}Полотно ${esc(vv.series.sheet)}, модель ${esc(o.photoName || vv.model.code)}${vv.v.label ? ` · ${esc(vv.v.label)}` : ''}`;
       lines.push([
         `${ph ? `<img class="door" src="${esc(ph)}" referrerpolicy="no-referrer">` : ''}${title}${[o.openKind && o.openKind !== 'swing' && `Открывание: ${OPEN_KINDS.find(k => k.key === o.openKind)?.label ?? ''}`, o.finish && `Отделка: ${o.finish}`, o.insert && `Вставка: ${o.insert}`, o.profile && `Профиль: ${o.profile}`, o.color].filter(Boolean).map(t => `<br><small>${esc(t)}</small>`).join('')}${opts.length ? `<br><small>${esc(opts.join('; '))}</small>` : ''}`,
         `${o.height}×${o.width}`, 'шт', money(b.door), String(o.qty), money(b.door * o.qty),
