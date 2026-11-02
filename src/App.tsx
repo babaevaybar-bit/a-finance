@@ -13,7 +13,6 @@ const WelcomePage = lazy(() => import('./pages/WelcomePage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const ActivityPage = lazy(() => import('./pages/ActivityPage'));
 const TrainingPage = lazy(() => import('./pages/TrainingPage'));
-const EstimatePage = lazy(() => import('./pages/EstimatePage'));
 const DashboardPage    = lazy(() => import('@/pages/DashboardPage'));
 const SalesPage        = lazy(() => import('@/pages/SalesPage'));
 const ApprovalsPage    = lazy(() => import('@/pages/ApprovalsPage'));
@@ -126,7 +125,6 @@ const lazyRoutes = [
   { path: '/search',       element: <SearchPage />,       adminOnly: false, pageKey: 'search'        },
   { path: '/managers',     element: <ManagersPage />,     adminOnly: true,  pageKey: 'managers'     },
   { path: '/activity',     element: <ActivityPage />,     adminOnly: true,  pageKey: 'activity'     },
-  { path: '/estimate',     element: <EstimatePage />,     adminOnly: false, pageKey: 'estimate'     },
   { path: '/training',     element: <TrainingPage />,     adminOnly: false, pageKey: 'training'     },
   { path: '/permissions',  element: <PermissionsPage />,  adminOnly: true,  pageKey: 'permissions'  },
 ];
