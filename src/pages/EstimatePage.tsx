@@ -32,7 +32,7 @@ const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 export default function EstimatePage() {
   const { profile } = useAuth();
   const [idx, setIdx] = useState<PriceIndex | null>(null);
-  const [est, setEst] = useState<EstimateData>(emptyEstimate());
+  const [est, setEst] = useState<EstimateData>(() => ({ ...emptyEstimate(), openings: [newOpening()] }));
   const [meta, setMeta] = useState({ id: null as string | null, number: null as number | null, client_name: '', client_phone: '', title: '' });
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -80,7 +80,7 @@ export default function EstimatePage() {
   }
   function newEstimate() {
     if (dirty && !window.confirm('Есть несохранённые изменения. Начать новый просчёт?')) return;
-    setEst(emptyEstimate()); setMeta({ id: null, number: null, client_name: '', client_phone: '', title: '' }); setDirty(false);
+    setEst({ ...emptyEstimate(), openings: [newOpening()] }); setMeta({ id: null, number: null, client_name: '', client_phone: '', title: '' }); setDirty(false);
   }
   function copyEstimate() {
     setMeta(m => ({ ...m, id: null, number: null, title: m.title ? `${m.title} (копия)` : 'Копия' }));
@@ -125,11 +125,30 @@ export default function EstimatePage() {
     return <AppLayout><div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="animate-spin" size={16} />Загружаю прайс…</div></AppLayout>;
   }
 
+  const clientFields = (
+    <div className="rounded-xl border border-border bg-card p-3 space-y-2">
+      <p className="text-sm font-medium">Клиент</p>
+      <Input placeholder="Имя клиента" value={meta.client_name} onChange={e => { setMeta(m => ({ ...m, client_name: e.target.value })); setDirty(true); }} />
+      <Input placeholder="Телефон" inputMode="tel" value={meta.client_phone} onChange={e => { setMeta(m => ({ ...m, client_phone: e.target.value })); setDirty(true); }} />
+      <Input placeholder="Объект (ЖК, квартира…)" value={meta.title} onChange={e => { setMeta(m => ({ ...m, title: e.target.value })); setDirty(true); }} />
+    </div>
+  );
+  const kp = () => {
+    if (!openKp(idx, est, photos, { number: meta.number, clientName: meta.client_name, clientPhone: meta.client_phone, managerName: profile?.name && !profile.name.includes('@') ? profile.name : '', date: new Date().toLocaleDateString('ru-RU'), priceTitle: idx.data.title }))
+      toast.error('Браузер заблокировал новое окно — разрешите всплывающие окна');
+  };
+  const addOpening = () => update(e => {
+    const last = e.openings[e.openings.length - 1];
+    const o = newOpening(last?.sheet ?? '');
+    if (last) { o.height = last.height; o.width = last.width; o.profile = last.profile; o.openKind = last.openKind; }
+    e.openings.push(o);
+  });
+
   return (
     <AppLayout>
-      <div className="max-w-5xl mx-auto space-y-4 pb-4">
+      <div className="space-y-4 pb-24 lg:pb-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-xl font-semibold flex items-center gap-2"><Calculator size={20} />Просчёт{meta.number ? ` №${meta.number}` : ''}{dirty && <span className="text-xs font-normal text-amber-600">не сохранён</span>}</h1>
             <p className="text-xs text-muted-foreground mt-0.5">{idx.data.title || 'Прайс PROFILDOORS'} · цены в тенге</p>
           </div>
@@ -140,72 +159,75 @@ export default function EstimatePage() {
           </div>
         </div>
 
-        {/* Клиент */}
-        <div className="grid gap-2 sm:grid-cols-3 rounded-xl border border-border bg-card p-3">
-          <Input placeholder="Клиент" value={meta.client_name} onChange={e => { setMeta(m => ({ ...m, client_name: e.target.value })); setDirty(true); }} />
-          <Input placeholder="Телефон" inputMode="tel" value={meta.client_phone} onChange={e => { setMeta(m => ({ ...m, client_phone: e.target.value })); setDirty(true); }} />
-          <Input placeholder="Объект / название (например, ЖК Нурсат, кв. 45)" value={meta.title} onChange={e => { setMeta(m => ({ ...m, title: e.target.value })); setDirty(true); }} />
-        </div>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px] items-start">
+          {/* Левая часть: проёмы и позиции */}
+          <div className="space-y-4 min-w-0">
+            <div className="lg:hidden">{clientFields}</div>
+            {est.openings.map((o, i) => (
+              <OpeningCard key={o.id} idx={idx} photos={photos} o={o} n={i + 1}
+                onChange={fn => updOpening(o.id, fn)}
+                onSize={(k, v) => setSize(o, k, v)}
+                onRemove={() => update(e => { e.openings = e.openings.filter(x => x.id !== o.id); })}
+                onDuplicate={() => update(e => { const c = clone(o); c.id = newOpening().id; c.room = o.room ? `${o.room} (2)` : ''; e.openings.splice(i + 1, 0, c); })}
+                onPick={group => setPicker({ target: { opening: o.id }, group })} />
+            ))}
+            <Button variant="outline" className="w-full h-12 border-dashed" onClick={addOpening}><Plus size={15} className="mr-1.5" />{est.openings.length ? 'Добавить ещё проём' : 'Добавить проём'}</Button>
 
-        {/* Проёмы */}
-        {est.openings.map((o, i) => (
-          <OpeningCard key={o.id} idx={idx} photos={photos} o={o} n={i + 1}
-            onChange={fn => updOpening(o.id, fn)}
-            onSize={(k, v) => setSize(o, k, v)}
-            onRemove={() => update(e => { e.openings = e.openings.filter(x => x.id !== o.id); })}
-            onDuplicate={() => update(e => { const c = clone(o); c.id = newOpening().id; c.room = o.room ? `${o.room} (2)` : ''; e.openings.splice(i + 1, 0, c); })}
-            onPick={group => setPicker({ target: { opening: o.id }, group })} />
-        ))}
-        <Button variant="outline" className="w-full border-dashed" onClick={() => update(e => {
-          const last = e.openings[e.openings.length - 1];
-          const o = newOpening(last?.sheet ?? '');
-          if (last) { o.height = last.height; o.width = last.width; o.color = last.color; }
-          e.openings.push(o);
-        })}><Plus size={15} className="mr-1.5" />Добавить проём</Button>
-
-        {/* Общие позиции */}
-        <div className="rounded-xl border border-border bg-card p-3 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium">Дополнительно к заказу</p>
-            <Button size="sm" variant="outline" onClick={() => setPicker({ target: { opening: null }, group: 'all' })}><Plus size={14} className="mr-1" />Из прайса</Button>
-          </div>
-          {est.items.length === 0 && <p className="text-xs text-muted-foreground">Плинтус, панели, ручки, фурнитура отдельно — всё, что не относится к конкретному проёму.</p>}
-          {est.items.map((l, k) => (
-            <LineRow key={k} idx={idx} l={l}
-              onQty={q => update(e => { e.items[k].qty = q; })}
-              onMods={m => update(e => { e.items[k].mods = m; })}
-              onRemove={() => update(e => { e.items.splice(k, 1); })} />
-          ))}
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Textarea rows={2} placeholder="Примечание для КП (сроки, монтаж, условия…)" value={est.comment} onChange={e => update(x => { x.comment = e.target.value; })} />
-          <div className="rounded-xl border border-border bg-card p-3 text-sm space-y-1.5">
-            <div className="flex justify-between"><span className="text-muted-foreground">Сумма по прайсу</span><span>{money(totals.sub)}</span></div>
-            <div className="flex justify-between items-center gap-2">
-              <span className="text-muted-foreground">Скидка, %</span>
-              <Input type="number" min={0} max={100} className="h-8 w-20 text-right" value={est.discountPct || ''} placeholder="0"
-                onChange={e => update(x => { x.discountPct = Math.max(0, Math.min(100, Number(e.target.value) || 0)); })} />
+            <div className="rounded-xl border border-border bg-card p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium">Дополнительно к заказу</p>
+                <Button size="sm" variant="outline" onClick={() => setPicker({ target: { opening: null }, group: 'all' })}><Plus size={14} className="mr-1" />Из прайса</Button>
+              </div>
+              {est.items.length === 0 && <p className="text-xs text-muted-foreground">Плинтус, панели, ручки, фурнитура отдельно — всё, что не относится к конкретному проёму.</p>}
+              {est.items.map((l, k) => (
+                <LineRow key={k} idx={idx} l={l}
+                  onQty={q => update(e => { e.items[k].qty = q; })}
+                  onMods={m => update(e => { e.items[k].mods = m; })}
+                  onRemove={() => update(e => { e.items.splice(k, 1); })} />
+              ))}
             </div>
-            {totals.discount > 0 && <div className="flex justify-between text-muted-foreground"><span>Скидка</span><span>−{money(totals.discount)}</span></div>}
-            <div className="flex justify-between text-base font-semibold border-t border-border pt-1.5"><span>Итого</span><span>{money(totals.total)}</span></div>
           </div>
+
+          {/* Правая часть: клиент, итог, действия — всегда на виду */}
+          <aside className="space-y-3 lg:sticky lg:top-4">
+            <div className="hidden lg:block">{clientFields}</div>
+            <div className="rounded-xl border border-border bg-card p-3 text-sm space-y-1.5">
+              <p className="text-sm font-medium mb-1">Итог</p>
+              {totals.openings.map(({ o, b }, i) => (
+                <div key={o.id} className="flex justify-between gap-2 text-xs">
+                  <span className="text-muted-foreground truncate">{i + 1}. {o.room || (o.sheet ? `${o.sheet} ${o.model}` : 'Проём')}{o.qty > 1 ? ` ×${o.qty}` : ''}</span>
+                  <span className="whitespace-nowrap">{money(b.total)}</span>
+                </div>
+              ))}
+              {totals.items.length > 0 && <div className="flex justify-between text-xs"><span className="text-muted-foreground">Дополнительно</span><span>{money(totals.items.reduce((a, x) => a + x.sum, 0))}</span></div>}
+              <div className="flex justify-between border-t border-border pt-1.5"><span className="text-muted-foreground">Сумма по прайсу</span><span>{money(totals.sub)}</span></div>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-muted-foreground">Скидка, %</span>
+                <Input type="number" inputMode="decimal" min={0} max={100} className="h-8 w-20 text-right" value={est.discountPct || ''} placeholder="0"
+                  onChange={e => update(x => { x.discountPct = Math.max(0, Math.min(100, Number(e.target.value) || 0)); })} />
+              </div>
+              {totals.discount > 0 && <div className="flex justify-between text-muted-foreground"><span>Скидка</span><span>−{money(totals.discount)}</span></div>}
+              <div className="flex justify-between text-lg font-semibold border-t border-border pt-1.5"><span>Итого</span><span>{money(totals.total)}</span></div>
+            </div>
+            <Textarea rows={3} placeholder="Примечание для КП (сроки, монтаж, условия…)" value={est.comment} onChange={e => update(x => { x.comment = e.target.value; })} />
+            <div className="hidden lg:grid grid-cols-2 gap-2">
+              <Button variant="outline" onClick={kp} disabled={totals.total <= 0}><FileText size={15} className="mr-1.5" />КП</Button>
+              <Button onClick={save} disabled={saving || (!dirty && !!meta.id)}>{saving ? <Loader2 size={15} className="mr-1.5 animate-spin" /> : <Save size={15} className="mr-1.5" />}Сохранить</Button>
+            </div>
+          </aside>
         </div>
       </div>
 
-      {/* Нижняя панель */}
-      <div className="sticky bottom-0 z-20 -mx-4 md:mx-0 border-t border-border bg-background/95 backdrop-blur">
-        <div className="max-w-5xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+      {/* Телефон/планшет: итог и кнопки закреплены внизу экрана */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-30 border-t border-border bg-background/95 backdrop-blur" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="px-4 py-2.5 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] text-muted-foreground">{est.openings.length} проём(ов) · итого</p>
-            <p className="text-lg font-semibold leading-tight">{money(totals.total)}</p>
+            <p className="text-lg font-semibold leading-tight truncate">{money(totals.total)}</p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => {
-              if (!openKp(idx, est, photos, { number: meta.number, clientName: meta.client_name, clientPhone: meta.client_phone, managerName: profile?.name && !profile.name.includes('@') ? profile.name : '', date: new Date().toLocaleDateString('ru-RU'), priceTitle: idx.data.title }))
-                toast.error('Браузер заблокировал новое окно — разрешите всплывающие окна');
-            }} disabled={totals.total <= 0}><FileText size={15} className="mr-1.5" />КП</Button>
-            <Button onClick={save} disabled={saving || (!dirty && !!meta.id)}>{saving ? <Loader2 size={15} className="mr-1.5 animate-spin" /> : <Save size={15} className="mr-1.5" />}Сохранить</Button>
+          <div className="flex gap-2 shrink-0">
+            <Button variant="outline" size="sm" className="h-10" onClick={kp} disabled={totals.total <= 0}><FileText size={15} className="mr-1" />КП</Button>
+            <Button size="sm" className="h-10" onClick={save} disabled={saving || (!dirty && !!meta.id)}>{saving ? <Loader2 size={15} className="mr-1 animate-spin" /> : <Save size={15} className="mr-1" />}Сохранить</Button>
           </div>
         </div>
       </div>
@@ -286,12 +308,12 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
         <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive" title="Удалить проём" onClick={onRemove}><Trash2 size={14} /></Button>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex flex-col sm:flex-row gap-3">
       {s && (
         <button type="button" onClick={() => setGridOpen(true)} title="Выбрать модель по фото"
-          className="shrink-0 w-[72px] rounded-lg border border-border bg-muted/30 overflow-hidden flex flex-col items-center justify-center text-[10px] text-muted-foreground hover:border-primary">
-          {pic ? <img src={pic.url} alt="" referrerPolicy="no-referrer" className="w-full h-[150px] object-contain bg-white" /> : <span className="h-[150px] flex items-center px-1 text-center">Выбрать по фото</span>}
-          {pic?.name && <span className="py-0.5 truncate w-full text-center">{pic.name}</span>}
+          className="shrink-0 w-full sm:w-[72px] rounded-lg border border-border bg-muted/30 overflow-hidden flex sm:flex-col items-center gap-3 sm:gap-0 text-[11px] sm:text-[10px] text-muted-foreground hover:border-primary">
+          {pic ? <img src={pic.url} alt="" referrerPolicy="no-referrer" className="w-12 h-24 sm:w-full sm:h-[150px] object-contain bg-white shrink-0" /> : <span className="h-12 sm:h-[150px] flex items-center px-3 sm:px-1 text-center">Выбрать по фото</span>}
+          {pic && <span className="sm:py-0.5 truncate sm:w-full text-left sm:text-center"><span className="sm:hidden block text-sm text-foreground font-medium">{pic.name || o.model}</span><span className="sm:hidden">Нажмите, чтобы выбрать другую модель по фото</span><span className="hidden sm:inline">{pic.name}</span></span>}
         </button>
       )}
       <div className="flex-1 min-w-0 grid gap-2 grid-cols-2 md:grid-cols-6 content-start">
@@ -412,7 +434,7 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
               {sections.map(([sec, items]) => (
                 <div key={sec}>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">{sec}</p>
-                  <div className="grid gap-1 sm:grid-cols-2">
+                  <div className="grid gap-1 sm:grid-cols-2 2xl:grid-cols-3">
                     {items.map(it => {
                       const l = chosen.get(it.id);
                       return (
@@ -492,13 +514,13 @@ function LineRow({ idx, l, hint, onQty, onMods, onRemove }: { idx: PriceIndex; l
   const sum = (it.price ?? 0) * (l.mods ?? []).reduce((a, id) => a * (1 + (idx.byId.get(id)?.pct ?? 0) / 100), 1) * l.qty;
   return (
     <div className="rounded-lg border border-border/70 px-2.5 py-1.5">
-      <div className="flex items-center gap-2">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm truncate" title={itemLabel(it)}>{itemLabel(it)}</p>
+      <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+        <div className="basis-full sm:basis-auto flex-1 min-w-0">
+          <p className="text-sm sm:truncate" title={itemLabel(it)}>{itemLabel(it)}</p>
           <p className="text-[11px] text-muted-foreground truncate">{it.sheet}{it.section ? ` · ${it.section}` : ''} · {money(it.price ?? 0)} / {it.unit || 'шт'}{hint && <span className="text-amber-700"> · {hint}</span>}</p>
         </div>
         <Input type="number" min={0} step="any" className="h-8 w-16 px-1.5 text-sm" value={l.qty} onChange={e => onQty(Math.max(0, Number(e.target.value) || 0))} />
-        <span className="w-24 text-right text-sm font-medium whitespace-nowrap">{money(sum)}</span>
+        <span className="ml-auto sm:ml-0 w-24 text-right text-sm font-medium whitespace-nowrap">{money(sum)}</span>
         <button type="button" className="text-muted-foreground hover:text-destructive" onClick={onRemove} title="Убрать"><X size={15} /></button>
       </div>
       {mods.length > 0 && (
