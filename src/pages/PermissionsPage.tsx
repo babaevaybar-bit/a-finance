@@ -375,11 +375,9 @@ export default function PermissionsPage() {
                         <ChevronDown size={16} className={`shrink-0 text-muted-foreground transition-transform ${isOpen ? '' : '-rotate-90'}`} />
                         <CardTitle className="text-sm font-medium truncate">{m.name}</CardTitle>
                         <Badge variant="secondary" className="text-xs shrink-0">{m.role || '—'}</Badge>
-                        {sales && <Badge variant="outline" className="text-xs shrink-0">права роли «{ROLE_LABELS[role!]}»{hasOverrides ? ' + изменения' : ''}</Badge>}
-                        {!sales && hasRestrictions && (
-                          <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 shrink-0">
-                            Есть ограничения
-                          </Badge>
+                        {/* одна и та же пометка для всех: права роли, а если меняли вручную — «+ изменения» */}
+                        {(sales || Object.keys(managerPerms).length > 0) && role && role !== 'director' && (
+                          <Badge variant="outline" className="text-xs shrink-0">права роли «{ROLE_LABELS[role] ?? role}»{sales ? (hasOverrides ? ' + изменения' : '') : ' + изменения'}</Badge>
                         )}
                         <span className="text-xs text-muted-foreground">открыто {openCount} из {PERMISSION_PAGES.length}</span>
                       </button>
