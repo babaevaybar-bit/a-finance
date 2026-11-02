@@ -1,0 +1,65 @@
+# Ежедневная резервная копия базы A-Finance (основной сайт).
+# Копия шифруется паролем BACKUP_PASSPHRASE и хранится 90 дней в разделе Actions → артефакты.
+# Нужны секреты репозитория: SUPABASE_DB_URL (строка подключения Session pooler) и BACKUP_PASSPHRASE.
+name: Резервная копия базы
+
+on:
+  schedule:
+    - cron: '0 22 * * *'   # 03:00 по Шымкенту (UTC+5)
+  workflow_dispatch:        # кнопка «Run workflow» — сделать копию вручную
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Установить pg_dump 17
+        run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y > /dev/null
+          sudo apt-get install -y -qq postgresql-client-17 > /dev/null
+          /usr/lib/postgresql/17/bin/pg_dump --version
+
+      - name: Выгрузить и зашифровать
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL}" ] || [ -z "${PASS}" ]; then
+            echo "::error::Не заданы секреты SUPABASE_DB_URL и/или BACKUP_PASSPHRASE"; exit 1
+          fi
+          PG=/usr/lib/postgresql/17/bin
+          D=$(TZ=Asia/Almaty date +%F_%H%M)
+          mkdir -p out
+          # все таблицы сайта: сделки, клиенты, оплаты, зарплаты, лиды, права, сообщения…
+          $PG/pg_dump "$DB_URL" -Fc --no-owner --no-privileges --schema=public -f out/public.dump
+          # учётные записи сотрудников (для полного восстановления входа)
+          $PG/pg_dump "$DB_URL" -Fc --data-only --table=auth.users --table=auth.identities -f out/auth_users.dump
+          # список загруженных файлов (сами файлы — отдельно)
+          $PG/pg_dump "$DB_URL" -Fc --data-only --table=storage.buckets --table=storage.objects -f out/storage_meta.dump
+          # проверка, что копия не пустая и читается
+          N=$($PG/pg_restore -l out/public.dump | grep -c 'TABLE DATA' || true)
+          echo "Таблиц с данными в копии: $N"
+          if [ "$N" -lt 30 ]; then echo "::error::Копия подозрительно маленькая ($N таблиц)"; exit 1; fi
+          F="a-finance-$D.tar.gz.gpg"
+          tar -czf - -C out . | gpg --batch --yes --pinentry-mode loopback --passphrase "$PASS" \
+            --symmetric --cipher-algo AES256 -o "$F"
+          rm -rf out
+          ls -la "$F"
+          echo "BACKUP_FILE=$F" >> "$GITHUB_ENV"
+          echo "BACKUP_NAME=a-finance-$D" >> "$GITHUB_ENV"
+
+      - name: Сохранить копию (90 дней)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BACKUP_NAME }}
+          path: ${{ env.BACKUP_FILE }}
+          retention-days: 90
+          if-no-files-found: error
