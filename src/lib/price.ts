@@ -50,6 +50,7 @@ export interface Opening {
   options: Line[];         // опции полотна из этого же листа
   extras: Line[];          // короб, петли, замок, ручка, система… — из любого листа
   note: string;
+  openKind?: string;       // открывание: swing | slide | pivot | penal | magic | book
   finish?: string;         // покрытие / стекло / шпон (из списка категории)
   profile?: string;        // цвет алюминиевого профиля
   insert?: string;         // стекло или молдинг во вставке
@@ -315,46 +316,3 @@ export function categoryOption(idx: PriceIndex, s: Series, cat: number): Item | 
   return null;
 }
 
-/** Предупреждения по размерам из правил серии */
-export function sizeWarnings(s: Series, o: Opening): string[] {
-  const w: string[] = [];
-  const h = s.info?.h, ww = s.info?.w;
-  if (h && o.height && (o.height < h[0] || o.height > h[1])) w.push(`Высота ${o.height} мм вне диапазона серии ${h[0]}–${h[1]} мм`);
-  if (ww && o.width && (o.width < ww[0] || o.width > ww[1])) w.push(`Ширина ${o.width} мм вне диапазона распашных полотен ${ww[0]}–${ww[1]} мм (для раздвижных бывает до 1200 мм)`);
-  // особые ограничения: для этой модели, этого стекла/покрытия (например, «Мору… до 3000 мм», «модель 12 до 2750 мм», «шпон Эбен до 2600 мм»)
-  const low = (x: string) => x.toLowerCase().replace(/["«»]/g, '');
-  const fin = o.finish ? low(o.finish) : '';
-  const finType = o.finish ? low(finishBlocks(s).flatMap(b => b.lists).find(l => l.items.includes(o.finish!))?.type ?? '') : '';
-  const base = modelBase(o.model);
-  const parts = (s.info?.sizes ?? []).flatMap(t => t.split(/\.\s+(?=[А-ЯA-Z])/));
-  const finTypeQ = finType.replace(/\s*\(.*\)$/, '');
-  for (const t of parts) {
-    const tl = low(t);
-    const tq = t.toLowerCase();
-    if (/^[defgс]-полотн/.test(tl) && !o.group) continue;
-    const nums: string[] = tl.match(/модел\S*:?\s*([\d.,\sи]+)/)?.[1].match(/\d+(?:\.\d+)?/g) ?? [];
-    const byModel = /модел/.test(tl) && !/0 (pe|se|st|agn)/.test(tl) && nums.includes(base);
-    const word = (x: string) => new RegExp(`(^|[\\s:,"«])${x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s,."»])`, 'i').test(tq);
-    const cat = o.finish ? finishCategory(s, o.finish) : null;
-    const byFinish = !!fin && ((!!finTypeQ && tq.includes(`"${finTypeQ}"`)) || word(fin) || (cat != null && tq.includes(`"категория ${cat}"`)));
-    if (!byModel && !byFinish) continue;
-    if (/кроме/.test(tl) && !byModel) continue;   // «…до 3000 мм, кроме полотен со стеклами X» — это про остальные
-    const mh = tl.match(/по высоте[^.]*?до (\d{3,4}) мм/) ?? tl.match(/изготавлива\S* до (\d{3,4}) мм/);
-    if (mh && o.height > Number(mh[1])) w.push(`${o.finish && byFinish ? o.finish : `Модель ${base}`}: по высоте до ${mh[1]} мм`);
-    const mw = tl.match(/по ширине[^.]*?до (\d{3,4}) мм/);
-    if (mw && /распашн/.test(tl) && o.width > Number(mw[1])) w.push(`${o.finish && byFinish ? o.finish : `Модель ${base}`}: распашное полотно по ширине до ${mw[1]} мм`);
-  }
-  return [...new Set(w)];
-}
-
-/** Правила по размерам, которые относятся к модели (общие + где упомянута эта модель) */
-export function sizeNotes(s: Series, model: string, group = ''): string[] {
-  const base = modelBase(model);
-  return (s.info?.sizes ?? []).filter(t => {
-    if (/^[DEFGС]-полотн/i.test(t) && !group) return false;   // правила стационарных полотен — только когда выбран такой вид
-    const m = t.match(/модел\S*:?\s*([\d.,\s"«»и]+)/i);
-    if (!m || /0 (PE|SE|ST|AGN)/.test(t)) return true;
-    const nums: string[] = m[1].match(/\d+(?:\.\d+)?/g) ?? [];
-    return nums.includes(base);
-  });
-}

@@ -8,9 +8,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from 'sonner';
 import {
   loadPrice, PriceIndex, calcEstimate, calcOpening, emptyEstimate, newOpening, itemLabel, money,
-  suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, finishBlocks, insertBlocks, categoryOption, sizeWarnings, sizeNotes,
+  suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, finishBlocks, insertBlocks, categoryOption, finishCategory,
   type InfoBlock, type EstimateData, type Opening, type Item, type Line,
 } from '@/lib/price';
+import { sizeLimits, limitWarnings, OPEN_KINDS, SIZE_RULES } from '@/lib/sizeRules';
 import { listEstimates, saveEstimate, deleteEstimate, type EstimateRow } from '@/lib/estimates';
 import { openKp } from '@/lib/kp';
 import { Info, Calculator, Copy, FileText, FolderOpen, Loader2, Plus, Save, Search, Trash2, X, ChevronDown } from 'lucide-react';
@@ -237,8 +238,13 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
   const variant = model?.variants.find(v => v.id === o.variantId);
   const fBlocks = s ? finishBlocks(s) : [];
   const iBlocks = s && o.model ? insertBlocks(s, o.model, variant?.label ?? '') : [];
-  const sizeWarn = s ? sizeWarnings(s, o) : [];
-  const notes = s ? sizeNotes(s, o.model, o.group) : [];
+  const finType = o.finish ? (fBlocks.flatMap(bl => bl.lists).find(l => l.items.includes(o.finish!))?.type ?? '') : '';
+  const finCat = s && o.finish ? finishCategory(s, o.finish) : null;
+  const mirror = o.options.some(l => /зеркальн/i.test(idx.byId.get(l.itemId)?.name ?? ''));
+  const lim = s ? sizeLimits(s, o, finType, finCat, mirror) : null;
+  const sizeWarn = lim ? limitWarnings(lim, o) : [];
+  const onlyKinds = s ? (SIZE_RULES[s.sheet]?.models?.[o.model.trim()]?.only) : undefined;
+  const kinds = s ? OPEN_KINDS.filter(k => (onlyKinds ? onlyKinds.includes(k.key) : !!SIZE_RULES[s.sheet]?.w[k.key]) || k.key === 'swing') : [];
   const catNow = variant?.label.match(/Категория (\d)/)?.[1];
   /** Выбор покрытия/стекла: сам переключает категорию (вариант цены) или ставит/снимает наценку за категорию */
   const applyFinish = (finish: string, cat: number | null) => onChange(x => {
@@ -314,15 +320,32 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
         <label className="text-xs text-muted-foreground space-y-1">Ширина, мм
           <Input type="number" step={50} className="h-9" value={o.width || ''} onChange={e => onSize('width', Number(e.target.value) || 0)} />
         </label>
-        {s && (s.info?.h || s.info?.w || notes.length > 0) && (
-          <div className="col-span-2 md:col-span-6 -mt-1 text-[11px] text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-0.5">
-            {s.info?.h && <span>Высота: {s.info.h[0]}–{s.info.h[1]} мм</span>}
-            {s.info?.w && <span>Ширина (распашная): {s.info.w[0]}–{s.info.w[1]} мм</span>}
-            {s.height.length > 0 && <span>Наценка с {Math.min(...s.height.filter(m => m.range && !m.group).map(m => m.range!.min))} мм по высоте</span>}
-            {notes.length > 0 && <button type="button" className="inline-flex items-center gap-0.5 text-primary hover:underline" onClick={() => setRulesOpen(v => !v)}><Info size={11} />{rulesOpen ? 'скрыть правила' : 'все правила по размерам'}</button>}
-            {sizeWarn.map(w => <span key={w} className="w-full text-amber-700">⚠ {w}</span>)}
-            {rulesOpen && <ul className="w-full list-disc pl-4 space-y-0.5 text-foreground/80">{notes.map(t => <li key={t}>{t}</li>)}</ul>}
+        {s && lim && (
+          <div className="col-span-2 md:col-span-6 -mt-1 rounded-md bg-muted/40 px-2.5 py-1.5 text-[11px] text-muted-foreground space-y-0.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+              <span className="font-medium text-foreground/80">Можно:</span>
+              {lim.h && <span>высота <b className="text-foreground">{lim.h[0]}–{lim.h[1]} мм</b></span>}
+              {lim.w && <span>ширина <b className="text-foreground">{lim.w[0]}–{lim.w[1]} мм</b></span>}
+              {lim.step && <span>{lim.step}</span>}
+              <button type="button" className="inline-flex items-center gap-0.5 text-primary hover:underline" onClick={() => setRulesOpen(v => !v)}><Info size={11} />{rulesOpen ? 'скрыть' : 'наценки и правила'}</button>
+            </div>
+            {rulesOpen && (
+              <div className="space-y-0.5 text-foreground/80">
+                {lim.notes.map(t => <p key={t}>• {t}</p>)}
+                {s.height.filter(m => m.range && (m.group || '') === (o.group || '')).map(m => <p key={m.id}>• {m.name}: +{m.pct}%</p>)}
+                {s.width.filter(m => m.range && (m.group || '') === (o.group || '')).map(m => <p key={m.id}>• {m.name}: {m.pct > 0 ? '+' : ''}{m.pct}%</p>)}
+              </div>
+            )}
+            {!rulesOpen && lim.notes.filter(t => !sizeWarn.includes(t)).length > 0 && <p>{lim.notes.filter(t => !sizeWarn.includes(t)).join(' · ')}</p>}
+            {sizeWarn.map(w => <p key={w} className="text-amber-700 font-medium">⚠ {w}</p>)}
           </div>
+        )}
+        {s && (
+          <label className="col-span-2 text-xs text-muted-foreground space-y-1">Открывание
+            <select className={selCls} value={o.openKind ?? 'swing'} onChange={e => onChange(x => { x.openKind = e.target.value; })}>
+              {kinds.map(k => <option key={k.key} value={k.key}>{k.label}</option>)}
+            </select>
+          </label>
         )}
         {groups.length > 0 && (
           <label className="col-span-2 text-xs text-muted-foreground space-y-1">Вид полотна
