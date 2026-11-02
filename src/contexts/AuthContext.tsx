@@ -50,6 +50,7 @@ export const MANAGER_POLICY: Record<string, 'edit' | 'view' | 'none'> = {
   sales: 'edit',
   debtors: 'edit',
   approvals: 'view',       // только статус своих сделок
+  estimate: 'edit',        // просчёт по прайсу PROFILDOORS — каждый считает свои
   finance: 'none',
   reports: 'view',
   salary: 'view',          // своя зарплата; «Все» в «Доступе» — зарплаты всех (только просмотр)

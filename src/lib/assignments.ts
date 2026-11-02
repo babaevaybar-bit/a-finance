@@ -26,6 +26,7 @@ export const LINKS: { value: string; label: string }[] = [
   { value: '', label: 'Без ссылки' },
   { value: '/profile', label: 'Мой профиль' },
   { value: '/sales', label: 'Продажи' },
+  { value: '/estimate', label: 'Просчёт' },
   { value: '/crm', label: 'CRM' },
   { value: '/training', label: 'Обучение' },
   { value: '/daily-report', label: 'Ежедневный отчёт' },
