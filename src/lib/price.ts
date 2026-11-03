@@ -34,7 +34,7 @@ export const money = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} �
 export const itemLabel = (it: Item) => [it.name, ...it.attrs].filter(Boolean).join(' · ');
 
 /** Строка расчёта: позиция прайса × количество (+ процентные наценки из того же раздела прайса) */
-export interface Line { itemId: number; qty: number; mods?: number[] }
+export interface Line { itemId: number; qty: number; mods?: number[]; auto?: boolean }
 
 export interface Opening {
   id: string;
@@ -51,6 +51,7 @@ export interface Opening {
   extras: Line[];          // короб, петли, замок, ручка, система… — из любого листа
   note: string;
   openKind?: string;       // открывание: swing | slide | pivot | penal | magic | book
+  hingeSys?: string;       // вариант открывания/петель из прайса серии (pd7000, e22, e30, krona…)
   leaves?: number;         // полотен в проёме (двустворчатые, раздвижные на 2–4 полотна); ширина — одного полотна
   finish?: string;         // покрытие / стекло / шпон (из списка категории)
   profile?: string;        // цвет алюминиевого профиля

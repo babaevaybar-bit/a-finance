@@ -12,6 +12,7 @@ import {
   type InfoBlock, type EstimateData, type Opening, type Item, type Line,
 } from '@/lib/price';
 import { sizeLimits, limitWarnings, OPEN_KINDS, SIZE_RULES } from '@/lib/sizeRules';
+import { hingeSystems, currentSystem, hingeFamilyOf, boxKeyOf, boxItemMatches, orderNotes, BOX_LABEL, type BoxKey } from '@/lib/kit';
 import { listEstimates, saveEstimate, deleteEstimate, type EstimateRow } from '@/lib/estimates';
 import { openKp } from '@/lib/kp';
 import { Info, Calculator, Copy, FileText, FolderOpen, Loader2, Plus, Save, Search, Trash2, X, ChevronDown } from 'lucide-react';
@@ -37,7 +38,7 @@ export default function EstimatePage() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [listOpen, setListOpen] = useState(false);
-  const [picker, setPicker] = useState<{ target: { opening: string | null }; group: string } | null>(null);
+  const [picker, setPicker] = useState<PickerState | null>(null);
 
   useEffect(() => { loadPrice().then(d => setIdx(new PriceIndex(d))).catch(() => toast.error('Не удалось загрузить прайс')); }, []);
   const [photos, setPhotos] = useState<Record<string, string>>({});
@@ -55,7 +56,18 @@ export default function EstimatePage() {
     setEst(prev => { const n = clone(prev); fn(n); return n; });
     setDirty(true);
   }, []);
-  const updOpening = (id: string, fn: (o: Opening) => void) => update(e => { const o = e.openings.find(x => x.id === id); if (o) fn(o); });
+  const updOpening = (id: string, fn: (o: Opening) => void) => update(e => { const o = e.openings.find(x => x.id === id); if (o) { fn(o); syncHinges(o); } });
+  /** Петли, добавленные по подсказке, сами пересчитываются по высоте, ширине, числу полотен и опциям */
+  function syncHinges(x: Opening) {
+    if (!idx) return;
+    const sys = currentSystem(x.sheet, x.model, x.openKind === 'book' ? 'book' : x.hingeSys);
+    if (!sys || !sys.families.length) return;
+    const n = sys.count(x.height, x.width, hasExtraLoad(idx, x)) * Math.max(1, x.leaves || 1);
+    for (const l of x.extras) {
+      const it = idx.byId.get(l.itemId);
+      if (it && l.auto !== false && hingeFamilyOf(it) && sys.families.includes(hingeFamilyOf(it)!)) l.qty = n;
+    }
+  }
 
   const totals = useMemo(() => idx ? calcEstimate(idx, est) : null, [idx, est]);
 
@@ -96,9 +108,12 @@ export default function EstimatePage() {
         let qty = 1;
         if (it.sheet === 'Петли') {
           const vv = o.variantId != null ? idx.variant.get(o.variantId) : undefined;
-          qty = (suggestHinges(it.name, o.sheet, vv?.model.code ?? '', o.height, o.width, hasExtraLoad(idx, o)) ?? 2) * Math.max(1, o.leaves || 1);
+          const sys = currentSystem(o.sheet, vv?.model.code ?? o.model, o.openKind === 'book' ? 'book' : o.hingeSys);
+          const fam = hingeFamilyOf(it);
+          qty = ((fam && sys?.families.includes(fam) ? sys.count(o.height, o.width, hasExtraLoad(idx, o)) : null) ?? suggestHinges(it.name, o.sheet, vv?.model.code ?? '', o.height, o.width, hasExtraLoad(idx, o)) ?? 2) * Math.max(1, o.leaves || 1);
         }
-        o.extras.push({ itemId: it.id, qty, mods: idx.autoMods(it, o.height, o.width, o.leaves || 1, o.openKind || 'swing') });
+        o.extras.push({ itemId: it.id, qty, mods: idx.autoMods(it, o.height, o.width, o.leaves || 1, o.openKind || 'swing'), auto: it.sheet === 'Петли' ? true : undefined });
+        syncHinges(o);
       } else {
         e.items.push({ itemId: it.id, qty: 1, mods: [] });
       }
@@ -169,7 +184,7 @@ export default function EstimatePage() {
                 onSize={(k, v) => setSize(o, k, v)}
                 onRemove={() => update(e => { e.openings = e.openings.filter(x => x.id !== o.id); })}
                 onDuplicate={() => update(e => { const c = clone(o); c.id = newOpening().id; c.room = o.room ? `${o.room} (2)` : ''; e.openings.splice(i + 1, 0, c); })}
-                onPick={group => setPicker({ target: { opening: o.id }, group })} />
+                onPick={(group, filter) => setPicker({ target: { opening: o.id }, group, filter })} />
             ))}
             <Button variant="outline" className="w-full h-12 border-dashed" onClick={addOpening}><Plus size={15} className="mr-1.5" />{est.openings.length ? 'Добавить ещё проём' : 'Добавить проём'}</Button>
 
@@ -233,7 +248,7 @@ export default function EstimatePage() {
       </div>
 
       <PickerDialog idx={idx} state={picker} onClose={() => setPicker(null)} onPick={it => picker && addItem(picker.target, it)}
-        onGroup={g => setPicker(p => p ? { ...p, group: g } : p)} />
+        onGroup={g => setPicker(p => p ? { ...p, group: g, filter: undefined } : p)} />
       <ListDialog open={listOpen} onClose={() => setListOpen(false)} onOpen={openRow} currentId={meta.id} />
     </AppLayout>
   );
@@ -253,7 +268,7 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
   idx: PriceIndex; photos: Record<string, string>; o: Opening; n: number;
   onChange: (fn: (o: Opening) => void) => void;
   onSize: (k: 'height' | 'width' | 'leaves' | 'openKind', v: number | string) => void;
-  onRemove: () => void; onDuplicate: () => void; onPick: (group: string) => void;
+  onRemove: () => void; onDuplicate: () => void; onPick: (group: string, filter?: PickerState['filter']) => void;
 }) {
   const b = calcOpening(idx, o);
   const s = idx.series.get(o.sheet);
@@ -484,14 +499,17 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
             <Button key={g.key} size="sm" variant="outline" className="h-7 text-xs" onClick={() => onPick(g.key)}><Plus size={12} className="mr-0.5" />{g.label === 'Весь прайс' ? 'Другое' : g.label}</Button>
           ))}
         </div>
+        {s && o.model && <KitPanel idx={idx} o={o} onChange={onChange} onPick={onPick} />}
         {o.extras.map((l, k) => {
           const it = idx.byId.get(l.itemId);
           const vv = o.variantId != null ? idx.variant.get(o.variantId) : undefined;
-          const per = it?.sheet === 'Петли' ? suggestHinges(it.name, o.sheet, vv?.model.code ?? '', o.height, o.width, hasExtraLoad(idx, o)) : null;
+          const sys = currentSystem(o.sheet, vv?.model.code ?? o.model, o.openKind === 'book' ? 'book' : o.hingeSys);
+          const fam = it ? hingeFamilyOf(it) : null;
+          const per = fam && sys?.families.includes(fam) ? sys.count(o.height, o.width, hasExtraLoad(idx, o)) : null;
           const hint = per != null ? per * Math.max(1, o.leaves || 1) : null;
           return (
             <LineRow key={k} idx={idx} l={l} hint={hint != null && hint !== l.qty ? `по прайсу ${hint} шт` : undefined}
-              onQty={q => onChange(x => { x.extras[k].qty = q; })}
+              onQty={q => onChange(x => { x.extras[k].qty = q; x.extras[k].auto = false; })}
               onMods={m => onChange(x => { x.extras[k].mods = m; })}
               onRemove={() => onChange(x => { x.extras.splice(k, 1); })} />
           );
@@ -555,6 +573,83 @@ function LineRow({ idx, l, hint, onQty, onMods, onRemove }: { idx: PriceIndex; l
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Комплектация: петли, короб, замок по правилам прайса ────────────────────
+function KitPanel({ idx, o, onChange, onPick }: {
+  idx: PriceIndex; o: Opening; onChange: (fn: (o: Opening) => void) => void;
+  onPick: (group: string, filter?: PickerState['filter']) => void;
+}) {
+  const systems = hingeSystems(o.sheet, o.model);
+  if (!systems.length) return null;
+  const kind = o.openKind ?? 'swing';
+  if (kind !== 'swing' && kind !== 'book') return null;   // раздвижные/Pivot/Magic — петли не нужны, система выбирается отдельно
+  const sys = currentSystem(o.sheet, o.model, kind === 'book' ? 'book' : o.hingeSys)!;
+  const leaves = Math.max(1, o.leaves || 1);
+  const per = sys.count(o.height, o.width, hasExtraLoad(idx, o));
+  const need = per * leaves;
+  const lines = o.extras.map(l => ({ l, it: idx.byId.get(l.itemId) })).filter((x): x is { l: Line; it: Item } => !!x.it);
+  const hingeLines = lines.filter(x => hingeFamilyOf(x.it));
+  const okHinges = hingeLines.filter(x => sys.families.includes(hingeFamilyOf(x.it)!));
+  const badHinges = hingeLines.filter(x => !sys.families.includes(hingeFamilyOf(x.it)!));
+  const boxLines = lines.map(x => ({ ...x, key: boxKeyOf(x.it) })).filter(x => x.key);
+  const badBoxes = boxLines.filter(x => !sys.boxes.includes(x.key!));
+  const hingeItems = idx.data.catalog.filter(it => it.sheet === 'Петли' && it.kind === 'price' && sys.families.includes(hingeFamilyOf(it)!));
+  const series = idx.series.get(o.sheet);
+  const revOpt = sys.reverse ? series?.options.map(id => idx.byId.get(id)).find(it => it && /^Дверное полотно "?REVERSE"?$/i.test(it.name.trim())) : undefined;
+  const hasRev = !!revOpt && o.options.some(l => l.itemId === revOpt.id);
+  const notes = orderNotes(idx, o);
+  const addHinge = (it: Item) => onChange(x => {
+    x.extras = x.extras.filter(l => { const f = hingeFamilyOf(idx.byId.get(l.itemId)!); return !f; });
+    x.extras.push({ itemId: it.id, qty: need, auto: true });
+  });
+  return (
+    <div className="rounded-lg border border-primary/20 bg-primary/[0.03] p-2.5 space-y-2 text-xs">
+      {kind === 'swing' && systems.length > 1 && (
+        <label className="flex flex-wrap items-center gap-2"><span className="text-muted-foreground">Открывание и петли:</span>
+          <select className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={sys.key} onChange={e => onChange(x => { x.hingeSys = e.target.value; })}>
+            {systems.filter(x => x.key !== 'book').map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+          </select>
+        </label>
+      )}
+      {/* Петли */}
+      <div className="space-y-1">
+        <p><span className="font-medium">Петли:</span> {sys.included ? <span className="text-emerald-700">{sys.included} — {need} шт.</span> : <>нужно <b>{need} шт.</b>{leaves > 1 ? ` (${per} × ${leaves} полотна)` : ''}{sys.note ? <span className="text-muted-foreground"> · {sys.note}</span> : null}</>}</p>
+        {!sys.included && (okHinges.length ? (
+          <p className="text-emerald-700">✓ {okHinges.map(x => `${x.it.name.replace('Петля скрытой установки ', '')} — ${x.l.qty} шт.`).join('; ')}{okHinges.some(x => x.l.qty !== need) ? <span className="text-amber-700"> (по прайсу {need})</span> : null}</p>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {hingeItems.map(it => (
+              <button key={it.id} type="button" onClick={() => addHinge(it)} className="rounded-full border border-border bg-background px-2 py-0.5 hover:border-primary">
+                + {it.name.replace('Петля скрытой установки ', '').replace('Петля ', '')} · {money((it.price ?? 0) * need)}
+              </button>
+            ))}
+          </div>
+        ))}
+        {badHinges.map(x => <p key={x.it.id} className="text-amber-700">⚠ {x.it.name.replace('Петля скрытой установки ', '')} не подходит к «{sys.label}»</p>)}
+      </div>
+      {/* Короб */}
+      {sys.boxes.length > 0 && (
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="font-medium mr-1">Короб подходит:</span>
+            {sys.boxes.map(b => (
+              <button key={b} type="button" onClick={() => onPick('box', { box: b, series: o.sheet })}
+                className={`rounded-full border px-2 py-0.5 ${boxLines.some(x => x.key === b) ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:border-primary'}`}>{BOX_LABEL[b]}</button>
+            ))}
+          </div>
+          {badBoxes.map(x => <p key={x.it.id} className="text-amber-700">⚠ Короб {BOX_LABEL[x.key!]} не подходит к «{sys.label}» — нужен: {sys.boxes.map(b => BOX_LABEL[b]).join(', ')}</p>)}
+        </div>
+      )}
+      {sys.reverse && revOpt && !hasRev && (
+        <p className="text-amber-700">⚠ Открывание от себя — нужно полотно REVERSE.{' '}
+          <button type="button" className="underline text-primary" onClick={() => onChange(x => { x.options.push({ itemId: revOpt.id, qty: Math.max(1, x.leaves || 1) }); })}>Добавить (+{money((revOpt.price ?? 0) * leaves)})</button></p>
+      )}
+      {notes.map(nt => (
+        <p key={nt.text} className="text-foreground/80">• {nt.text}{nt.addIds && <> {' '}<button type="button" className="underline text-primary" onClick={() => onChange(x => { for (const id of nt.addIds!) x.extras.push({ itemId: id, qty: 1 }); })}>добавить</button></>}</p>
+      ))}
     </div>
   );
 }
@@ -631,18 +726,21 @@ function ModelGrid({ open, onClose, sheet, models, photos, wood, current, onPick
 }
 
 // ─── Выбор позиции из прайса ─────────────────────────────────────────────────
+interface PickerState { target: { opening: string | null }; group: string; filter?: { box: BoxKey; series: string } }
+
 function PickerDialog({ idx, state, onClose, onPick, onGroup }: {
-  idx: PriceIndex; state: { group: string } | null; onClose: () => void; onPick: (it: Item) => void; onGroup: (g: string) => void;
+  idx: PriceIndex; state: PickerState | null; onClose: () => void; onPick: (it: Item) => void; onGroup: (g: string) => void;
 }) {
+  const filter = state?.filter;
   const [q, setQ] = useState('');
   useEffect(() => { if (state) setQ(''); }, [state?.group]); // eslint-disable-line react-hooks/exhaustive-deps
   const group = PICK_GROUPS.find(g => g.key === state?.group) ?? PICK_GROUPS[PICK_GROUPS.length - 1];
   const list = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     return idx.data.catalog.filter(it => it.kind === 'price'
-      && (!group.sheets || group.sheets.includes(it.sheet))
+      && (filter ? boxItemMatches(it, filter.box, filter.series) : (!group.sheets || group.sheets.includes(it.sheet)))
       && words.every(w => `${itemLabel(it)} ${it.sheet} ${it.section} ${it.sub}`.toLowerCase().includes(w)));
-  }, [idx, group, q]);
+  }, [idx, group, q, filter]);
   const bySheet = useMemo(() => {
     const m = new Map<string, Item[]>();
     for (const it of list.slice(0, 400)) { const k = `${it.sheet}${it.section ? ' · ' + it.section : ''}`; if (!m.has(k)) m.set(k, []); m.get(k)!.push(it); }
@@ -651,7 +749,8 @@ function PickerDialog({ idx, state, onClose, onPick, onGroup }: {
   return (
     <Dialog open={!!state} onOpenChange={v => !v && onClose()}>
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-        <DialogHeader><DialogTitle>Добавить из прайса</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{filter ? `Короб ${BOX_LABEL[filter.box]} — что добавить` : 'Добавить из прайса'}</DialogTitle></DialogHeader>
+        {filter && <p className="text-xs text-muted-foreground -mt-2">Показаны только позиции этого короба (сам короб, наличники, доборы). Другие — во вкладках ниже.</p>}
         <div className="flex flex-wrap gap-1">
           {PICK_GROUPS.map(g => (
             <button key={g.key} type="button" onClick={() => onGroup(g.key)}
