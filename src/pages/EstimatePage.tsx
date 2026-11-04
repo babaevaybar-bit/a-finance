@@ -12,7 +12,7 @@ import {
   type InfoBlock, type EstimateData, type Opening, type Item, type Line,
 } from '@/lib/price';
 import { sizeLimits, limitWarnings, OPEN_KINDS, SIZE_RULES } from '@/lib/sizeRules';
-import { hingeSystems, currentSystem, hingeFamilyOf, boxKeyOf, boxItemMatches, orderNotes, BOX_LABEL, type BoxKey } from '@/lib/kit';
+import { hingeSystems, currentSystem, hingeFamilyOf, boxKeyOf, boxItemMatches, orderNotes, fitsOpening, emptyReason, BOX_LABEL, type BoxKey, type PickCtx } from '@/lib/kit';
 import { listEstimates, saveEstimate, deleteEstimate, type EstimateRow } from '@/lib/estimates';
 import { openKp } from '@/lib/kp';
 import { Info, Calculator, Copy, FileText, FolderOpen, Loader2, Plus, Save, Search, Trash2, X, ChevronDown } from 'lucide-react';
@@ -184,7 +184,7 @@ export default function EstimatePage() {
                 onSize={(k, v) => setSize(o, k, v)}
                 onRemove={() => update(e => { e.openings = e.openings.filter(x => x.id !== o.id); })}
                 onDuplicate={() => update(e => { const c = clone(o); c.id = newOpening().id; c.room = o.room ? `${o.room} (2)` : ''; e.openings.splice(i + 1, 0, c); })}
-                onPick={(group, filter) => setPicker({ target: { opening: o.id }, group, filter })} />
+                onPick={(group, filter) => setPicker({ target: { opening: o.id }, group, filter, ctx: o.sheet ? { sheet: o.sheet, model: o.model, openKind: o.openKind, hingeSys: o.hingeSys } : null })} />
             ))}
             <Button variant="outline" className="w-full h-12 border-dashed" onClick={addOpening}><Plus size={15} className="mr-1.5" />{est.openings.length ? 'Добавить ещё проём' : 'Добавить проём'}</Button>
 
@@ -274,7 +274,8 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
   const s = idx.series.get(o.sheet);
   const model = s?.models.find(m => m.code === o.model);
   const groups = s ? [...new Set(s.width.map(m => m.group).filter(Boolean))] : [];
-  const options = (s?.options ?? []).map(id => idx.byId.get(id)).filter((x): x is Item => !!x);
+  // в «Опциях полотна» — только опции самого полотна; короба, наличники, доборы — через «Короба»
+  const options = (s?.options ?? []).map(id => idx.byId.get(id)).filter((x): x is Item => !!x && !/^(Коробка|Наличник|Добор|Плинтус)|погонаж|^Притворная планка \d/i.test(x.name.trim()));
   const [showOpts, setShowOpts] = useState(o.options.length > 0);
   const [gridOpen, setGridOpen] = useState(false);
   const wood = /дуб|орех|шпон|карамель|сонома|тобакко/i.test(`${o.finish ?? ''} ${o.color}`);
@@ -421,7 +422,7 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
               {iBlocks.length > 0 && (
                 <button type="button" onClick={() => setInsertOpen(true)}
                   className={`h-9 rounded-md border px-3 text-sm ${o.insert ? 'border-primary bg-primary/5' : 'border-dashed border-border text-muted-foreground'}`}>
-                  {o.insert ? <>Вставка: <b>{o.insert}</b></> : 'Выбрать вставку'}
+                  {o.insert ? <>{iBlocks.every(b => /стекл/i.test(b.title)) ? 'Стекло' : 'Вставка'}: <b>{o.insert}</b></> : (iBlocks.every(b => /стекл/i.test(b.title)) ? 'Выбрать стекло' : 'Выбрать вставку')}
                 </button>
               )}
             </div>
@@ -449,8 +450,20 @@ function OpeningCard({ idx, photos, o, n, onChange, onSize, onRemove, onDuplicat
           return opt ? (opt.kind === 'pct' ? `+${opt.pct}%` : `+${money(opt.price ?? 0)}`) : '';
         }}
         onPick={(item, b) => { applyFinish(item, b.cat); setFinishOpen(false); }} />}
-      {s && <ChipsDialog open={insertOpen} onClose={() => setInsertOpen(false)} title="Вставка в полотно" blocks={iBlocks} current={o.insert}
-        onPick={item => { onChange(x => { x.insert = item; }); setInsertOpen(false); }} />}
+      {s && <ChipsDialog open={insertOpen} onClose={() => setInsertOpen(false)} title={iBlocks.every(b => /стекл/i.test(b.title)) ? "Стекло в полотне" : "Вставка в полотно"} blocks={iBlocks} current={o.insert}
+        onPick={(item, b) => { onChange(x => {
+          x.insert = item;
+          // PD: «Наценка на полотна с остеклением "Стекло 2"» — ставим/снимаем сами
+          const glassOpts = s.options.map(id => idx.byId.get(id)).filter((it): it is Item => !!it && /остеклени/i.test(it.name) && /Стекло \d/.test(it.name));
+          x.options = x.options.filter(l => !glassOpts.some(g => g.id === l.itemId));
+          const need = b.cat != null && b.cat >= 2 ? glassOpts.find(g => g.name.includes(`Стекло ${b.cat}`)) : undefined;
+          if (need) x.options.push({ itemId: need.id, qty: Math.max(1, x.leaves || 1) });
+        }); setInsertOpen(false); }}
+        priceFor={b => {
+          if (b.cat == null || b.cat < 2) return b.cat === 1 ? 'в цене' : '';
+          const g = s.options.map(id => idx.byId.get(id)).find(it => it && /остеклени/i.test(it.name) && it.name.includes(`Стекло ${b.cat}`));
+          return g ? `+${money(g.price ?? 0)}` : '';
+        }} />}
       {s && <ModelGrid open={gridOpen} onClose={() => setGridOpen(false)} sheet={s.sheet} models={s.models.map(m => m.code)} photos={photos} wood={wood}
         current={o.model} onPick={(code, p) => { chooseModel(code, p); setGridOpen(false); }} priceOf={code => s.models.find(m => m.code === code)?.variants[0]?.price ?? 0} />}
 
@@ -726,21 +739,26 @@ function ModelGrid({ open, onClose, sheet, models, photos, wood, current, onPick
 }
 
 // ─── Выбор позиции из прайса ─────────────────────────────────────────────────
-interface PickerState { target: { opening: string | null }; group: string; filter?: { box: BoxKey; series: string } }
+interface PickerState { target: { opening: string | null }; group: string; filter?: { box: BoxKey; series: string }; ctx?: PickCtx | null }
 
 function PickerDialog({ idx, state, onClose, onPick, onGroup }: {
   idx: PriceIndex; state: PickerState | null; onClose: () => void; onPick: (it: Item) => void; onGroup: (g: string) => void;
 }) {
   const filter = state?.filter;
+  const ctx = state?.ctx ?? null;
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => { setShowAll(false); }, [state?.group, state?.target.opening]); // eslint-disable-line react-hooks/exhaustive-deps
   const [q, setQ] = useState('');
   useEffect(() => { if (state) setQ(''); }, [state?.group]); // eslint-disable-line react-hooks/exhaustive-deps
   const group = PICK_GROUPS.find(g => g.key === state?.group) ?? PICK_GROUPS[PICK_GROUPS.length - 1];
   const list = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     return idx.data.catalog.filter(it => it.kind === 'price'
-      && (filter ? boxItemMatches(it, filter.box, filter.series) : (!group.sheets || group.sheets.includes(it.sheet)))
+      && (filter ? boxItemMatches(it, filter.box, filter.series)
+        : (ctx && !showAll && group.key !== 'all') ? fitsOpening(idx, it, group.key, ctx)
+        : (!group.sheets || group.sheets.includes(it.sheet)))
       && words.every(w => `${itemLabel(it)} ${it.sheet} ${it.section} ${it.sub}`.toLowerCase().includes(w)));
-  }, [idx, group, q, filter]);
+  }, [idx, group, q, filter, ctx, showAll]);
   const bySheet = useMemo(() => {
     const m = new Map<string, Item[]>();
     for (const it of list.slice(0, 400)) { const k = `${it.sheet}${it.section ? ' · ' + it.section : ''}`; if (!m.has(k)) m.set(k, []); m.get(k)!.push(it); }
@@ -751,6 +769,12 @@ function PickerDialog({ idx, state, onClose, onPick, onGroup }: {
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader><DialogTitle>{filter ? `Короб ${BOX_LABEL[filter.box]} — что добавить` : 'Добавить из прайса'}</DialogTitle></DialogHeader>
         {filter && <p className="text-xs text-muted-foreground -mt-2">Показаны только позиции этого короба (сам короб, наличники, доборы). Другие — во вкладках ниже.</p>}
+        {!filter && ctx && group.key !== 'all' && (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground -mt-1">
+            <input type="checkbox" checked={!showAll} onChange={e => setShowAll(!e.target.checked)} />
+            Только то, что подходит к серии {ctx.sheet}{ctx.model ? `, модель ${ctx.model}` : ''}
+          </label>
+        )}
         <div className="flex flex-wrap gap-1">
           {PICK_GROUPS.map(g => (
             <button key={g.key} type="button" onClick={() => onGroup(g.key)}
@@ -762,7 +786,8 @@ function PickerDialog({ idx, state, onClose, onPick, onGroup }: {
           <Input autoFocus className="pl-8" placeholder="Поиск: invisible, eclipse, touch, ручка sly…" value={q} onChange={e => setQ(e.target.value)} />
         </div>
         <div className="flex-1 overflow-y-auto -mx-2 px-2 space-y-3">
-          {bySheet.length === 0 && <p className="text-sm text-muted-foreground py-6 text-center">Ничего не найдено</p>}
+          {bySheet.length === 0 && <p className="text-sm text-muted-foreground py-6 text-center">{(!showAll && !q && ctx && emptyReason(group.key, ctx)) || 'Ничего не найдено'}</p>}
+          {!showAll && ctx && !filter && group.key === 'lock' && bySheet.length > 0 && <p className="text-[11px] text-muted-foreground">Touch, Wave и Vitra выбираются в «Опциях полотна» — там они сразу считаются с полотном.</p>}
           {bySheet.map(([k, items]) => (
             <div key={k}>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1 sticky top-0 bg-background py-0.5">{k}</p>

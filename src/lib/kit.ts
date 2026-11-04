@@ -146,13 +146,84 @@ export function boxItemMatches(it: Item, key: BoxKey, series: string): boolean {
   switch (key) {
     case 'mono': return it.sheet === monoSheet(series, false);
     case 'monoRev': return it.sheet === monoSheet(series, true);
-    case 'tele': return it.sheet === series && /телескоп/i.test(it.section);
-    case 'copl': return it.sheet === series && /компланарн/i.test(it.section) && !/reverse/.test(n);
-    case 'coplRev': return it.sheet === series && /компланарн/i.test(it.section) && /reverse/.test(n);
+    // погонаж серии: короб + наличники/доборы/планки того же раздела листа (разделы в прайсе подписаны не везде)
+    case 'tele': return it.sheet === series && (/телескоп/i.test(it.section) || (/коробка телескоп|наличник|добор|притворная планка 8\*30|плинтус/.test(n) && !/компланарн/i.test(it.section + n)));
+    case 'copl': return it.sheet === series && !/reverse/.test(n) && (/компланарн/i.test(it.section) || /компланарн/.test(n));
+    case 'coplRev': return it.sheet === series && /reverse/.test(n) && (/компланарн/i.test(it.section) || /компланарн/.test(n));
     case 'integral': return it.sheet === 'INTEGRAL';
     case 'integralRev': return it.sheet === 'INTEGRAL Reverse';
     case 'slim': return it.sheet === 'Короб SLIM';
     case 'u60': return it.sheet === 'Короб INVISIBLE 60U';
     default: return boxKeyOf(it) === key;
   }
+}
+
+// ─── Что показывать в «Добавить из прайса» для выбранной серии ──────────────
+export const ORANGE = ['P, N', 'PD', 'PE.O, NE.O', 'GE', 'SE.O'];
+const NO_LOCK_SHEET = ['AG', 'AT', 'Серия FT EI30'];          // замок в комплектации полотна / в цене блока
+const POLARIS_OK = ['Под покраску', 'GE', 'P, N', 'PD', 'PE.O, NE.O', 'SE.O']; // врезка под замок 190
+const SYS_SHEETS: Record<string, string[]> = {
+  slide: ['Раздвижные системы открывания'],
+  magic: ['Раздвижные системы "MAGIC"'],
+  book: ['Складные системы'],
+  pivot: ['Поворотные системы'],
+  penal: ['Системы "Пенал"'],
+};
+
+export interface PickCtx { sheet: string; model: string; openKind?: string; hingeSys?: string }
+
+/** Подходит ли позиция к серии/открыванию проёма. null — серия не выбрана, показываем всё */
+export function fitsOpening(idx: PriceIndex, it: Item, group: string, c: PickCtx | null): boolean {
+  if (!c || !c.sheet) return true;
+  const kind = c.openKind ?? 'swing';
+  switch (group) {
+    case 'box': {
+      const systems = hingeSystems(c.sheet, c.model);
+      const sys = kind === 'swing' || kind === 'book' ? currentSystem(c.sheet, c.model, kind === 'book' ? 'book' : c.hingeSys) : undefined;
+      const allowed = sys ? sys.boxes : [...new Set(systems.flatMap(s => s.boxes))];
+      if (!allowed.length) return false;
+      return allowed.some(k => boxItemMatches(it, k, c.sheet));
+    }
+    case 'hinge': {
+      if (kind !== 'swing' && kind !== 'book') return false;
+      const sys = currentSystem(c.sheet, c.model, kind === 'book' ? 'book' : c.hingeSys);
+      const f = hingeFamilyOf(it);
+      return !!sys && !!f && sys.families.includes(f);
+    }
+    case 'lock': {
+      if (it.sheet !== 'Замки') return false;
+      const n = it.name;
+      if (c.sheet === 'Серия FT EI30') return false;
+      if (NO_LOCK_SHEET.includes(c.sheet)) return /планка КМ/i.test(n);       // Krona в комплектации — докупается только ответная планка
+      if (/POLARIS/i.test(n)) return POLARIS_OK.includes(c.sheet);
+      if (/^(TOUCH|WAVE|VITRA)/i.test(n.trim())) return false;   // Touch, Wave, Vitra — комплектации полотна, выбираются в «Опциях полотна»
+      return true;   // KM, накладки, ответные планки
+    }
+    case 'handle':
+      return ORANGE.includes(c.sheet) ? it.sheet === 'Дверные ручки Orange' : it.sheet === 'Дверные ручки';
+    case 'sys':
+      return (SYS_SHEETS[kind] ?? []).includes(it.sheet);
+    case 'other':
+      if (it.sheet === 'Стеновые панели "EGGER"') return ORANGE.includes(c.sheet);
+      if (it.sheet === 'Стеновые панели V' || it.sheet === 'Плинтуса алюминиевые') return !ORANGE.includes(c.sheet);
+      return true;
+    default:
+      return true;
+  }
+}
+
+/** Почему в разделе пусто — объяснение для менеджера */
+export function emptyReason(group: string, c: PickCtx | null): string {
+  if (!c) return '';
+  const kind = c.openKind ?? 'swing';
+  if (group === 'hinge') {
+    if (kind !== 'swing' && kind !== 'book') return 'Для этого открывания петли не нужны — система открывания идёт отдельно.';
+    const sys = currentSystem(c.sheet, c.model, kind === 'book' ? 'book' : c.hingeSys);
+    if (sys?.included) return sys.included + '.';
+  }
+  if (group === 'lock' && c.sheet === 'Серия FT EI30') return 'В противопожарном блоке замок уже в цене.';
+  if (group === 'lock') return 'Touch, Wave и Vitra выбираются в «Опциях полотна».';
+  if (group === 'sys' && kind === 'swing') return 'Для распашной двери система открывания не нужна. Выберите в проёме другое открывание (раздвижное, «Книжка», Pivot…).';
+  if (group === 'box') return 'Для этого открывания отдельный короб в прайсе не указан.';
+  return '';
 }

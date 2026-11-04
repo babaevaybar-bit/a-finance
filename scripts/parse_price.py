@@ -126,19 +126,23 @@ def series_info(body):
         if re.match(r'^Серия\s+\S+$', l):
             ctx_series, ctx = l, ''
             continue
-        if re.match(r'^(Категория \d|Вставки|Цвета алюминиевого)', l) and ':' not in l.rstrip(':'):
+        if re.match(r'^(Категория \d|Вставки|Цвета алюминиевого|Остекление|Стекло \d)', l) and ':' not in l.rstrip(':'):
             ctx = l.rstrip(':').strip()
+            if ctx.startswith('Остекление'):
+                ctx = ''
+            elif re.match(r'^Стекло \d', ctx):
+                ctx = 'Вставки стекла: ' + ctx      # PD: «Стекло 1», «Стекло 2» — стекло в полотне, наценка за «Стекло 2»
             continue
         if l.startswith('Толщина'):
             continue
         m = re.match(r'^([^:]{2,160}):\s*(.+)$', l)
-        if m and ',' in m.group(2) or (m and re.search(r'NCS|RAL', m.group(2))):
+        if m and (',' in m.group(2) or re.search(r'NCS|RAL', m.group(2)) or ctx.startswith('Вставки стекла: ')):
             typ = m.group(1).strip()
             items = [x.strip().rstrip('.:').strip() for x in re.split(r',\s*', m.group(2)) if x.strip().rstrip('.:').strip()]
             if typ.startswith('Вставки') or typ.startswith('Цвета алюминиевого'):
                 ctx, typ = typ, 'Варианты'
             title = ' · '.join(x for x in (ctx_series, ctx) if x)
-            cat = re.search(r'Категория (\d)', ctx)
+            cat = re.search(r'(?:Категория|Стекло) (\d)', ctx)
             blk = next((b for b in blocks if b['title'] == title), None)
             if not blk:
                 blk = {'title': title, 'cat': int(cat.group(1)) if cat else None, 'insert': ctx.startswith('Вставки'), 'lists': []}
@@ -147,7 +151,7 @@ def series_info(body):
                 blk['models'] = items          # «Вставки стекла в полотно для моделей: 18, 19, 21»
             else:
                 blk['lists'].append({'type': typ, 'items': items})
-            if blk['insert'] and 'models' not in blk:
+            if blk['insert'] and 'models' not in blk and 'модел' in ctx:
                 nums = re.findall(r'\b\d+(?:\.\d+)?\b', ctx)
                 if nums:
                     blk['models'] = nums
