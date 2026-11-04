@@ -170,7 +170,7 @@ const SYS_SHEETS: Record<string, string[]> = {
   penal: ['Системы "Пенал"'],
 };
 
-export interface PickCtx { sheet: string; model: string; openKind?: string; hingeSys?: string }
+export interface PickCtx { sheet: string; model: string; openKind?: string; hingeSys?: string; finishCat?: number | null }
 
 /** Подходит ли позиция к серии/открыванию проёма. null — серия не выбрана, показываем всё */
 export function fitsOpening(idx: PriceIndex, it: Item, group: string, c: PickCtx | null): boolean {
@@ -182,6 +182,12 @@ export function fitsOpening(idx: PriceIndex, it: Item, group: string, c: PickCtx
       const sys = kind === 'swing' || kind === 'book' ? currentSystem(c.sheet, c.model, kind === 'book' ? 'book' : c.hingeSys) : undefined;
       const allowed = sys ? sys.boxes : [...new Set(systems.flatMap(s => s.boxes))];
       if (!allowed.length) return false;
+      // погонаж в двух ценах («Категория 1» / «Категория 2 и 3») — показываем под выбранное покрытие
+      const cm = it.name.match(/Категори[яи]\s*([\d\s,/и]+)/i);
+      if (cm && c.finishCat != null) {
+        const cats = (cm[1].match(/\d/g) ?? []).map(Number);
+        if (cats.length && !cats.includes(c.finishCat)) return false;
+      }
       return allowed.some(k => boxItemMatches(it, k, c.sheet));
     }
     case 'hinge': {

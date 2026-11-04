@@ -1,12 +1,12 @@
 import { OPEN_KINDS } from '@/lib/sizeRules';
-import { calcEstimate, itemLabel, money, modelPhotos, type EstimateData, type PriceIndex } from '@/lib/price';
+import { calcEstimate, itemLabel, money, modelPhotos, modelColorPhoto, modelDefaultPhoto, type ColorData, type EstimateData, type PriceIndex } from '@/lib/price';
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
 export interface KpMeta { number?: number | null; clientName: string; clientPhone: string; managerName: string; date: string; priceTitle: string }
 
 /** Коммерческое предложение по просчёту — открывается в новом окне, оттуда печать или «Сохранить как PDF». */
-export function openKp(idx: PriceIndex, e: EstimateData, photos: Record<string, string>, meta: KpMeta) {
+export function openKp(idx: PriceIndex, e: EstimateData, photos: Record<string, string>, colors: ColorData | null, meta: KpMeta) {
   const t = calcEstimate(idx, e);
   const rows: string[] = [];
   t.openings.forEach(({ o, b }, i) => {
@@ -14,7 +14,9 @@ export function openKp(idx: PriceIndex, e: EstimateData, photos: Record<string, 
     const lines: string[][] = [];
     if (vv) {
       const opts = [...b.fixedOptions.map(x => x.item.name + (x.qty > 1 ? ` ×${x.qty}` : '')), ...b.pctOptions.map(x => x.item.name)];
-      const ph = o.photo ?? modelPhotos(photos, o.sheet, o.model, /дуб|орех|шпон/i.test(o.color))[0]?.url;
+      const p0 = modelPhotos(photos, o.sheet, o.model, /дуб|орех|шпон/i.test(`${o.finish ?? ''} ${o.color}`));
+      const base = (o.photo && p0.find(p => p.url === o.photo)) || p0[0];
+      const ph = base ? ((colors && (modelColorPhoto(colors, base.name, o.finish, o.insert) ?? modelDefaultPhoto(colors, base.name))) || base.url) : o.photo;
       const title = `${(b.leaves ?? 1) > 1 ? `<b>${b.leaves} полотна в проёме</b><br>` : ''}Полотно ${esc(vv.series.sheet)}, модель ${esc(o.photoName || vv.model.code)}${vv.v.label ? ` · ${esc(vv.v.label)}` : ''}`;
       lines.push([
         `${ph ? `<img class="door" src="${esc(ph)}" referrerpolicy="no-referrer">` : ''}${title}${[o.openKind && o.openKind !== 'swing' && `Открывание: ${OPEN_KINDS.find(k => k.key === o.openKind)?.label ?? ''}`, o.finish && `Отделка: ${o.finish}`, o.insert && `Вставка: ${o.insert}`, o.profile && `Профиль: ${o.profile}`, o.color].filter(Boolean).map(t => `<br><small>${esc(t)}</small>`).join('')}${opts.length ? `<br><small>${esc(opts.join('; '))}</small>` : ''}`,
@@ -49,7 +51,7 @@ export function openKp(idx: PriceIndex, e: EstimateData, photos: Record<string, 
   td.r, th.r { text-align: right; white-space: nowrap; }
   td.num { text-align: center; font-weight: 700; }
   small { color: #6b7280; }
-  img.door { float: left; height: 90px; width: 38px; object-fit: contain; margin: 0 8px 2px 0; background: #fff; }
+  img.door { float: left; height: 110px; width: 46px; object-fit: contain; margin: 0 8px 2px 0; background: #fff; }
   tr { page-break-inside: avoid; }
   .total { margin-top: 12px; margin-left: auto; width: 320px; }
   .total td { border: none; padding: 3px 0; font-size: 13px; }

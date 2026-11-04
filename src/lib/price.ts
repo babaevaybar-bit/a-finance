@@ -126,10 +126,12 @@ export class PriceIndex {
     return this.data.catalog.filter(x => x.kind === 'pct' && x.sheet === it.sheet && x.id !== it.id && (!door || x.section === it.section));
   }
   /** Наценки, которые сами подходят по высоте/ширине полотна */
-  autoMods(it: Item, height: number, width: number, leaves = 1, kind = 'swing'): number[] {
+  autoMods(it: Item, height: number, width: number, leaves = 1, kind = 'swing', finishCat: number | null = null): number[] {
     const total = width * leaves;   // ширина проёма по полотнам
     return this.modsFor(it).filter(m => {
       const n = m.name.toLowerCase();
+      // «Наценка на погонаж в покрытии "Категория 2 и 3"», «…в эмали на заказ "Категория 2"» — по выбранному покрытию полотна
+      if (/погонаж/.test(n) && /категори/.test(n)) return finishCat != null && finishCat >= 2 && (n.match(/\d/g) ?? []).map(Number).includes(finishCat);
       // двустворчатый распашной проём: «Наценка за распашное исполнение», «Распашное исполнение короба до 2000 мм / свыше 2000 до 4000 мм»
       if (/распашн/.test(n) && /(исполнени|короб)/.test(n)) {
         if (leaves < 2 || kind !== 'swing') return false;
@@ -333,3 +335,49 @@ export function categoryOption(idx: PriceIndex, s: Series, cat: number): Item | 
   return null;
 }
 
+
+// ─── Фото по цвету / стеклу и образцы цветов (profildoors.ru) ────────────────
+// src/data/door-colors.json: { m: { «модель» : [фото по умолчанию, { «цвет/стекло»: фото }] }, s: { «серия»: { «цвет»: образец } } }
+// Пути сжаты: «w:» = /upload/dev2fun.imagecompress/webp/resize_cache/iblock/, «r:» = /upload/resize_cache/iblock/, «|» = /201_490_…/
+/** m: модель → [фото по умолчанию, {цвет: фото}, {стекло: фото}?]; s: серия(:profile|:glass) → {название: образец} */
+export interface ColorData { m: Record<string, [string, Record<string, string>, Record<string, string>?]>; s: Record<string, Record<string, string>> }
+let colorCache: Promise<ColorData> | null = null;
+export function loadColors(): Promise<ColorData> {
+  if (!colorCache) colorCache = import('@/data/door-colors.json').then(m => (m.default ?? m) as unknown as ColorData).catch(() => ({ m: {}, s: {} }));
+  return colorCache;
+}
+const SITE_URL = 'https://profildoors.ru';
+export function colorUrl(p: string): string {
+  if (!p) return '';
+  if (p.startsWith('http')) return p;
+  const x = p.replace(/^w:/, '/upload/dev2fun.imagecompress/webp/resize_cache/iblock/').replace(/^r:/, '/upload/resize_cache/iblock/').replace('|', '/201_490_140cd750bba9870f18aada2478b24840a/');
+  return SITE_URL + (x.startsWith('/') ? x : '/' + x);
+}
+/** «Шпон Натуральный Дуб» = «Натуральный Дуб», «Лайт Грей "Элегант"» = «Лайт Грей Элегант», «Светло-серый» = «Лайт Грей» */
+export function colorKey(name: string): string {
+  return name.toLowerCase().replace(/ё/g, 'е').replace(/["«»]/g, '').replace(/\(.*?\)/g, '').replace(/^шпон\s+/, '')
+    .replace('светло-серый', 'лайт грей').replace(/\s+/g, ' ').trim();
+}
+/** Фото модели в выбранном цвете/стекле; null — такого фото на сайте нет */
+export function modelColorPhoto(c: ColorData, modelName: string, finish?: string, insert?: string): string | null {
+  const rec = c.m[modelName.toLowerCase().replace(/\s+/g, '')];
+  if (!rec) return null;
+  const find = (map: Record<string, string> | undefined, name?: string) => {
+    if (!map || !name) return null;
+    const k = colorKey(name);
+    const hit = Object.entries(map).find(([n]) => colorKey(n) === k) ?? Object.entries(map).find(([n]) => k.includes(colorKey(n)) || colorKey(n).includes(k));
+    return hit ? colorUrl(hit[1]) : null;
+  };
+  return find(rec[1], finish) ?? find(rec[2], insert) ?? find(rec[2], finish);
+}
+export function modelDefaultPhoto(c: ColorData, modelName: string): string | null {
+  const rec = c.m[modelName.toLowerCase().replace(/\s+/g, '')];
+  return rec?.[0] ? colorUrl(rec[0]) : null;
+}
+/** Образец цвета (кружок) для серии */
+export function swatchFor(c: ColorData, sheet: string, name: string): string | null {
+  const keys = sheet === 'PE.O, NE.O' ? ['PE.O', 'NE.O'] : sheet === 'P, N' ? ['P.O', 'N.O'] : sheet === 'Под покраску' ? ['PAINT'] : sheet === 'Серия FT EI30' ? ['SE', 'VE'] : [sheet];
+  const k = colorKey(name);
+  for (const tab of ['', ':glass', ':profile']) for (const s of keys) for (const [n, u] of Object.entries(c.s[s + tab] ?? {})) if (colorKey(n) === k) return colorUrl(u);
+  return null;
+}
