@@ -42,6 +42,8 @@ export default function MessagesPage() {
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
   // Текущие сделки из «Дозаполните сделки» — чтобы показать, что уже исправлено
   const [lineDeals, setLineDeals] = useState<Record<string, Deal>>({});
+  // пока не проверили сделки — «Дозаполните сделки» не показываем, иначе уже исправленные мелькают и пропадают
+  const [lineReady, setLineReady] = useState(false);
   // руководитель видит «Дозаполните сделки» всех — подписываем, чьё это
   const [mgrNames, setMgrNames] = useState<Record<string, string>>({});
   useEffect(() => { if (canViewAllManagers) getManagers().then(ms => setMgrNames(Object.fromEntries(ms.map(m => [m.id, m.name])))).catch(() => {}); }, [canViewAllManagers]);
@@ -61,7 +63,7 @@ export default function MessagesPage() {
   const refreshLineDeals = useCallback(async (list: AppNotification[]) => {
     const names = [...new Set(list.filter(n => n.type === 'incomplete_deals')
       .flatMap(n => (n.body ?? '').split('\n').filter(l => l.startsWith('•')).map(lineName)).filter(Boolean))];
-    if (!names.length) { setLineDeals({}); return; }
+    if (!names.length) { setLineDeals({}); setLineReady(true); return; }
     const map: Record<string, Deal> = {};
     for (let i = 0; i < names.length; i += 100) {
       const { data } = await supabase.from('deals').select('*').in('client_name', names.slice(i, i + 100))
@@ -74,8 +76,9 @@ export default function MessagesPage() {
       if (d) map[n] = d;
     }
     setLineDeals(map);
+    setLineReady(true);
   }, []);
-  useEffect(() => { refreshLineDeals(items).catch(() => {}); }, [items, refreshLineDeals]);
+  useEffect(() => { refreshLineDeals(items).catch(() => setLineReady(true)); }, [items, refreshLineDeals]);
 
   /** Что из перечисленного в строке ещё не заполнено; null — сделка не найдена */
   function lineStatus(line: string): string[] | null {
@@ -190,8 +193,16 @@ export default function MessagesPage() {
     const ls = [...new Set(e.items.flatMap(i => (i.body ?? '').split('\n').filter(l => l.startsWith('•'))))];
     return ls.length > 0 && ls.every(l => { const x = lineStatus(l); return x !== null && x.length === 0; });
   };
+  // всё уже исправлено — помечаем такие «Дозаполните сделки» прочитанными, чтобы не горели в счётчике
+  useEffect(() => {
+    if (!lineReady) return;
+    const ids = entries.filter(e => e.type === 'incomplete_deals' && allFixed(e)).flatMap(e => e.items.filter(i => !i.is_read).map(i => i.id));
+    if (!ids.length) return;
+    setItems(prev => prev.map(i => ids.includes(i.id) ? { ...i, is_read: true } : i));
+    markNotificationsRead(ids).then(notifyCountersChanged).catch(() => {});
+  }, [lineReady, lineDeals]); // eslint-disable-line react-hooks/exhaustive-deps
   const list = [
-    ...visible.filter(e => e.type === 'incomplete_deals' && !allFixed(e)),
+    ...visible.filter(e => e.type === 'incomplete_deals' && lineReady && !allFixed(e)),
     ...visible.filter(e => e.type !== 'incomplete_deals'),
   ];
 
