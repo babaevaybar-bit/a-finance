@@ -366,7 +366,7 @@ export function modelColorPhoto(c: ColorData, modelName: string, finish?: string
     if (!map || !name) return null;
     const k = colorKey(name);
     const hit = Object.entries(map).find(([n]) => colorKey(n) === k) ?? Object.entries(map).find(([n]) => k.includes(colorKey(n)) || colorKey(n).includes(k));
-    return hit ? colorUrl(hit[1]) : null;
+    return hit && hit[1] ? colorUrl(hit[1]) : null;
   };
   return find(rec[1], finish) ?? find(rec[2], insert) ?? find(rec[2], finish);
 }
@@ -379,5 +379,7 @@ export function swatchFor(c: ColorData, sheet: string, name: string): string | n
   const keys = sheet === 'PE.O, NE.O' ? ['PE.O', 'NE.O'] : sheet === 'P, N' ? ['P.O', 'N.O'] : sheet === 'Под покраску' ? ['PAINT'] : sheet === 'Серия FT EI30' ? ['SE', 'VE'] : [sheet];
   const k = colorKey(name);
   for (const tab of ['', ':glass', ':profile']) for (const s of keys) for (const [n, u] of Object.entries(c.s[s + tab] ?? {})) if (colorKey(n) === k) return colorUrl(u);
+  // у серии своих образцов нет (PD, P/N…) — те же эмали фабрики берём из других серий
+  for (const [sk, m] of Object.entries(c.s)) if (!sk.includes(':')) for (const [n, u] of Object.entries(m)) if (colorKey(n) === k) return colorUrl(u);
   return null;
 }

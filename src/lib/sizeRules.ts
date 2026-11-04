@@ -106,7 +106,27 @@ export const SIZE_RULES: Record<string, SeriesRules> = {
 const norm = (x: string) => x.toLowerCase().replace(/["«»]/g, '').replace(/рифленн/g, 'рифлен').trim();
 const modelKey = (code: string) => code.trim().split(/[\s/(]/)[0];
 
-export interface Limits { h: R | null; w: R | null; notes: string[]; step: string; unavailable?: string }
+export interface Limits { h: R | null; w: R | null; notes: string[]; step: string; unavailable?: string; stepH?: number; stepW?: number; stepHHigh?: number }
+
+/** Шаг размеров числом (из правил серии): высота, ширина и шаг высоты выше 2700 мм */
+function numericSteps(text: string, kind: OpenKind, stationary: boolean): { h?: number; w?: number; hHigh?: number } {
+  if (stationary) return { h: 1, w: 1 };
+  if (/по высоте 10 мм/.test(text)) return { h: 10, w: 50 };
+  if (/Шаг полотна 100 мм/.test(text)) return { h: 100, w: 100 };
+  const base = /Шаг 50 мм/.test(text) ? 50 : undefined;
+  if (!base) return {};
+  const w = (kind === 'magic' || kind === 'book') && /шаг по ширине 100 мм/.test(text) ? 100 : base;
+  return { h: base, w, hHigh: /выше 2700 мм — шаг 5 мм/.test(text) ? 5 : undefined };
+}
+/** Ближайшие допустимые значения по шагу (ниже и выше) */
+export function stepNeighbours(v: number, step: number, range?: R | null): number[] {
+  if (!step || step <= 1 || v % step === 0) return [];
+  const lo = Math.floor(v / step) * step, hi = lo + step;
+  return [lo, hi].filter(x => !range || (x >= range[0] && x <= range[1]));
+}
+export function heightStep(l: Limits, height: number): number | undefined {
+  return l.stepHHigh && height > 2700 ? l.stepHHigh : l.stepH;
+}
 
 /** Ограничения для текущего проёма; finishType — тип списка, где найдено выбранное стекло/покрытие */
 export function sizeLimits(s: Series, o: Opening, finishType: string, finishCat: number | null, hasMirror: boolean): Limits {
@@ -155,7 +175,8 @@ export function sizeLimits(s: Series, o: Opening, finishType: string, finishCat:
     unavailable = undefined;
     notes.push(...(g ? [g.note] : grp.w.map(x => x.note)));
   }
-  return { h, w, notes: [...new Set(notes)], step, unavailable };
+  const ns = numericSteps(step, kind, !!grp);
+  return { h, w, notes: [...new Set(notes)], step, unavailable, stepH: ns.h, stepW: ns.w, stepHHigh: ns.hHigh };
 }
 
 export function limitWarnings(l: Limits, o: Opening): string[] {
@@ -163,5 +184,8 @@ export function limitWarnings(l: Limits, o: Opening): string[] {
   if (l.unavailable) out.push(l.unavailable);
   if (l.h && o.height && (o.height < l.h[0] || o.height > l.h[1])) out.push(`Высота ${o.height} мм — можно ${l.h[0]}–${l.h[1]} мм`);
   if (l.w && o.width && (o.width < l.w[0] || o.width > l.w[1])) out.push(`Ширина ${o.width} мм — можно ${l.w[0]}–${l.w[1]} мм`);
+  const sh = o.height ? heightStep(l, o.height) : undefined;
+  if (sh && sh > 1 && o.height % sh) out.push(`Высота ${o.height} мм не по шагу ${sh} мм`);
+  if (l.stepW && l.stepW > 1 && o.width && o.width % l.stepW) out.push(`Ширина ${o.width} мм не по шагу ${l.stepW} мм`);
   return out;
 }

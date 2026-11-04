@@ -210,6 +210,10 @@ def build(text):
                     mdl['variants'].append({'id': uid, 'label': label, 'price': it['price'], 'unit': it['unit']})
             else:
                 rec = {k: it[k] for k in ('id', 'sheet', 'section', 'sub', 'name', 'attrs', 'unit', 'price', 'pct', 'kind')}
+                # «Категория 1"""» под заголовком «Притворная планка» — это сама планка в покрытии этой категории
+                cm = re.match(r'^Категория\s*(\d)["»]*$', rec['name'].strip())
+                if cm and 'Притворная планка' in (rec['sub'] or ''):
+                    rec['name'] = f'Притворная планка "Категория {cm.group(1)}"'
                 if it['kind'] == 'pct':
                     rec['range'] = rng(n)
                 out['catalog'].append(rec)

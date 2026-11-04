@@ -11,7 +11,7 @@ import {
   suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, loadColors, modelColorPhoto, modelDefaultPhoto, swatchFor, type ColorData, finishBlocks, insertBlocks, categoryOption, finishCategory,
   type InfoBlock, type EstimateData, type Opening, type Item, type Line,
 } from '@/lib/price';
-import { sizeLimits, limitWarnings, OPEN_KINDS, SIZE_RULES } from '@/lib/sizeRules';
+import { sizeLimits, limitWarnings, heightStep, OPEN_KINDS, SIZE_RULES } from '@/lib/sizeRules';
 import { hingeSystems, currentSystem, hingeFamilyOf, boxKeyOf, boxItemMatches, orderNotes, fitsOpening, emptyReason, BOX_LABEL, type BoxKey, type PickCtx } from '@/lib/kit';
 import { listEstimates, saveEstimate, deleteEstimate, type EstimateRow } from '@/lib/estimates';
 import { openKp } from '@/lib/kp';
@@ -290,7 +290,6 @@ function OpeningCard({ idx, photos, colors, o, n, onChange, onSize, onRemove, on
   const model = s?.models.find(m => m.code === o.model);
   const groups = s ? [...new Set(s.width.map(m => m.group).filter(Boolean))] : [];
   // в «Опциях полотна» — только опции самого полотна; короба, наличники, доборы — через «Короба»
-  const options = (s?.options ?? []).map(id => idx.byId.get(id)).filter((x): x is Item => !!x && !/^(Коробка|Наличник|Добор|Плинтус)|погонаж|^Притворная планка \d/i.test(x.name.trim()));
   const [showOpts, setShowOpts] = useState(o.options.length > 0);
   const [gridOpen, setGridOpen] = useState(false);
   const wood = /дуб|орех|шпон|карамель|сонома|тобакко/i.test(`${o.finish ?? ''} ${o.color}`);
@@ -305,13 +304,45 @@ function OpeningCard({ idx, photos, colors, o, n, onChange, onSize, onRemove, on
   const mirror = o.options.some(l => /зеркальн/i.test(idx.byId.get(l.itemId)?.name ?? ''));
   const lim = s ? sizeLimits(s, o, finType, finCat, mirror) : null;
   const sizeWarn = lim ? limitWarnings(lim, o) : [];
+  const stH = lim && o.height ? heightStep(lim, o.height) : lim?.stepH;
+  const stW = lim?.stepW;
+  /** Размер не по шагу фабрики — после ввода сам округляем до ближайшего допустимого */
+  const snap = (key: 'height' | 'width') => {
+    const v = o[key];
+    const st = key === 'height' ? (lim && v ? heightStep(lim, v) : undefined) : stW;
+    if (!v || !st || st <= 1 || v % st === 0) return;
+    const r = key === 'height' ? lim?.h : lim?.w;
+    let nv = Math.round(v / st) * st;
+    if (r) nv = Math.min(Math.max(nv, Math.ceil(r[0] / st) * st), Math.floor(r[1] / st) * st);
+    onSize(key, nv);
+    toast.info(`${key === 'height' ? 'Высота' : 'Ширина'} ${v} → ${nv} мм (шаг ${st} мм)`);
+  };
   const onlyKinds = s ? (SIZE_RULES[s.sheet]?.models?.[o.model.trim()]?.only) : undefined;
   const kinds = s ? OPEN_KINDS.filter(k => (onlyKinds ? onlyKinds.includes(k.key) : !!SIZE_RULES[s.sheet]?.w[k.key]) || k.key === 'swing') : [];
   const catNow = variant?.label.match(/Категория (\d)/)?.[1];
+  const optCat = finCat ?? (catNow ? Number(catNow) : 1);
+  // в «Опциях полотна» — только опции самого полотна; короба, наличники, доборы — через «Короба».
+  // Наценки за категорию покрытия и «Стекло 2» ставятся сами при выборе цвета/стекла; позиции «Категория N» — только под выбранный цвет
+  const options = (s?.options ?? []).map(id => idx.byId.get(id)).filter((x): x is Item => {
+    if (!x) return false;
+    const nm = x.name.trim();
+    if (/^(Коробка|Наличник|Добор|Плинтус)|погонаж|^Притворная планка \d/i.test(nm)) return false;
+    if (/^Наценка на полотна (в покрытии|с остеклением)/i.test(nm)) return false;
+    const c = nm.match(/Категори[яи]\s*"?(\d)/i)?.[1];
+    return !c || Number(c) === optCat;
+  });
   /** Выбор покрытия/стекла: сам переключает категорию (вариант цены) или ставит/снимает наценку за категорию */
   const applyFinish = (finish: string, cat: number | null) => onChange(x => {
     x.finish = finish;
     if (!s || cat == null) return;
+    // «Притворная планка "Категория 1"» → такая же позиция под новую категорию
+    x.options = x.options.map(l => {
+      const it = idx.byId.get(l.itemId);
+      const m = it?.name.match(/^(.*Категори[яи]\s*"?)(\d)(.*)$/i);
+      if (!it || !m || Number(m[2]) === cat) return l;
+      const twin = s.options.map(id => idx.byId.get(id)).find(t => t && t.name === `${m[1]}${cat}${m[3]}` && t.attrs.join() === it.attrs.join());
+      return twin ? { ...l, itemId: twin.id } : l;
+    });
     const m = s.models.find(mm => mm.code === x.model);
     const v = m?.variants.find(vv => new RegExp(`Категория ${cat}(\\D|$)`).test(vv.label));
     if (v) { x.variantId = v.id; return; }
@@ -360,7 +391,7 @@ function OpeningCard({ idx, photos, colors, o, n, onChange, onSize, onRemove, on
     const m = new Map<string, Item[]>();
     for (const it of options) { const k = it.section || 'Опции'; if (!m.has(k)) m.set(k, []); m.get(k)!.push(it); }
     return [...m.entries()];
-  }, [o.sheet]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [o.sheet, optCat]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="rounded-xl border border-border bg-card p-3 space-y-3">
@@ -413,15 +444,15 @@ function OpeningCard({ idx, photos, colors, o, n, onChange, onSize, onRemove, on
             <span className="block">{fBlocks.length ? 'Покрытие' : 'Вариант'}{iBlocks.length ? ' / стекло' : ''}</span>
             <button type="button" disabled={!model} onClick={() => { if (fBlocks.length || iBlocks.length) setFinishOpen(true); }}
               className={`${selCls} text-left truncate ${o.finish || o.insert ? 'border-primary text-foreground' : 'text-muted-foreground'} disabled:opacity-50`}>
-              {[o.finish, o.insert].filter(Boolean).join(' · ') || (variant?.label ? `${variant.label}${fBlocks.length ? ' — выбрать' : ''}` : (fBlocks.length ? 'Выбрать' : 'стандарт'))}
+              {(o.finish || o.insert) ? [o.finish || (fBlocks.length ? 'цвет не выбран' : ''), o.insert].filter(Boolean).join(' · ') : (variant?.label ? `${variant.label}${fBlocks.length ? ' — выбрать' : ''}` : (fBlocks.length ? 'Выбрать' : 'стандарт'))}
             </button>
           </div>
         )}
         <label className="text-xs text-muted-foreground space-y-1">Высота, мм
-          <Input type="number" step={50} className="h-9" value={o.height || ''} onChange={e => onSize('height', Number(e.target.value) || 0)} />
+          <Input type="number" step={stH || 50} className="h-9" value={o.height || ''} onChange={e => onSize('height', Number(e.target.value) || 0)} onBlur={() => snap('height')} />
         </label>
         <label className="text-xs text-muted-foreground space-y-1">{(o.leaves ?? 1) > 1 ? 'Ширина 1 полотна' : 'Ширина, мм'}
-          <Input type="number" step={50} className="h-9" value={o.width || ''} onChange={e => onSize('width', Number(e.target.value) || 0)} />
+          <Input type="number" step={stW || 50} className="h-9" value={o.width || ''} onChange={e => onSize('width', Number(e.target.value) || 0)} onBlur={() => snap('width')} />
         </label>
         {s && lim && (
           <div className="col-span-2 md:col-span-6 -mt-1 rounded-md bg-muted/40 px-2.5 py-1.5 text-[11px] text-muted-foreground space-y-0.5">
