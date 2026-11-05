@@ -36,7 +36,7 @@ export function openKp(idx: PriceIndex, e: EstimateData, photos: Record<string, 
     }
     for (const x of b.extras) {
       lines.push([
-        `${esc(itemLabel(x.item))}${x.mods.length ? `<br><small>${esc(x.mods.map(m => m.name).join('; '))}</small>` : ''}`,
+        `${esc(itemLabel(x.item))}${(() => { const c = o.extras.find(l => l.itemId === x.item.id && l.color)?.color; return c ? `<br><small>Цвет: ${esc(c)}</small>` : ''; })()}${x.mods.length ? `<br><small>${esc(x.mods.map(m => m.name).join('; '))}</small>` : ''}`,
         '', esc(x.item.unit || 'шт'), money(x.unit), String(+(x.qty * o.qty).toFixed(2)), money(x.sum * o.qty),
       ]);
     }

@@ -68,11 +68,14 @@ export default function EstimatePage() {
   /** Петли, добавленные по подсказке, сами пересчитываются по высоте, ширине, числу полотен и опциям; наценка на погонаж — по покрытию */
   function syncHinges(x: Opening) {
     if (!idx) return;
-    const cat = catOf(x);
+    const doorCat = catOf(x);
     for (const l of x.extras) {
       const it = idx.byId.get(l.itemId); if (!it) continue;
       const catMods = idx.modsFor(it).filter(m => /погонаж/i.test(m.name) && /категори/i.test(m.name)).map(m => m.id);
       if (!catMods.length) continue;
+      // цвет погонажа: свой у строки (короб в перламутре) или как у двери
+      const ls = idx.series.get(it.sheet) ?? idx.series.get(x.sheet);
+      const cat = l.color && ls ? finishCategory(ls, l.color) : doorCat;
       const want = idx.autoMods(it, x.height, x.width, x.leaves || 1, x.openKind || 'swing', cat).filter(id => catMods.includes(id));
       l.mods = [...(l.mods ?? []).filter(id => !catMods.includes(id)), ...want];
     }
@@ -737,7 +740,12 @@ function OpeningCard({ idx, photos, colors, o, n, onChange, onSize, onRemove, on
             <LineRow key={k} idx={idx} l={l} hint={hint != null && hint !== l.qty ? `по прайсу ${hint} шт` : undefined}
               onQty={q => onChange(x => { x.extras[k].qty = q; x.extras[k].auto = false; })}
               onMods={m => onChange(x => { x.extras[k].mods = m; })}
-              onRemove={() => onChange(x => { x.extras.splice(k, 1); })} />
+              onRemove={() => onChange(x => { x.extras.splice(k, 1); })}
+              colorCtl={it && idx.modsFor(it).some(m => /погонаж/i.test(m.name) && /категори/i.test(m.name)) ? {
+                door: o.finish, value: l.color,
+                blocks: (() => { const ss = idx.series.get(it.sheet) ?? idx.series.get(o.sheet); return ss ? finishBlocks(ss) : []; })(),
+                onChange: v => onChange(x => { x.extras[k].color = v; }),
+              } : undefined} />
           );
         })}
       </div>
@@ -773,10 +781,15 @@ const Row = ({ l, v, bold }: { l: string; v: string; bold?: boolean }) => (
   <div className={`flex justify-between gap-3 ${bold ? 'font-medium text-foreground' : 'text-muted-foreground'}`}><span className="min-w-0">{l}</span><span className="whitespace-nowrap">{v}</span></div>
 );
 
-function LineRow({ idx, l, hint, onQty, onMods, onRemove }: { idx: PriceIndex; l: Line; hint?: string; onQty: (q: number) => void; onMods: (m: number[]) => void; onRemove: () => void }) {
+interface ColorCtl { door?: string; blocks: InfoBlock[]; value?: string; onChange: (v: string | undefined) => void }
+function LineRow({ idx, l, hint, onQty, onMods, onRemove, colorCtl }: { idx: PriceIndex; l: Line; hint?: string; onQty: (q: number) => void; onMods: (m: number[]) => void; onRemove: () => void; colorCtl?: ColorCtl }) {
   const it = idx.byId.get(l.itemId);
   if (!it) return null;
-  const mods = idx.modsFor(it);
+  const allMods = idx.modsFor(it);
+  const isCatMod = (m: Item) => /погонаж/i.test(m.name) && /категори/i.test(m.name);
+  // наценку за покрытие погонажа выбираем цветом погонажа, а не галочкой
+  const mods = colorCtl ? allMods.filter(m => !isCatMod(m)) : allMods;
+  const catMod = colorCtl ? allMods.find(m => isCatMod(m) && (l.mods ?? []).includes(m.id)) : undefined;
   const sum = (it.price ?? 0) * (l.mods ?? []).reduce((a, id) => a * (1 + (idx.byId.get(id)?.pct ?? 0) / 100), 1) * l.qty;
   return (
     <div className="rounded-lg border border-border/70 px-2.5 py-1.5">
@@ -789,8 +802,22 @@ function LineRow({ idx, l, hint, onQty, onMods, onRemove }: { idx: PriceIndex; l
         <span className="ml-auto sm:ml-0 w-24 text-right text-sm font-medium whitespace-nowrap">{money(sum)}</span>
         <button type="button" className="text-muted-foreground hover:text-destructive" onClick={onRemove} title="Убрать"><X size={15} /></button>
       </div>
-      {mods.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-1">
+      {(mods.length > 0 || colorCtl) && (
+        <div className="flex flex-wrap items-center gap-1 mt-1">
+          {colorCtl && (
+            <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground mr-1">Цвет:
+              <select className={`h-6 rounded-full border px-1.5 text-[11px] bg-background ${catMod ? 'border-primary text-primary' : 'border-border'}`}
+                value={colorCtl.value ?? ''} onChange={e => colorCtl.onChange(e.target.value || undefined)}>
+                <option value="">как у двери{colorCtl.door ? ` (${colorCtl.door})` : ''}</option>
+                {colorCtl.blocks.map(b => (
+                  <optgroup key={b.title} label={b.title.replace(/^Серия \S+ · /, '').replace(/\..*$/, '')}>
+                    {b.lists.flatMap(li => li.items).map(c => <option key={c} value={c}>{c}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+              {catMod && <span className="text-primary">{catMod.name.replace(/^Наценка на погонаж в покрытии\s*/i, 'покрытие ')} +{catMod.pct}%</span>}
+            </label>
+          )}
           {mods.map(m => {
             const on = (l.mods ?? []).includes(m.id);
             return (

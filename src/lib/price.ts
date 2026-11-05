@@ -34,7 +34,7 @@ export const money = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} �
 export const itemLabel = (it: Item) => [it.name, ...it.attrs].filter(Boolean).join(' · ');
 
 /** Строка расчёта: позиция прайса × количество (+ процентные наценки из того же раздела прайса) */
-export interface Line { itemId: number; qty: number; mods?: number[]; auto?: boolean; leavesOn?: number /** %-опция только на часть полотен проёма */ }
+export interface Line { itemId: number; qty: number; mods?: number[]; auto?: boolean; leavesOn?: number /** %-опция только на часть полотен проёма */; color?: string /** свой цвет погонажа (короб в перламутре и т. п.); пусто — как у двери */ }
 
 export interface Opening {
   id: string;
@@ -157,10 +157,7 @@ export class PriceIndex {
   /** Процентные наценки того же листа и раздела, которые можно применить к позиции (например, «короб для полотна свыше 2400 мм +30%») */
   modsFor(it: Item): Item[] {
     const door = this.series.has(it.sheet);   // в листах серий разделы разные (погонаж, опции) — берём только свой раздел
-    const box = /^\s*Короб/i.test(it.name);
-    return this.data.catalog.filter(x => x.kind === 'pct' && x.sheet === it.sheet && x.id !== it.id && (!door || x.section === it.section)
-      // наценка за покрытие «Категория 2/3» — только на наличники и доборы; короб в цене прайса для любого покрытия
-      && !(box && /погонаж/i.test(x.name) && /категори/i.test(x.name)));
+    return this.data.catalog.filter(x => x.kind === 'pct' && x.sheet === it.sheet && x.id !== it.id && (!door || x.section === it.section));
   }
   /** Наценки, которые сами подходят по высоте/ширине полотна */
   autoMods(it: Item, height: number, width: number, leaves = 1, kind = 'swing', finishCat: number | null = null): number[] {
