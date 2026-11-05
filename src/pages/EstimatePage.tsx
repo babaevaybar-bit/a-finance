@@ -8,14 +8,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from 'sonner';
 import {
   loadPrice, PriceIndex, calcEstimate, calcOpening, emptyEstimate, newOpening, itemLabel, money,
-  suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, loadColors, modelColorPhoto, modelDefaultPhoto, swatchFor, type ColorData, leafOf, type LeafCfg, finishBlocks, insertBlocks, categoryOption, finishCategory,
+  suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, loadColors, modelColorPhoto, modelDefaultPhoto, swatchFor, type ColorData, leafOf, leavesWidth, type LeafCfg, finishBlocks, insertBlocks, categoryOption, finishCategory,
   type InfoBlock, type EstimateData, type Opening, type Item, type Line,
 } from '@/lib/price';
 import { sizeLimits, limitWarnings, heightStep, OPEN_KINDS, SIZE_RULES } from '@/lib/sizeRules';
 import { hingeSystems, currentSystem, hingeFamilyOf, boxKeyOf, boxItemMatches, orderNotes, fitsOpening, emptyReason, BOX_LABEL, type BoxKey, type PickCtx } from '@/lib/kit';
 import { listEstimates, saveEstimate, deleteEstimate, type EstimateRow } from '@/lib/estimates';
 import { openKp } from '@/lib/kp';
-import { sideOf, syncLeafSurcharges } from '@/lib/leaves';
+import { sideOf, syncLeafSurcharges, hingesNeeded } from '@/lib/leaves';
 import { Info, Calculator, Copy, FileText, FolderOpen, Loader2, Plus, Save, Search, Trash2, X, ChevronDown } from 'lucide-react';
 
 const PICK_GROUPS: { key: string; label: string; sheets: string[] | null }[] = [
@@ -78,7 +78,7 @@ export default function EstimatePage() {
     }
     const sys = currentSystem(x.sheet, x.model, x.openKind === 'book' ? 'book' : x.hingeSys);
     if (!sys || !sys.families.length) return;
-    const n = sys.count(x.height, x.width, hasExtraLoad(idx, x)) * Math.max(1, x.leaves || 1);
+    const n = hingesNeeded(sys, x, hasExtraLoad(idx, x)).total;
     for (const l of x.extras) {
       const it = idx.byId.get(l.itemId);
       if (it && l.auto !== false && hingeFamilyOf(it) && sys.families.includes(hingeFamilyOf(it)!)) l.qty = n;
@@ -126,7 +126,7 @@ export default function EstimatePage() {
           const vv = o.variantId != null ? idx.variant.get(o.variantId) : undefined;
           const sys = currentSystem(o.sheet, vv?.model.code ?? o.model, o.openKind === 'book' ? 'book' : o.hingeSys);
           const fam = hingeFamilyOf(it);
-          qty = ((fam && sys?.families.includes(fam) ? sys.count(o.height, o.width, hasExtraLoad(idx, o)) : null) ?? suggestHinges(it.name, o.sheet, vv?.model.code ?? '', o.height, o.width, hasExtraLoad(idx, o)) ?? 2) * Math.max(1, o.leaves || 1);
+          qty = (fam && sys?.families.includes(fam) ? hingesNeeded(sys, o, hasExtraLoad(idx, o)).total : null) ?? (suggestHinges(it.name, o.sheet, vv?.model.code ?? '', o.height, o.width, hasExtraLoad(idx, o)) ?? 2) * Math.max(1, o.leaves || 1);
         }
         o.extras.push({ itemId: it.id, qty, mods: idx.autoMods(it, o.height, o.width, o.leaves || 1, o.openKind || 'swing', catOf(o)), auto: it.sheet === 'Петли' ? true : undefined });
         syncHinges(o);
@@ -304,7 +304,11 @@ function OpeningCard({ idx, photos, colors, o, n, onChange, onSize, onRemove, on
   const finCat = s && o.finish ? finishCategory(s, o.finish) : null;
   const mirror = o.options.some(l => /зеркальн/i.test(idx.byId.get(l.itemId)?.name ?? ''));
   const lim = s ? sizeLimits(s, o, finType, finCat, mirror) : null;
-  const sizeWarn = lim ? limitWarnings(lim, o) : [];
+  const sizeWarn = lim ? [
+    ...limitWarnings(lim, o),
+    ...Array.from({ length: Math.max(1, o.leaves || 1) }, (_, i) => i).filter(i => i > 0 && leafOf(o, i).ownSize)
+      .flatMap(i => { const lf = leafOf(o, i); return limitWarnings(lim, { ...o, height: lf.height, width: lf.width }).filter(w => !/не производится/.test(w)).map(w => `Полотно ${i + 1}: ${w}`); }),
+  ] : [];
   const stH = lim && o.height ? heightStep(lim, o.height) : lim?.stepH;
   const stW = lim?.stepW;
   /** Размер не по шагу фабрики — после ввода сам округляем до ближайшего допустимого */
@@ -380,6 +384,22 @@ function OpeningCard({ idx, photos, colors, o, n, onChange, onSize, onRemove, on
     x.leafSet = Array.from({ length: n }, (_, k) => ({ ...(x.leafSet?.[k] ?? {}) }));
     fn(x.leafSet[i], x);
   });
+  /** Размер полотна i: первое — это размер проёма, у остальных — свой (равный первому не храним) */
+  const setLeafSize = (i: number, key: 'height' | 'width', v: number) => {
+    if (i === 0) { onSize(key, v); return; }
+    setLeaf(i, (c, x) => { if (!v || v === x[key]) delete c[key]; else c[key] = v; });
+  };
+  const snapLeaf = (i: number, key: 'height' | 'width') => {
+    if (i === 0) { snap(key); return; }
+    const v = leafOf(o, i)[key];
+    const st = key === 'height' ? (lim && v ? heightStep(lim, v) : undefined) : stW;
+    if (!v || !st || st <= 1 || v % st === 0) return;
+    const r = key === 'height' ? lim?.h : lim?.w;
+    let nv = Math.round(v / st) * st;
+    if (r) nv = Math.min(Math.max(nv, Math.ceil(r[0] / st) * st), Math.floor(r[1] / st) * st);
+    setLeafSize(i, key, nv);
+    toast.info(`Полотно ${i + 1}: ${key === 'height' ? 'высота' : 'ширина'} ${v} → ${nv} мм (шаг ${st} мм)`);
+  };
   const ownLeaf = (c: LeafCfg, x: Opening) => { if (!c.model) { c.model = x.model; c.variantId = x.variantId; c.photo = x.photo; c.photoName = x.photoName; } };
   const finishPrice = (b: InfoBlock) => {
     if (!s || b.cat == null) return '';
@@ -444,6 +464,7 @@ function OpeningCard({ idx, photos, colors, o, n, onChange, onSize, onRemove, on
                   ) : <span className="h-[150px] sm:h-[200px] flex items-center px-1 text-center text-[10px] text-muted-foreground">Выбрать по фото</span>}
                   <span className="w-full text-[10px] leading-tight text-center text-muted-foreground py-0.5 truncate px-0.5">
                     {nLeaves > 1 ? `${i + 1} · ` : ''}{side ? (side === 'L' ? 'левая' : 'правая') : (lp?.name || o.model || '')}
+                    {nLeaves > 1 && <span className={`block ${lf.ownSize ? 'text-primary font-medium' : ''}`}>{lf.height}×{lf.width}</span>}
                   </span>
                   {nLeaves > 1 && lf.own && lf.model !== o.model && <span className="absolute top-0.5 inset-x-0.5 rounded bg-primary text-primary-foreground text-[9px] px-1 truncate text-center">{lp?.name || lf.model}</span>}
                 </button>
@@ -520,7 +541,7 @@ function OpeningCard({ idx, photos, colors, o, n, onChange, onSize, onRemove, on
             <select className={selCls} value={o.leaves ?? 1} onChange={e => onSize('leaves', Number(e.target.value))}>
               {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n === 1 ? '1 — одно полотно' : n === 2 ? '2 — двустворчатая / 2 полотна' : `${n} полотна`}</option>)}
             </select>
-            {(o.leaves ?? 1) > 1 && <span className="block text-[11px]">Проём по полотнам ≈ {(o.leaves ?? 1) * (o.width || 0)} мм. Опции — укажите, на сколько полотен.</span>}
+            {(o.leaves ?? 1) > 1 && <span className="block text-[11px]">Проём по полотнам ≈ {leavesWidth(o)} мм. Опции — укажите, на сколько полотен.</span>}
           </label>
         )}
         {groups.length > 0 && (
@@ -601,6 +622,20 @@ function OpeningCard({ idx, photos, colors, o, n, onChange, onSize, onRemove, on
                     </div>
                     {i > 0 && <p className="text-[11px] text-muted-foreground">{lf.own ? 'У этого полотна своя модель/цвет — цена считается по ней.' : 'Сейчас как полотно 1. Выберите другую модель или цвет — будет своя.'}</p>}
                   </div>
+                </div>
+                <div className="rounded-md border border-border p-2.5 space-y-1.5">
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['height', 'width'] as const).map(key => (
+                      <label key={key} className="text-xs text-muted-foreground space-y-1">{key === 'height' ? 'Высота полотна, мм' : 'Ширина полотна, мм'}
+                        <Input type="number" className="h-9" step={(key === 'height' ? (lim ? heightStep(lim, lf.height) : undefined) : stW) || 50}
+                          value={lf[key] || ''} onChange={e => setLeafSize(i, key, Number(e.target.value) || 0)} onBlur={() => snapLeaf(i, key)} />
+                      </label>
+                    ))}
+                  </div>
+                  {i > 0 && lf.ownSize && <button type="button" className="text-[11px] text-primary underline" onClick={() => setLeaf(i, c => { delete c.height; delete c.width; })}>Размер как у полотна 1 ({o.height}×{o.width})</button>}
+                  {i > 0 && !lf.ownSize && <p className="text-[11px] text-muted-foreground">Размер как у полотна 1 — можно задать свой (например, узкое ответное полотно).</p>}
+                  {i === 0 && nLeaves > 1 && <p className="text-[11px] text-muted-foreground">Размер полотна 1 — он же по умолчанию для остальных.</p>}
+                  {lim && limitWarnings(lim, { ...o, height: lf.height, width: lf.width }).map(w => <p key={w} className="text-[11px] text-amber-700 font-medium">⚠ {w}</p>)}
                 </div>
                 {blocks.map(b => {
                   const pr = b.insert ? insertPrice(b) : finishPrice(b);
@@ -697,8 +732,7 @@ function OpeningCard({ idx, photos, colors, o, n, onChange, onSize, onRemove, on
           const vv = o.variantId != null ? idx.variant.get(o.variantId) : undefined;
           const sys = currentSystem(o.sheet, vv?.model.code ?? o.model, o.openKind === 'book' ? 'book' : o.hingeSys);
           const fam = it ? hingeFamilyOf(it) : null;
-          const per = fam && sys?.families.includes(fam) ? sys.count(o.height, o.width, hasExtraLoad(idx, o)) : null;
-          const hint = per != null ? per * Math.max(1, o.leaves || 1) : null;
+          const hint = fam && sys?.families.includes(fam) ? hingesNeeded(sys, o, hasExtraLoad(idx, o)).total : null;
           return (
             <LineRow key={k} idx={idx} l={l} hint={hint != null && hint !== l.qty ? `по прайсу ${hint} шт` : undefined}
               onQty={q => onChange(x => { x.extras[k].qty = q; x.extras[k].auto = false; })}
@@ -717,7 +751,7 @@ function OpeningCard({ idx, photos, colors, o, n, onChange, onSize, onRemove, on
           {b.widthMk && <Row l={`${b.widthMk.pct < 0 ? 'Уценка' : 'Наценка'} на ширину ${o.width} мм`} v={`${b.widthMk.pct > 0 ? '+' : ''}${b.widthMk.pct}%`} />}
           {(b.heightMk || b.widthMk) && <Row l={`Полотно с наценками${(b.leaves ?? 1) > 1 ? ' (одно)' : ''}`} v={money(b.afterSize)} />}
           {(b.leaves ?? 1) > 1 && !b.leafPrices && <Row l={`× ${b.leaves} полотна в проёме`} v={money(b.afterSize * (b.leaves ?? 1))} />}
-          {b.leafPrices?.map((x, i) => <Row key={i} l={`Полотно ${i + 1}: ${x.label}`} v={money(x.after)} />)}
+          {b.leafPrices?.map((x, i) => <Row key={i} l={`Полотно ${i + 1}: ${x.label}, ${x.size}${x.mk ? ` (${x.mk})` : ''}`} v={money(x.after)} />)}
           {b.pctOptions.map(x => <Row key={x.item.id} l={x.item.name} v={`+${money(x.sum)}`} />)}
           {b.fixedOptions.filter(x => x.sum > 0).map(x => <Row key={x.item.id} l={`${x.item.name}${x.qty > 1 ? ` ×${x.qty}` : ''}`} v={`+${money(x.sum)}`} />)}
           <Row l="Полотно итого" v={money(b.door)} bold />
@@ -781,8 +815,9 @@ function KitPanel({ idx, o, onChange, onPick }: {
   if (kind !== 'swing' && kind !== 'book') return null;   // раздвижные/Pivot/Magic — петли не нужны, система выбирается отдельно
   const sys = currentSystem(o.sheet, o.model, kind === 'book' ? 'book' : o.hingeSys)!;
   const leaves = Math.max(1, o.leaves || 1);
-  const per = sys.count(o.height, o.width, hasExtraLoad(idx, o));
-  const need = per * leaves;
+  const hn = hingesNeeded(sys, o, hasExtraLoad(idx, o));
+  const need = hn.total;
+  const perTxt = hn.per.every(x => x === hn.per[0]) ? `${hn.per[0]} × ${leaves} полотна` : hn.per.join(' + ');
   const lines = o.extras.map(l => ({ l, it: idx.byId.get(l.itemId) })).filter((x): x is { l: Line; it: Item } => !!x.it);
   const hingeLines = lines.filter(x => hingeFamilyOf(x.it));
   const okHinges = hingeLines.filter(x => sys.families.includes(hingeFamilyOf(x.it)!));
@@ -809,7 +844,7 @@ function KitPanel({ idx, o, onChange, onPick }: {
       )}
       {/* Петли */}
       <div className="space-y-1">
-        <p><span className="font-medium">Петли:</span> {sys.included ? <span className="text-emerald-700">{sys.included} — {need} шт.</span> : <>нужно <b>{need} шт.</b>{leaves > 1 ? ` (${per} × ${leaves} полотна)` : ''}{sys.note ? <span className="text-muted-foreground"> · {sys.note}</span> : null}</>}</p>
+        <p><span className="font-medium">Петли:</span> {sys.included ? <span className="text-emerald-700">{sys.included} — {need} шт.</span> : <>нужно <b>{need} шт.</b>{leaves > 1 ? ` (${perTxt})` : ''}{sys.note ? <span className="text-muted-foreground"> · {sys.note}</span> : null}</>}</p>
         {!sys.included && (okHinges.length ? (
           <p className="text-emerald-700">✓ {okHinges.map(x => `${x.it.name.replace('Петля скрытой установки ', '')} — ${x.l.qty} шт.`).join('; ')}{okHinges.some(x => x.l.qty !== need) ? <span className="text-amber-700"> (по прайсу {need})</span> : null}</p>
         ) : (

@@ -70,16 +70,26 @@ export interface LeafCfg {
   photo?: string;
   photoName?: string;
   side?: 'L' | 'R';        // L — петли слева, R — петли справа
+  height?: number;         // свой размер полотна (пусто — как у полотна 1)
+  width?: number;
 }
 export const SIDE_LABEL: Record<'L' | 'R', string> = { L: 'левая (петли слева)', R: 'правая (петли справа)' };
 
 /** Что стоит на полотне i: своё или как у полотна 1 */
-export function leafOf(o: Opening, i: number): { model: string; variantId: number | null; finish?: string; insert?: string; photo?: string; photoName?: string; side?: 'L' | 'R'; own: boolean } {
+export function leafOf(o: Opening, i: number): { model: string; variantId: number | null; finish?: string; insert?: string; photo?: string; photoName?: string; side?: 'L' | 'R'; height: number; width: number; ownSize: boolean; own: boolean } {
   const c = o.leafSet?.[i];
   const own = i > 0 && !!c?.model;
+  const height = (i > 0 && c?.height) || o.height, width = (i > 0 && c?.width) || o.width;
+  const ownSize = height !== o.height || width !== o.width;
   return own
-    ? { model: c!.model!, variantId: c!.variantId ?? null, finish: c!.finish, insert: c!.insert, photo: c!.photo, photoName: c!.photoName, side: c!.side, own }
-    : { model: o.model, variantId: o.variantId, finish: i > 0 && c?.finish ? c.finish : o.finish, insert: i > 0 && c?.insert ? c.insert : o.insert, photo: o.photo, photoName: o.photoName, side: c?.side, own: false };
+    ? { model: c!.model!, variantId: c!.variantId ?? null, finish: c!.finish, insert: c!.insert, photo: c!.photo, photoName: c!.photoName, side: c!.side, height, width, ownSize, own }
+    : { model: o.model, variantId: o.variantId, finish: i > 0 && c?.finish ? c.finish : o.finish, insert: i > 0 && c?.insert ? c.insert : o.insert, photo: o.photo, photoName: o.photoName, side: c?.side, height, width, ownSize, own: false };
+}
+/** Сумма ширин всех полотен проёма */
+export function leavesWidth(o: Opening): number {
+  let w = 0;
+  for (let i = 0; i < Math.max(1, o.leaves || 1); i++) w += leafOf(o, i).width || 0;
+  return w;
 }
 
 export interface EstimateData {
@@ -129,7 +139,7 @@ export interface Breakdown {
   total: number;           // × количество проёмов
   warnings: string[];
   leaves?: number;
-  leafPrices?: { label: string; base: number; after: number }[]; // когда у полотен разные модели
+  leafPrices?: { label: string; size: string; base: number; after: number; mk: string }[]; // когда у полотен разные модели или размеры
 }
 
 export class PriceIndex {
@@ -200,16 +210,23 @@ export function calcOpening(idx: PriceIndex, o: Opening): Breakdown {
     const k = (1 + (out.heightMk?.pct ?? 0) / 100) * (1 + (out.widthMk?.pct ?? 0) / 100);
     out.afterSize = out.base * k;                       // одно полотно с наценками
     // у полотен 2…N может быть своя модель — тогда и своя цена
+    const mkTxt = (h: Markup | null, w: Markup | null) => [h && `выс. +${h.pct}%`, w && `шир. ${w.pct > 0 ? '+' : ''}${w.pct}%`].filter(Boolean).join(', ');
     let leafSum = out.afterSize;
-    const lp = [{ label: vv.model.code, base: out.base, after: out.afterSize }];
+    const lp = [{ label: vv.model.code, size: `${o.height}×${o.width}`, base: out.base, after: out.afterSize, mk: mkTxt(out.heightMk, out.widthMk) }];
+    let differ = false;
     for (let i = 1; i < leaves; i++) {
       const lf = leafOf(o, i);
       const v2 = lf.own && lf.variantId != null ? idx.variant.get(lf.variantId) : undefined;
       const b2 = v2 ? v2.v.price : out.base;
-      lp.push({ label: v2 ? v2.model.code : vv.model.code, base: b2, after: b2 * k });
-      leafSum += b2 * k;
+      // свой размер полотна — свои наценки на высоту/ширину
+      const hm = lf.ownSize ? pickMarkup(s.height, lf.height, o.group) : out.heightMk;
+      const wm = lf.ownSize ? pickMarkup(s.width, lf.width, o.group) : out.widthMk;
+      const k2 = (1 + (hm?.pct ?? 0) / 100) * (1 + (wm?.pct ?? 0) / 100);
+      if (b2 !== out.base || lf.ownSize) differ = true;
+      lp.push({ label: v2 ? v2.model.code : vv.model.code, size: `${lf.height}×${lf.width}`, base: b2, after: b2 * k2, mk: mkTxt(hm, wm) });
+      leafSum += b2 * k2;
     }
-    if (lp.some(x => x.base !== out.base)) out.leafPrices = lp;
+    if (differ) out.leafPrices = lp;
     let door = leafSum;
     // зеркальная панель «плюсуется до наценки» — на столько полотен, сколько указано
     for (const { l, it } of opts) if (it.kind === 'price' && isMirror(it)) {

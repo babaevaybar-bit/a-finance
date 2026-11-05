@@ -67,3 +67,9 @@ export function syncLeafSurcharges(idx: PriceIndex, x: Opening) {
     for (const [id, cnt] of glassCnt) x.options.push({ itemId: id, qty: cnt });
   }
 }
+
+/** Петель на весь проём: по высоте/ширине каждого полотна */
+export function hingesNeeded(sys: { count: (h: number, w: number, extra: boolean) => number }, o: Opening, extra: boolean): { total: number; per: number[] } {
+  const per = Array.from({ length: Math.max(1, o.leaves || 1) }, (_, i) => { const lf = leafOf(o, i); return sys.count(lf.height, lf.width, extra); });
+  return { total: per.reduce((a, b) => a + b, 0), per };
+}
