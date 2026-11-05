@@ -216,7 +216,7 @@ export default function EstimatePage() {
               </div>
               {est.items.length === 0 && <p className="text-xs text-muted-foreground">Плинтус, панели, ручки, фурнитура отдельно — всё, что не относится к конкретному проёму.</p>}
               {est.items.map((l, k) => (
-                <LineRow key={k} idx={idx} l={l} photo={handlePhotos[l.itemId]?.[0]}
+                <LineRow key={k} idx={idx} l={l} photo={handlePhotos[l.itemId]}
                   onQty={q => update(e => { e.items[k].qty = q; })}
                   onMods={m => update(e => { e.items[k].mods = m; })}
                   onRemove={() => update(e => { e.items.splice(k, 1); })} />
@@ -739,7 +739,7 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
           const fam = it ? hingeFamilyOf(it) : null;
           const hint = fam && sys?.families.includes(fam) ? hingesNeeded(sys, o, hasExtraLoad(idx, o)).total : null;
           return (
-            <LineRow key={k} idx={idx} l={l} photo={handlePhotos[l.itemId]?.[0]} hint={hint != null && hint !== l.qty ? `по прайсу ${hint} шт` : undefined}
+            <LineRow key={k} idx={idx} l={l} photo={handlePhotos[l.itemId]} hint={hint != null && hint !== l.qty ? `по прайсу ${hint} шт` : undefined}
               onQty={q => onChange(x => { x.extras[k].qty = q; x.extras[k].auto = false; })}
               onMods={m => onChange(x => { x.extras[k].mods = m; })}
               onRemove={() => onChange(x => { x.extras.splice(k, 1); })}
@@ -785,7 +785,8 @@ const Row = ({ l, v, bold }: { l: string; v: string; bold?: boolean }) => (
 );
 
 interface ColorCtl { door?: string; blocks: InfoBlock[]; value?: string; onChange: (v: string | undefined) => void }
-function LineRow({ idx, l, hint, onQty, onMods, onRemove, colorCtl, photo }: { idx: PriceIndex; l: Line; hint?: string; onQty: (q: number) => void; onMods: (m: number[]) => void; onRemove: () => void; colorCtl?: ColorCtl; photo?: string }) {
+function LineRow({ idx, l, hint, onQty, onMods, onRemove, colorCtl, photo }: { idx: PriceIndex; l: Line; hint?: string; onQty: (q: number) => void; onMods: (m: number[]) => void; onRemove: () => void; colorCtl?: ColorCtl; photo?: [string, Record<string, string>] }) {
+  const [zoom, setZoom] = useState(false);
   const it = idx.byId.get(l.itemId);
   if (!it) return null;
   const allMods = idx.modsFor(it);
@@ -797,7 +798,8 @@ function LineRow({ idx, l, hint, onQty, onMods, onRemove, colorCtl, photo }: { i
   return (
     <div className="rounded-lg border border-border/70 px-2.5 py-1.5">
       <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
-        {photo && <img src={photo} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-10 h-10 shrink-0 rounded border border-border bg-white object-contain" />}
+        {photo && <img src={photo[0]} alt="" loading="lazy" referrerPolicy="no-referrer" title="Нажмите, чтобы увеличить" onClick={() => setZoom(true)} className="w-14 h-14 shrink-0 rounded border border-border bg-white object-contain cursor-zoom-in" />}
+        {photo && zoom && <PhotoDialog title={itemLabel(it)} main={photo[0]} colors={photo[1]} onClose={() => setZoom(false)} />}
         <div className="basis-full sm:basis-auto flex-1 min-w-0">
           <p className="text-sm sm:truncate" title={itemLabel(it)}>{itemLabel(it)}</p>
           <p className="text-[11px] text-muted-foreground truncate">{it.sheet}{it.section ? ` · ${it.section}` : ''} · {money(it.price ?? 0)} / {it.unit || 'шт'}{hint && <span className="text-amber-700"> · {hint}</span>}</p>
@@ -1015,6 +1017,9 @@ function PickerDialog({ idx, state, onClose, onPick, onGroup, photos }: {
         return (a.sheet === own ? 0 : 1) - (b.sheet === own ? 0 : 1);
       });
   }, [idx, group, q, filter, ctx, showAll]);
+  const isHandles = !filter && group.key === 'handle';
+  const [detail, setDetail] = useState(false);
+  useEffect(() => { setDetail(false); }, [state?.group, state?.target.opening]); // eslint-disable-line react-hooks/exhaustive-deps
   const bySheet = useMemo(() => {
     const m = new Map<string, Item[]>();
     for (const it of list.slice(0, 400)) { const sec = idx.series.has(it.sheet) && !/погонаж|короб/i.test(it.section) ? (/телескоп/i.test(it.name) || /наличник|добор|плинтус/i.test(it.name) ? 'Погонаж' : it.section) : it.section; const k = `${it.sheet}${sec ? ' · ' + sec : ''}`; if (!m.has(k)) m.set(k, []); m.get(k)!.push(it); }
@@ -1022,25 +1027,26 @@ function PickerDialog({ idx, state, onClose, onPick, onGroup, photos }: {
   }, [list]);
   return (
     <Dialog open={!!state} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className={isHandles ? 'max-w-5xl w-[96vw] h-[92vh] flex flex-col' : 'max-w-2xl max-h-[85vh] flex flex-col'}>
         <DialogHeader><DialogTitle>{filter ? `Короб ${BOX_LABEL[filter.box]} — что добавить` : 'Добавить из прайса'}</DialogTitle></DialogHeader>
         {filter && <p className="text-xs text-muted-foreground -mt-2">Показаны только позиции этого короба (сам короб, наличники, доборы). Другие — во вкладках ниже.</p>}
-        {!filter && ctx && group.key !== 'all' && (
+        {!detail && !filter && ctx && group.key !== 'all' && (
           <label className="flex items-center gap-2 text-xs text-muted-foreground -mt-1">
             <input type="checkbox" checked={!showAll} onChange={e => setShowAll(!e.target.checked)} />
             Только то, что подходит к серии {ctx.sheet}{ctx.model ? `, модель ${ctx.model}` : ''}
           </label>
         )}
-        <div className="flex flex-wrap gap-1">
+        <div className={`flex flex-wrap gap-1 ${detail ? 'hidden' : ''}`}>
           {PICK_GROUPS.map(g => (
             <button key={g.key} type="button" onClick={() => onGroup(g.key)}
               className={`text-xs rounded-full border px-2.5 py-1 ${g.key === group.key ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted'}`}>{g.label}</button>
           ))}
         </div>
-        <div className="relative">
+        <div className={`relative ${detail ? 'hidden' : ''}`}>
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input autoFocus className="pl-8" placeholder="Поиск: invisible, eclipse, touch, ручка sly…" value={q} onChange={e => setQ(e.target.value)} />
         </div>
+        {isHandles ? <HandleGrid key={`${state?.target.opening}`} items={list} photos={photos} onPick={onPick} onDetail={setDetail} /> : (
         <div className="flex-1 overflow-y-auto -mx-2 px-2 space-y-3">
           {bySheet.length === 0 && <p className="text-sm text-muted-foreground py-6 text-center">{(!showAll && !q && ctx && emptyReason(group.key, ctx)) || 'Ничего не найдено'}</p>}
           {!showAll && ctx && !filter && group.key === 'lock' && bySheet.length > 0 && <p className="text-[11px] text-muted-foreground">Touch, Wave и Vitra выбираются в «Опциях полотна» — там они сразу считаются с полотном.</p>}
@@ -1064,9 +1070,142 @@ function PickerDialog({ idx, state, onClose, onPick, onGroup, photos }: {
           ))}
           {list.length > 400 && <p className="text-xs text-muted-foreground text-center">Показаны первые 400 — уточните поиск</p>}
         </div>
+        )}
       </DialogContent>
       {zoom && <PhotoDialog {...zoom} onClose={() => setZoom(null)} />}
     </Dialog>
+  );
+}
+
+// ─── Ручки: карточки с крупными фото, внутри — цвета, варианты и фурнитура серии ───
+const ACCESSORY = /^\s*(завертка|розетка|накладка|цилиндр|планка|вставка|фиксатор)/i;
+interface HandleCard { key: string; sheet: string; section: string; name: string; variants: Item[]; photo?: [string, Record<string, string>] }
+function HandleGrid({ items, photos, onPick, onDetail }: { items: Item[]; photos: HandlePhotos; onPick: (it: Item) => void; onDetail: (v: boolean) => void }) {
+  const [open, setOpenRaw] = useState<HandleCard | null>(null);
+  const setOpen = (c: HandleCard | null) => { setOpenRaw(c); onDetail(!!c); };
+  const [cur, setCur] = useState<string>('');
+  const { brands, acc } = useMemo(() => {
+    const cards = new Map<string, HandleCard>();
+    const acc: Item[] = [];
+    for (const it of items) {
+      if (ACCESSORY.test(it.name)) { acc.push(it); continue; }
+      const key = `${it.sheet}|${it.section}|${it.name.trim()}`;
+      if (!cards.has(key)) cards.set(key, { key, sheet: it.sheet, section: it.section, name: it.name.trim(), variants: [], photo: photos[it.id] });
+      const c = cards.get(key)!;
+      c.variants.push(it);
+      if (!c.photo && photos[it.id]) c.photo = photos[it.id];
+    }
+    const brands = new Map<string, HandleCard[]>();
+    for (const c of cards.values()) { if (!brands.has(c.sheet)) brands.set(c.sheet, []); brands.get(c.sheet)!.push(c); }
+    return { brands: [...brands.entries()], acc };
+  }, [items, photos]);
+  const brandName = (sheet: string) => (sheet === 'Дверные ручки Orange' ? 'Ручки Orange' : 'Ручки PROFILDOORS');
+  const secName = (sec: string) => sec.replace(/^РУЧКИ\s*/i, '').replace(/,\s*ИТАЛИЯ|,\s*ГЕРМАНИЯ/i, '').toLowerCase();
+  const variantName = (it: Item) => {
+    const brand = it.attrs[it.attrs.length - 1] ?? '';
+    return /PROFILDOORS/.test(brand) && it.attrs.length === 1 ? 'в покраске PROFILDOORS' : (brand && !/шт/.test(brand) ? brand : 'стандарт');
+  };
+  const accName = (a: Item) => `${a.name}${a.attrs.length === 1 && /PROFILDOORS/.test(a.attrs[0]) ? ' (покраска PROFILDOORS)' : ''}`;
+  /** Завертка и розетка под цилиндр к ручке: по розетке (RO02, RO80, 277…) или из той же серии Orange */
+  const accFor = (c: HandleCard) => {
+    const ro = c.name.match(/\b(RO\d+|PL\d+)\b/i)?.[1] ?? c.name.match(/розетке\s+(\d{3})/i)?.[1];
+    return acc.filter(a => a.sheet === c.sheet && (ro ? new RegExp(`\\b${ro}\\b`, 'i').test(a.name) : a.section === c.section));
+  };
+  if (open) {
+    const ph = open.photo;
+    const show = cur || ph?.[0] || '';
+    const kitAcc = accFor(open);
+    const kit = open.variants.find(v => v.attrs.length > 1)?.attrs[0];
+    return (
+      <div className="flex-1 min-h-0 flex flex-col gap-3">
+        <button type="button" className="self-start text-sm text-primary hover:underline" onClick={() => { setOpen(null); setCur(''); }}>← ко всем ручкам</button>
+        <div className="flex-1 min-h-0 overflow-y-auto grid md:grid-cols-[1.2fr_1fr] gap-4 pb-2">
+          <div className="space-y-2">
+            <div className="rounded-lg border border-border bg-white flex items-center justify-center h-[34vh] md:h-[56vh] p-2">
+              {show ? <img src={show} alt="" referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain" /> : <span className="text-sm text-muted-foreground">фото нет на сайте фабрики</span>}
+            </div>
+            {ph && Object.keys(ph[1]).length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {[['общее', ph[0]] as const, ...Object.entries(ph[1])].map(([c, u]) => (
+                  <button key={c} type="button" onClick={() => setCur(u)} title={c}
+                    className={`rounded-md border p-0.5 bg-white ${show === u ? 'border-primary ring-2 ring-primary' : 'border-border hover:border-primary'}`}>
+                    <img src={u} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-16 h-16 object-contain" />
+                    <span className="block text-[10px] text-center w-16 truncate">{c}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="space-y-3">
+            <div>
+              <p className="text-lg font-semibold leading-tight">{open.name}</p>
+              <p className="text-xs text-muted-foreground">{brandName(open.sheet)} · {secName(open.section)}</p>
+              {kit && <p className="text-xs text-muted-foreground mt-1">В комплекте: {kit}</p>}
+            </div>
+            <div className="space-y-1.5">
+              {open.variants.map(v => (
+                <div key={v.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
+                  <span className="text-sm">{variantName(v)}<span className="block text-xs text-muted-foreground">{money(v.price ?? 0)} / {v.unit || 'шт'}</span></span>
+                  <Button size="sm" onClick={() => onPick(v)}><Plus size={14} className="mr-1" />Добавить</Button>
+                </div>
+              ))}
+            </div>
+            {kitAcc.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">К этой ручке</p>
+                <div className="space-y-1">
+                  {kitAcc.map(a => (
+                    <div key={a.id} className="flex items-center gap-2 rounded-md border border-border/70 px-2 py-1.5">
+                      {photos[a.id] ? <img src={photos[a.id][0]} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-12 h-12 shrink-0 object-contain bg-white rounded" /> : null}
+                      <span className="flex-1 min-w-0 text-xs">{accName(a)}<span className="block text-muted-foreground">{money(a.price ?? 0)}</span></span>
+                      <Button size="sm" variant="outline" onClick={() => onPick(a)}><Plus size={13} className="mr-1" />Добавить</Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <p className="text-[11px] text-muted-foreground">Окно не закрывается — можно сразу добавить ручку, завертку и розетку. Фото с сайта profildoors.ru; нужный цвет укажите в примечании к проёму.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto -mx-2 px-2 space-y-5 pb-2">
+      {brands.length === 0 && acc.length === 0 && <p className="text-sm text-muted-foreground py-6 text-center">Ничего не найдено</p>}
+      {brands.map(([sheet, cards]) => (
+        <div key={sheet}>
+          <p className="text-sm font-semibold mb-2 sticky top-0 bg-background py-1 z-10">{brandName(sheet)} <span className="text-xs font-normal text-muted-foreground">· {cards.length}</span></p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+            {cards.map(c => (
+              <button key={c.key} type="button" onClick={() => { setOpen(c); setCur(''); }}
+                className="rounded-lg border border-border bg-card p-2 text-left hover:border-primary hover:shadow-md transition flex flex-col gap-1">
+                <span className="aspect-square rounded bg-white flex items-center justify-center overflow-hidden">
+                  {c.photo ? <img src={c.photo[0]} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-contain" /> : <span className="text-[11px] text-muted-foreground">нет фото</span>}
+                </span>
+                <span className="text-sm font-medium leading-tight line-clamp-2">{c.name.replace(/^ручка(\s+дверная)?\s+/i, '')}</span>
+                <span className="text-[11px] text-muted-foreground leading-tight line-clamp-1">{secName(c.section)}</span>
+                <span className="text-xs">{c.variants.length > 1 ? 'от ' : ''}<b>{money(Math.min(...c.variants.map(v => v.price ?? 0)))}</b>{c.photo && Object.keys(c.photo[1]).length ? <span className="text-muted-foreground"> · {Object.keys(c.photo[1]).length} цв.</span> : null}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      {acc.length > 0 && (
+        <div>
+          <p className="text-sm font-semibold mb-2">Завертки, розетки, цилиндры</p>
+          <div className="grid sm:grid-cols-2 gap-1.5">
+            {acc.map(a => (
+              <button key={a.id} type="button" onClick={() => onPick(a)} className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-left text-xs hover:bg-muted">
+                {photos[a.id] ? <img src={photos[a.id][0]} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-10 h-10 shrink-0 object-contain bg-white rounded" /> : <Plus size={14} className="shrink-0 text-muted-foreground" />}
+                <span className="flex-1 min-w-0">{accName(a)}</span>
+                <span className="text-muted-foreground whitespace-nowrap">{money(a.price ?? 0)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1075,14 +1214,19 @@ function PhotoDialog({ title, main, colors, onClose }: { title: string; main: st
   const [cur, setCur] = useState(main);
   return (
     <Dialog open onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-3xl w-[96vw]">
         <DialogHeader><DialogTitle className="text-base">{title}</DialogTitle></DialogHeader>
-        <img src={cur} alt="" referrerPolicy="no-referrer" className="w-full max-h-[55vh] object-contain bg-white rounded" />
+        <div className="rounded-lg border border-border bg-white flex items-center justify-center h-[60vh] p-2">
+          <img src={cur} alt="" referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain" />
+        </div>
         {Object.keys(colors).length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            <button type="button" onClick={() => setCur(main)} className={`text-xs rounded-full border px-2.5 py-0.5 ${cur === main ? 'border-primary bg-primary text-primary-foreground' : 'border-border'}`}>общее</button>
-            {Object.entries(colors).map(([c, u]) => (
-              <button key={c} type="button" onClick={() => setCur(u)} className={`text-xs rounded-full border px-2.5 py-0.5 ${cur === u ? 'border-primary bg-primary text-primary-foreground' : 'border-border'}`}>{c}</button>
+          <div className="flex flex-wrap gap-1.5">
+            {[['общее', main] as const, ...Object.entries(colors)].map(([c, u]) => (
+              <button key={c} type="button" onClick={() => setCur(u)} title={c}
+                className={`rounded-md border p-0.5 bg-white ${cur === u ? 'border-primary ring-2 ring-primary' : 'border-border hover:border-primary'}`}>
+                <img src={u} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-16 h-16 object-contain" />
+                <span className="block text-[10px] text-center w-16 truncate">{c}</span>
+              </button>
             ))}
           </div>
         )}
