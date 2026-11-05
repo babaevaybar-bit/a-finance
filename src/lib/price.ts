@@ -156,7 +156,10 @@ export class PriceIndex {
   /** Процентные наценки того же листа и раздела, которые можно применить к позиции (например, «короб для полотна свыше 2400 мм +30%») */
   modsFor(it: Item): Item[] {
     const door = this.series.has(it.sheet);   // в листах серий разделы разные (погонаж, опции) — берём только свой раздел
-    return this.data.catalog.filter(x => x.kind === 'pct' && x.sheet === it.sheet && x.id !== it.id && (!door || x.section === it.section));
+    const box = /^\s*Короб/i.test(it.name);
+    return this.data.catalog.filter(x => x.kind === 'pct' && x.sheet === it.sheet && x.id !== it.id && (!door || x.section === it.section)
+      // наценка за покрытие «Категория 2/3» — только на наличники и доборы; короб в цене прайса для любого покрытия
+      && !(box && /погонаж/i.test(x.name) && /категори/i.test(x.name)));
   }
   /** Наценки, которые сами подходят по высоте/ширине полотна */
   autoMods(it: Item, height: number, width: number, leaves = 1, kind = 'swing', finishCat: number | null = null): number[] {

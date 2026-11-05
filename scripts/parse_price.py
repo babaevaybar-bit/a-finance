@@ -223,7 +223,22 @@ def build(text):
             out['series'].append({'sheet': sh['sheet'], 'models': models, 'height': hmk, 'width': wmk, 'options': options,
                                   'info': series_info(bodies[sh['sheet']])})
     expand_colors(out, bodies)
+    fix_pogonazh_section(out)
     return out
+
+
+def fix_pogonazh_section(out):
+    """P, N и PD: блок «Дверной погонаж» идёт сразу за «Ответная распашная дверь (B-полотно)» и сливается с ним — отделяем."""
+    for sheet in ('P, N', 'PD'):
+        items = [x for x in out['catalog'] if x['sheet'] == sheet]
+        start = next((k for k, x in enumerate(items) if x['name'].strip().startswith('Коробка')), None)
+        if start is None:
+            continue
+        for x in items[start:]:
+            if x['section'] == 'Ответная распашная дверь (B-полотно)':
+                x['section'] = 'Дверной погонаж'
+                if (x['sub'] or '').startswith('Категория'):
+                    x['sub'] = ''
 
 
 COLOR_SHEETS = ('Петли', 'Замки')
