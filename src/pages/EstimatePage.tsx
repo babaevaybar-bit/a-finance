@@ -747,6 +747,8 @@ function OpeningCard({ idx, photos, colors, o, n, onChange, onSize, onRemove, on
         {b.error && <p className="text-amber-700">{b.error}</p>}
         {o.variantId != null && <>
           <Row l={`Полотно по прайсу${(b.leaves ?? 1) > 1 ? ' (одно)' : ''}`} v={money(b.base)} />
+          {b.catAdd && <Row l={`${b.catAdd.item.name}${o.finish ? ` (${o.finish})` : ''}`} v={`+${money(b.catAdd.sum)}`} />}
+          {b.catAdd && <Row l="Полотно в покрытии" v={money(b.base + b.catAdd.sum)} />}
           {b.heightMk && <Row l={`Наценка на высоту ${o.height} мм`} v={`+${b.heightMk.pct}%`} />}
           {b.widthMk && <Row l={`${b.widthMk.pct < 0 ? 'Уценка' : 'Наценка'} на ширину ${o.width} мм`} v={`${b.widthMk.pct > 0 ? '+' : ''}${b.widthMk.pct}%`} />}
           {(b.heightMk || b.widthMk) && <Row l={`Полотно с наценками${(b.leaves ?? 1) > 1 ? ' (одно)' : ''}`} v={money(b.afterSize)} />}

@@ -139,6 +139,7 @@ export interface Breakdown {
   total: number;           // × количество проёмов
   warnings: string[];
   leaves?: number;
+  catAdd?: { item: Item; sum: number };   // наценка за покрытие на полотно 1 — до наценок за размер
   leafPrices?: { label: string; size: string; base: number; after: number; mk: string }[]; // когда у полотен разные модели или размеры
 }
 
@@ -211,21 +212,36 @@ export function calcOpening(idx: PriceIndex, o: Opening): Breakdown {
     out.heightMk = pickMarkup(s.height, o.height, o.group);
     out.widthMk = pickMarkup(s.width, o.width, o.group);
     const k = (1 + (out.heightMk?.pct ?? 0) / 100) * (1 + (out.widthMk?.pct ?? 0) / 100);
-    out.afterSize = out.base * k;                       // одно полотно с наценками
+    // наценка за покрытие «Категория 2» (PD и др., фиксированной суммой) — часть цены полотна:
+    // цена двери + наценка за покрытие, и уже на эту сумму — наценки за высоту и ширину
+    const catLine = (fin?: string, model?: string) => {
+      if (!fin) return null;
+      const m = s.models.find(mm => mm.code === model);
+      if (m?.variants.some(v => /Категория \d/.test(v.label))) return null;   // категория — отдельной ценой модели
+      const c = finishCategory(s, fin);
+      const it = c != null && c >= 2 ? categoryOption(idx, s, c) : null;
+      return it && it.kind === 'price' && opts.some(x => x.it.id === it.id) ? it : null;
+    };
+    const catSet = new Set<number>();
+    const c0 = catLine(o.finish, o.model);
+    if (c0) { catSet.add(c0.id); out.catAdd = { item: c0, sum: c0.price ?? 0 }; }
+    out.afterSize = (out.base + (c0?.price ?? 0)) * k;  // одно полотно с наценками
     // у полотен 2…N может быть своя модель — тогда и своя цена
     const mkTxt = (h: Markup | null, w: Markup | null) => [h && `выс. +${h.pct}%`, w && `шир. ${w.pct > 0 ? '+' : ''}${w.pct}%`].filter(Boolean).join(', ');
     let leafSum = out.afterSize;
-    const lp = [{ label: vv.model.code, size: `${o.height}×${o.width}`, base: out.base, after: out.afterSize, mk: mkTxt(out.heightMk, out.widthMk) }];
+    const lp = [{ label: vv.model.code, size: `${o.height}×${o.width}`, base: out.base + (c0?.price ?? 0), after: out.afterSize, mk: mkTxt(out.heightMk, out.widthMk) }];
     let differ = false;
     for (let i = 1; i < leaves; i++) {
       const lf = leafOf(o, i);
       const v2 = lf.own && lf.variantId != null ? idx.variant.get(lf.variantId) : undefined;
-      const b2 = v2 ? v2.v.price : out.base;
+      const cl = catLine(lf.finish, lf.model);
+      if (cl) catSet.add(cl.id);
+      const b2 = (v2 ? v2.v.price : out.base) + (cl?.price ?? 0);
       // свой размер полотна — свои наценки на высоту/ширину
       const hm = lf.ownSize ? pickMarkup(s.height, lf.height, o.group) : out.heightMk;
       const wm = lf.ownSize ? pickMarkup(s.width, lf.width, o.group) : out.widthMk;
       const k2 = (1 + (hm?.pct ?? 0) / 100) * (1 + (wm?.pct ?? 0) / 100);
-      if (b2 !== out.base || lf.ownSize) differ = true;
+      if (b2 !== out.base + (c0?.price ?? 0) || lf.ownSize) differ = true;
       lp.push({ label: v2 ? v2.model.code : vv.model.code, size: `${lf.height}×${lf.width}`, base: b2, after: b2 * k2, mk: mkTxt(hm, wm) });
       leafSum += b2 * k2;
     }
@@ -241,7 +257,7 @@ export function calcOpening(idx: PriceIndex, o: Opening): Breakdown {
       const sum = leafSum * part * (it.pct ?? 0) / 100;
       out.pctOptions.push({ item: it, sum }); door += sum;
     }
-    for (const { l, it } of opts) if (it.kind === 'price' && !isMirror(it)) {
+    for (const { l, it } of opts) if (it.kind === 'price' && !isMirror(it) && !catSet.has(it.id)) {
       const sum = (it.price ?? 0) * (l.qty || 1);
       out.fixedOptions.push({ item: it, qty: l.qty || 1, sum }); door += sum;
     }
