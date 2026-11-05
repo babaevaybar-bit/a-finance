@@ -222,7 +222,57 @@ def build(text):
         if is_door:
             out['series'].append({'sheet': sh['sheet'], 'models': models, 'height': hmk, 'width': wmk, 'options': options,
                                   'info': series_info(bodies[sh['sheet']])})
+    expand_colors(out, bodies)
     return out
+
+
+COLOR_SHEETS = ('Петли', 'Замки')
+
+
+def expand_colors(out, bodies):
+    """«…, цвет 1» → по позиции на каждый цвет из пояснения «Цвет 1: хром матовый, белый матовый…»
+    (тоже для «Цвет: …» и «Цвета покраски KRONA KOBLENZ: …»). Первая позиция сохраняет свой id."""
+    next_id = max(x['id'] for x in out['catalog']) + 1
+    res = []
+    for it in out['catalog']:
+        if it['sheet'] not in COLOR_SHEETS or it['kind'] != 'price':
+            res.append(it)
+            continue
+        lines = [clean(l.strip().strip('"').replace('""', '"')) for l in bodies.get(it['sheet'], '').splitlines()]
+        base = re.sub(r'[,\s]*[Цц]вет\s*\d\s*$', '', it['name']).strip()
+        num = re.search(r'[Цц]вет\s*(\d)\s*$', it['name'])
+        pos = next((i for i, l in enumerate(lines) if l.startswith(it['name'].strip()) or (num is None and l.startswith(base + ','))), None)
+        colors = None
+        if pos is not None:
+            win = lines[pos + 1:pos + 16]
+            stop = next((j for j, l in enumerate(win) if re.match(r'^Модель,', l)), len(win))
+            win = win[:max(0, stop - 1)] if stop < len(win) else win
+            if num:
+                m = next((re.match(rf'^Цвет {num.group(1)}:\s*(.+?)\.?\s*$', l) for l in win if re.match(rf'^Цвет {num.group(1)}:', l)), None)
+                if m:
+                    colors = m.group(1)
+                elif num.group(1) == '2':
+                    m = next((re.match(r'^Цвета покраски PROFILDOORS:\s*(.+?)\.?\s*$', l) for l in win if l.startswith('Цвета покраски PROFILDOORS:')), None)
+                    if m:
+                        colors = ', '.join(f'{c.strip()} (покраска)' for c in m.group(1).split(','))
+            else:
+                cands = [l for l in win[:6] if re.match(r'^(Цвет|Цвета покраски (?!PROFILDOORS))[^:]*:', l)]
+                tail = re.search(r'(\d+)\s*$', base)
+                if tail and len(cands) > 1:  # «КМ 7» — берём строку про свою планку («RV 7»), а не про соседнюю
+                    cands = [l for l in cands if re.search(rf'\b{tail.group(1)}\b', l.split(':')[0])] or cands[:1]
+                m = re.match(r'^(?:Цвет|Цвета покраски [^:]+):\s*(.+?)\.?\s*$', cands[0]) if cands else None
+                if m:
+                    colors = m.group(1)
+        if not colors:
+            res.append(it)
+            continue
+        for k, c in enumerate([c.strip() for c in colors.split(',') if c.strip()]):
+            rec = dict(it, name=f'{base}, {c[0].lower() + c[1:]}')
+            if k:
+                rec['id'] = next_id
+                next_id += 1
+            res.append(rec)
+    out['catalog'] = res
 
 
 if __name__ == '__main__':

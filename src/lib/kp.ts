@@ -1,5 +1,15 @@
 import { OPEN_KINDS } from '@/lib/sizeRules';
-import { calcEstimate, itemLabel, money, modelPhotos, modelColorPhoto, modelDefaultPhoto, type ColorData, type EstimateData, type PriceIndex } from '@/lib/price';
+import { calcEstimate, itemLabel, leafOf, money, modelPhotos, modelColorPhoto, modelDefaultPhoto, type ColorData, type EstimateData, type Opening, type PriceIndex } from '@/lib/price';
+import { sideOf } from '@/lib/leaves';
+
+/** Фото полотна i в его цвете */
+function leafPhotoUrl(photos: Record<string, string>, colors: ColorData | null, o: Opening, i: number): string | undefined {
+  const lf = leafOf(o, i);
+  const p0 = modelPhotos(photos, o.sheet, lf.model, /дуб|орех|шпон|карамель|сонома|тобакко/i.test(`${lf.finish ?? ''} ${o.color}`));
+  const base = (lf.photo && p0.find(p => p.url === lf.photo)) || p0[0];
+  if (!base) return lf.photo;
+  return (colors && (modelColorPhoto(colors, base.name, lf.finish, lf.insert) ?? modelDefaultPhoto(colors, base.name))) || base.url;
+}
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
@@ -14,12 +24,13 @@ export function openKp(idx: PriceIndex, e: EstimateData, photos: Record<string, 
     const lines: string[][] = [];
     if (vv) {
       const opts = [...b.fixedOptions.map(x => x.item.name + (x.qty > 1 ? ` ×${x.qty}` : '')), ...b.pctOptions.map(x => x.item.name)];
-      const p0 = modelPhotos(photos, o.sheet, o.model, /дуб|орех|шпон/i.test(`${o.finish ?? ''} ${o.color}`));
-      const base = (o.photo && p0.find(p => p.url === o.photo)) || p0[0];
-      const ph = base ? ((colors && (modelColorPhoto(colors, base.name, o.finish, o.insert) ?? modelDefaultPhoto(colors, base.name))) || base.url) : o.photo;
+      const n = Math.max(1, b.leaves ?? 1);
+      const imgs = Array.from({ length: n }, (_, k) => { const u = leafPhotoUrl(photos, colors, o, k); return u ? `<img class="door" src="${esc(u)}" referrerpolicy="no-referrer"${sideOf(o, k) === 'L' ? ' style="transform:scaleX(-1)"' : ''}>` : ''; }).join('');
+      const sideTxt = (k: number) => { const sd = sideOf(o, k); return sd ? (sd === 'L' ? 'левая' : 'правая') : ''; };
+      const leafTxt = Array.from({ length: n }, (_, k) => { const lf = leafOf(o, k); return (n > 1 || sideTxt(k)) ? `${n > 1 ? `Полотно ${k + 1}: ` : 'Сторона: '}${[lf.own && lf.model !== o.model ? lf.model : '', k > 0 && lf.finish !== o.finish ? lf.finish : '', k > 0 && lf.insert !== o.insert ? lf.insert : '', sideTxt(k)].filter(Boolean).join(', ') || 'как полотно 1'}` : ''; }).filter(Boolean);
       const title = `${(b.leaves ?? 1) > 1 ? `<b>${b.leaves} полотна в проёме</b><br>` : ''}Полотно ${esc(vv.series.sheet)}, модель ${esc(o.photoName || vv.model.code)}${vv.v.label ? ` · ${esc(vv.v.label)}` : ''}`;
       lines.push([
-        `${ph ? `<img class="door" src="${esc(ph)}" referrerpolicy="no-referrer">` : ''}${title}${[o.openKind && o.openKind !== 'swing' && `Открывание: ${OPEN_KINDS.find(k => k.key === o.openKind)?.label ?? ''}`, o.finish && `Отделка: ${o.finish}`, o.insert && `Вставка: ${o.insert}`, o.profile && `Профиль: ${o.profile}`, o.color].filter(Boolean).map(t => `<br><small>${esc(t)}</small>`).join('')}${opts.length ? `<br><small>${esc(opts.join('; '))}</small>` : ''}`,
+        `<span class="doors">${imgs}</span>${title}${[o.openKind && o.openKind !== 'swing' && `Открывание: ${OPEN_KINDS.find(k => k.key === o.openKind)?.label ?? ''}`, o.finish && `Отделка: ${o.finish}`, o.insert && `Вставка: ${o.insert}`, o.profile && `Профиль: ${o.profile}`, o.color, ...leafTxt].filter(Boolean).map(t => `<br><small>${esc(t)}</small>`).join('')}${opts.length ? `<br><small>${esc(opts.join('; '))}</small>` : ''}`,
         `${o.height}×${o.width}`, 'шт', money(b.door), String(o.qty), money(b.door * o.qty),
       ]);
     }
@@ -51,7 +62,8 @@ export function openKp(idx: PriceIndex, e: EstimateData, photos: Record<string, 
   td.r, th.r { text-align: right; white-space: nowrap; }
   td.num { text-align: center; font-weight: 700; }
   small { color: #6b7280; }
-  img.door { float: left; height: 110px; width: 46px; object-fit: contain; margin: 0 8px 2px 0; background: #fff; }
+  .doors { float: left; display: flex; gap: 2px; margin: 0 8px 2px 0; }
+  img.door { height: 110px; width: 46px; object-fit: contain; background: #fff; }
   tr { page-break-inside: avoid; }
   .total { margin-top: 12px; margin-left: auto; width: 320px; }
   .total td { border: none; padding: 3px 0; font-size: 13px; }

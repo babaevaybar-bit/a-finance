@@ -34,7 +34,7 @@ export const money = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} �
 export const itemLabel = (it: Item) => [it.name, ...it.attrs].filter(Boolean).join(' · ');
 
 /** Строка расчёта: позиция прайса × количество (+ процентные наценки из того же раздела прайса) */
-export interface Line { itemId: number; qty: number; mods?: number[]; auto?: boolean }
+export interface Line { itemId: number; qty: number; mods?: number[]; auto?: boolean; leavesOn?: number /** %-опция только на часть полотен проёма */ }
 
 export interface Opening {
   id: string;
@@ -58,6 +58,28 @@ export interface Opening {
   insert?: string;         // стекло или молдинг во вставке
   photo?: string;          // выбранное фото модели с profildoors.ru
   photoName?: string;      // точное название на сайте (например, «2.3SE»)
+  leafSet?: LeafCfg[];     // по каждому полотну проёма: [0] — основное (модель/цвет в полях проёма), дальше — свои модель/цвет; сторона у всех
+}
+
+/** Полотно в проёме: своя модель/цвет (пусто — как у полотна 1) и сторона открывания */
+export interface LeafCfg {
+  model?: string;
+  variantId?: number | null;
+  finish?: string;
+  insert?: string;
+  photo?: string;
+  photoName?: string;
+  side?: 'L' | 'R';        // L — петли слева, R — петли справа
+}
+export const SIDE_LABEL: Record<'L' | 'R', string> = { L: 'левая (петли слева)', R: 'правая (петли справа)' };
+
+/** Что стоит на полотне i: своё или как у полотна 1 */
+export function leafOf(o: Opening, i: number): { model: string; variantId: number | null; finish?: string; insert?: string; photo?: string; photoName?: string; side?: 'L' | 'R'; own: boolean } {
+  const c = o.leafSet?.[i];
+  const own = i > 0 && !!c?.model;
+  return own
+    ? { model: c!.model!, variantId: c!.variantId ?? null, finish: c!.finish, insert: c!.insert, photo: c!.photo, photoName: c!.photoName, side: c!.side, own }
+    : { model: o.model, variantId: o.variantId, finish: i > 0 && c?.finish ? c.finish : o.finish, insert: i > 0 && c?.insert ? c.insert : o.insert, photo: o.photo, photoName: o.photoName, side: c?.side, own: false };
 }
 
 export interface EstimateData {
@@ -107,6 +129,7 @@ export interface Breakdown {
   total: number;           // × количество проёмов
   warnings: string[];
   leaves?: number;
+  leafPrices?: { label: string; base: number; after: number }[]; // когда у полотен разные модели
 }
 
 export class PriceIndex {
@@ -176,14 +199,26 @@ export function calcOpening(idx: PriceIndex, o: Opening): Breakdown {
     out.widthMk = pickMarkup(s.width, o.width, o.group);
     const k = (1 + (out.heightMk?.pct ?? 0) / 100) * (1 + (out.widthMk?.pct ?? 0) / 100);
     out.afterSize = out.base * k;                       // одно полотно с наценками
-    let door = out.afterSize * leaves;
+    // у полотен 2…N может быть своя модель — тогда и своя цена
+    let leafSum = out.afterSize;
+    const lp = [{ label: vv.model.code, base: out.base, after: out.afterSize }];
+    for (let i = 1; i < leaves; i++) {
+      const lf = leafOf(o, i);
+      const v2 = lf.own && lf.variantId != null ? idx.variant.get(lf.variantId) : undefined;
+      const b2 = v2 ? v2.v.price : out.base;
+      lp.push({ label: v2 ? v2.model.code : vv.model.code, base: b2, after: b2 * k });
+      leafSum += b2 * k;
+    }
+    if (lp.some(x => x.base !== out.base)) out.leafPrices = lp;
+    let door = leafSum;
     // зеркальная панель «плюсуется до наценки» — на столько полотен, сколько указано
     for (const { l, it } of opts) if (it.kind === 'price' && isMirror(it)) {
       const sum = (it.price ?? 0) * k * (l.qty || 1);
       out.fixedOptions.push({ item: it, qty: l.qty || 1, sum }); door += sum;
     }
-    for (const { it } of opts) if (it.kind === 'pct') {
-      const sum = out.afterSize * leaves * (it.pct ?? 0) / 100;
+    for (const { l, it } of opts) if (it.kind === 'pct') {
+      const part = l.leavesOn != null ? Math.min(leaves, l.leavesOn) / leaves : 1;
+      const sum = leafSum * part * (it.pct ?? 0) / 100;
       out.pctOptions.push({ item: it, sum }); door += sum;
     }
     for (const { l, it } of opts) if (it.kind === 'price' && !isMirror(it)) {
