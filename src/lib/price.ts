@@ -441,8 +441,13 @@ export function colorKey(name: string): string {
     .replace('светло-серый', 'лайт грей').replace(/\s+/g, ' ').trim();
 }
 /** Фото модели в выбранном цвете/стекле; null — такого фото на сайте нет */
+/** Запись модели в door-colors: «1.1.2(р.8)PD» на сайте — «1.1.2(р.8)» */
+function colorRec(c: ColorData, modelName: string) {
+  const k = modelName.toLowerCase().replace(/\s+/g, '');
+  return c.m[k] ?? c.m[k.replace(/(\))[a-z.]+$/, '$1')];
+}
 export function modelColorPhoto(c: ColorData, modelName: string, finish?: string, insert?: string): string | null {
-  const rec = c.m[modelName.toLowerCase().replace(/\s+/g, '')];
+  const rec = colorRec(c, modelName);
   if (!rec) return null;
   const find = (map: Record<string, string> | undefined, name?: string) => {
     if (!map || !name) return null;
@@ -453,7 +458,7 @@ export function modelColorPhoto(c: ColorData, modelName: string, finish?: string
   return find(rec[1], finish) ?? find(rec[2], insert) ?? find(rec[2], finish);
 }
 export function modelDefaultPhoto(c: ColorData, modelName: string): string | null {
-  const rec = c.m[modelName.toLowerCase().replace(/\s+/g, '')];
+  const rec = colorRec(c, modelName);
   return rec?.[0] ? colorUrl(rec[0]) : null;
 }
 /** Образец цвета (кружок) для серии */
