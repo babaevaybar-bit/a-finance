@@ -424,6 +424,13 @@ export function categoryOption(idx: PriceIndex, s: Series, cat: number): Item | 
 /** m: модель → [фото по умолчанию, {цвет: фото}, {стекло: фото}?]; s: серия(:profile|:glass) → {название: образец} */
 export interface ColorData { m: Record<string, [string, Record<string, string>, Record<string, string>?]>; s: Record<string, Record<string, string>> }
 let colorCache: Promise<ColorData> | null = null;
+/** Фото ручек с profildoors.ru: id позиции → [главное фото, {цвет: фото}] */
+export type HandlePhotos = Record<string, [string, Record<string, string>]>;
+let handleCache: Promise<HandlePhotos> | null = null;
+export function loadHandlePhotos(): Promise<HandlePhotos> {
+  if (!handleCache) handleCache = import('@/data/handle-photos.json').then(m => (m.default ?? m) as unknown as HandlePhotos).catch(() => ({}));
+  return handleCache;
+}
 export function loadColors(): Promise<ColorData> {
   if (!colorCache) colorCache = import('@/data/door-colors.json').then(m => (m.default ?? m) as unknown as ColorData).catch(() => ({ m: {}, s: {} }));
   return colorCache;

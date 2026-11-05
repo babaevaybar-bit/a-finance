@@ -205,8 +205,8 @@ export function fitsOpening(idx: PriceIndex, it: Item, group: string, c: PickCtx
       if (/^(TOUCH|WAVE|VITRA)/i.test(n.trim())) return false;   // Touch, Wave, Vitra — комплектации полотна, выбираются в «Опциях полотна»
       return true;   // KM, накладки, ответные планки
     }
-    case 'handle':
-      return ORANGE.includes(c.sheet) ? it.sheet === 'Дверные ручки Orange' : it.sheet === 'Дверные ручки';
+    case 'handle':   // ручки обеих линеек подходят к любой серии; свои — показываем первыми
+      return it.sheet === 'Дверные ручки Orange' || it.sheet === 'Дверные ручки';
     case 'sys':
       return (SYS_SHEETS[kind] ?? []).includes(it.sheet);
     case 'other':

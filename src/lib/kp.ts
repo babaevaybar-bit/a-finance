@@ -16,7 +16,8 @@ const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&am
 export interface KpMeta { number?: number | null; clientName: string; clientPhone: string; managerName: string; date: string; priceTitle: string }
 
 /** Коммерческое предложение по просчёту — открывается в новом окне, оттуда печать или «Сохранить как PDF». */
-export function openKp(idx: PriceIndex, e: EstimateData, photos: Record<string, string>, colors: ColorData | null, meta: KpMeta) {
+export function openKp(idx: PriceIndex, e: EstimateData, photos: Record<string, string>, colors: ColorData | null, meta: KpMeta, handlePhotos: Record<string, [string, Record<string, string>]> = {}) {
+  const hp = (id: number) => { const u = handlePhotos[id]?.[0]; return u ? `<img class="part" src="${esc(u)}" referrerpolicy="no-referrer">` : ''; };
   const t = calcEstimate(idx, e);
   const rows: string[] = [];
   t.openings.forEach(({ o, b }, i) => {
@@ -36,14 +37,14 @@ export function openKp(idx: PriceIndex, e: EstimateData, photos: Record<string, 
     }
     for (const x of b.extras) {
       lines.push([
-        `${esc(itemLabel(x.item))}${(() => { const c = o.extras.find(l => l.itemId === x.item.id && l.color)?.color; return c ? `<br><small>Цвет: ${esc(c)}</small>` : ''; })()}${x.mods.length ? `<br><small>${esc(x.mods.map(m => m.name).join('; '))}</small>` : ''}`,
+        `${hp(x.item.id)}${esc(itemLabel(x.item))}${(() => { const c = o.extras.find(l => l.itemId === x.item.id && l.color)?.color; return c ? `<br><small>Цвет: ${esc(c)}</small>` : ''; })()}${x.mods.length ? `<br><small>${esc(x.mods.map(m => m.name).join('; '))}</small>` : ''}`,
         '', esc(x.item.unit || 'шт'), money(x.unit), String(+(x.qty * o.qty).toFixed(2)), money(x.sum * o.qty),
       ]);
     }
     lines.forEach((r, j) => rows.push(`<tr>${j === 0 ? `<td rowspan="${lines.length}" class="num">${i + 1}</td><td rowspan="${lines.length}">${esc(o.room) || '—'}</td>` : ''}${r.map((c, k) => `<td class="${k >= 3 ? 'r' : ''}">${c}</td>`).join('')}</tr>`));
     if (o.note) rows.push(`<tr><td></td><td colspan="7"><small>${esc(o.note)}</small></td></tr>`);
   });
-  const itemRows = t.items.map((x, i) => `<tr><td class="num">${i + 1}</td><td>${esc(itemLabel(x.item!))}</td><td>${esc(x.item!.unit || 'шт')}</td><td class="r">${money(x.unit)}</td><td class="r">${x.l.qty}</td><td class="r">${money(x.sum)}</td></tr>`).join('');
+  const itemRows = t.items.map((x, i) => `<tr><td class="num">${i + 1}</td><td>${hp(x.item!.id)}${esc(itemLabel(x.item!))}</td><td>${esc(x.item!.unit || 'шт')}</td><td class="r">${money(x.unit)}</td><td class="r">${x.l.qty}</td><td class="r">${money(x.sum)}</td></tr>`).join('');
 
   const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>КП${meta.number ? ` №${meta.number}` : ''} — ${esc(meta.clientName || 'клиент')}</title>
 <style>
@@ -64,6 +65,7 @@ export function openKp(idx: PriceIndex, e: EstimateData, photos: Record<string, 
   small { color: #6b7280; }
   .doors { float: left; display: flex; gap: 2px; margin: 0 8px 2px 0; }
   img.door { height: 110px; width: 46px; object-fit: contain; background: #fff; }
+  img.part { float: left; width: 34px; height: 34px; object-fit: contain; margin: 0 6px 0 0; background: #fff; }
   tr { page-break-inside: avoid; }
   .total { margin-top: 12px; margin-left: auto; width: 320px; }
   .total td { border: none; padding: 3px 0; font-size: 13px; }

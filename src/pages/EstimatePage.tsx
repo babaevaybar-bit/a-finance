@@ -8,11 +8,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from 'sonner';
 import {
   loadPrice, PriceIndex, calcEstimate, calcOpening, emptyEstimate, newOpening, itemLabel, money,
-  suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, loadColors, modelColorPhoto, modelDefaultPhoto, swatchFor, type ColorData, leafOf, leavesWidth, type LeafCfg, finishBlocks, insertBlocks, categoryOption, finishCategory,
+  suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, loadColors, modelColorPhoto, modelDefaultPhoto, swatchFor, loadHandlePhotos, type HandlePhotos, type ColorData, leafOf, leavesWidth, type LeafCfg, finishBlocks, insertBlocks, categoryOption, finishCategory,
   type InfoBlock, type EstimateData, type Opening, type Item, type Line,
 } from '@/lib/price';
 import { sizeLimits, limitWarnings, heightStep, OPEN_KINDS, SIZE_RULES } from '@/lib/sizeRules';
-import { hingeSystems, currentSystem, hingeFamilyOf, boxKeyOf, boxItemMatches, orderNotes, fitsOpening, emptyReason, BOX_LABEL, type BoxKey, type PickCtx } from '@/lib/kit';
+import { hingeSystems, currentSystem, hingeFamilyOf, boxKeyOf, boxItemMatches, orderNotes, fitsOpening, emptyReason, BOX_LABEL, ORANGE, type BoxKey, type PickCtx } from '@/lib/kit';
 import { listEstimates, saveEstimate, deleteEstimate, type EstimateRow } from '@/lib/estimates';
 import { openKp } from '@/lib/kp';
 import { sideOf, syncLeafSurcharges, hingesNeeded } from '@/lib/leaves';
@@ -46,6 +46,8 @@ export default function EstimatePage() {
   useEffect(() => { loadPhotos().then(setPhotos); }, []);
   const [colors, setColors] = useState<ColorData | null>(null);
   useEffect(() => { loadColors().then(setColors); }, []);
+  const [handlePhotos, setHandlePhotos] = useState<HandlePhotos>({});
+  useEffect(() => { loadHandlePhotos().then(setHandlePhotos); }, []);
 
   // несохранённые изменения не теряем при случайном закрытии вкладки
   useEffect(() => {
@@ -168,7 +170,7 @@ export default function EstimatePage() {
     </div>
   );
   const kp = () => {
-    if (!openKp(idx, est, photos, colors, { number: meta.number, clientName: meta.client_name, clientPhone: meta.client_phone, managerName: profile?.name && !profile.name.includes('@') ? profile.name : '', date: new Date().toLocaleDateString('ru-RU'), priceTitle: idx.data.title }))
+    if (!openKp(idx, est, photos, colors, { number: meta.number, clientName: meta.client_name, clientPhone: meta.client_phone, managerName: profile?.name && !profile.name.includes('@') ? profile.name : '', date: new Date().toLocaleDateString('ru-RU'), priceTitle: idx.data.title }, handlePhotos))
       toast.error('Браузер заблокировал новое окно — разрешите всплывающие окна');
   };
   const addOpening = () => update(e => {
@@ -198,7 +200,7 @@ export default function EstimatePage() {
           <div className="space-y-4 min-w-0">
             <div className="lg:hidden">{clientFields}</div>
             {est.openings.map((o, i) => (
-              <OpeningCard colors={colors} key={o.id} idx={idx} photos={photos} o={o} n={i + 1}
+              <OpeningCard colors={colors} handlePhotos={handlePhotos} key={o.id} idx={idx} photos={photos} o={o} n={i + 1}
                 onChange={fn => updOpening(o.id, fn)}
                 onSize={(k, v) => setSize(o, k, v)}
                 onRemove={() => update(e => { e.openings = e.openings.filter(x => x.id !== o.id); })}
@@ -214,7 +216,7 @@ export default function EstimatePage() {
               </div>
               {est.items.length === 0 && <p className="text-xs text-muted-foreground">Плинтус, панели, ручки, фурнитура отдельно — всё, что не относится к конкретному проёму.</p>}
               {est.items.map((l, k) => (
-                <LineRow key={k} idx={idx} l={l}
+                <LineRow key={k} idx={idx} l={l} photo={handlePhotos[l.itemId]?.[0]}
                   onQty={q => update(e => { e.items[k].qty = q; })}
                   onMods={m => update(e => { e.items[k].mods = m; })}
                   onRemove={() => update(e => { e.items.splice(k, 1); })} />
@@ -266,7 +268,7 @@ export default function EstimatePage() {
         </div>
       </div>
 
-      <PickerDialog idx={idx} state={picker} onClose={() => setPicker(null)} onPick={it => picker && addItem(picker.target, it)}
+      <PickerDialog idx={idx} photos={handlePhotos} state={picker} onClose={() => setPicker(null)} onPick={it => picker && addItem(picker.target, it)}
         onGroup={g => setPicker(p => p ? { ...p, group: g, filter: undefined } : p)} />
       <ListDialog open={listOpen} onClose={() => setListOpen(false)} onOpen={openRow} currentId={meta.id} />
     </AppLayout>
@@ -283,8 +285,8 @@ function defaultOptQty(it: Item, leaves: number): number {
 }
 
 // ─── Проём ───────────────────────────────────────────────────────────────────
-function OpeningCard({ idx, photos, colors, o, n, onChange, onSize, onRemove, onDuplicate, onPick }: {
-  idx: PriceIndex; photos: Record<string, string>; colors: ColorData | null; o: Opening; n: number;
+function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize, onRemove, onDuplicate, onPick }: {
+  idx: PriceIndex; photos: Record<string, string>; colors: ColorData | null; handlePhotos: HandlePhotos; o: Opening; n: number;
   onChange: (fn: (o: Opening) => void) => void;
   onSize: (k: 'height' | 'width' | 'leaves' | 'openKind', v: number | string) => void;
   onRemove: () => void; onDuplicate: () => void; onPick: (group: string, filter?: PickerState['filter']) => void;
@@ -737,7 +739,7 @@ function OpeningCard({ idx, photos, colors, o, n, onChange, onSize, onRemove, on
           const fam = it ? hingeFamilyOf(it) : null;
           const hint = fam && sys?.families.includes(fam) ? hingesNeeded(sys, o, hasExtraLoad(idx, o)).total : null;
           return (
-            <LineRow key={k} idx={idx} l={l} hint={hint != null && hint !== l.qty ? `по прайсу ${hint} шт` : undefined}
+            <LineRow key={k} idx={idx} l={l} photo={handlePhotos[l.itemId]?.[0]} hint={hint != null && hint !== l.qty ? `по прайсу ${hint} шт` : undefined}
               onQty={q => onChange(x => { x.extras[k].qty = q; x.extras[k].auto = false; })}
               onMods={m => onChange(x => { x.extras[k].mods = m; })}
               onRemove={() => onChange(x => { x.extras.splice(k, 1); })}
@@ -783,7 +785,7 @@ const Row = ({ l, v, bold }: { l: string; v: string; bold?: boolean }) => (
 );
 
 interface ColorCtl { door?: string; blocks: InfoBlock[]; value?: string; onChange: (v: string | undefined) => void }
-function LineRow({ idx, l, hint, onQty, onMods, onRemove, colorCtl }: { idx: PriceIndex; l: Line; hint?: string; onQty: (q: number) => void; onMods: (m: number[]) => void; onRemove: () => void; colorCtl?: ColorCtl }) {
+function LineRow({ idx, l, hint, onQty, onMods, onRemove, colorCtl, photo }: { idx: PriceIndex; l: Line; hint?: string; onQty: (q: number) => void; onMods: (m: number[]) => void; onRemove: () => void; colorCtl?: ColorCtl; photo?: string }) {
   const it = idx.byId.get(l.itemId);
   if (!it) return null;
   const allMods = idx.modsFor(it);
@@ -795,6 +797,7 @@ function LineRow({ idx, l, hint, onQty, onMods, onRemove, colorCtl }: { idx: Pri
   return (
     <div className="rounded-lg border border-border/70 px-2.5 py-1.5">
       <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+        {photo && <img src={photo} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-10 h-10 shrink-0 rounded border border-border bg-white object-contain" />}
         <div className="basis-full sm:basis-auto flex-1 min-w-0">
           <p className="text-sm sm:truncate" title={itemLabel(it)}>{itemLabel(it)}</p>
           <p className="text-[11px] text-muted-foreground truncate">{it.sheet}{it.section ? ` · ${it.section}` : ''} · {money(it.price ?? 0)} / {it.unit || 'шт'}{hint && <span className="text-amber-700"> · {hint}</span>}</p>
@@ -987,9 +990,10 @@ function ModelGrid({ open, onClose, sheet, models, photos, wood, current, onPick
 // ─── Выбор позиции из прайса ─────────────────────────────────────────────────
 interface PickerState { target: { opening: string | null }; group: string; filter?: { box: BoxKey; series: string }; ctx?: PickCtx | null }
 
-function PickerDialog({ idx, state, onClose, onPick, onGroup }: {
-  idx: PriceIndex; state: PickerState | null; onClose: () => void; onPick: (it: Item) => void; onGroup: (g: string) => void;
+function PickerDialog({ idx, state, onClose, onPick, onGroup, photos }: {
+  idx: PriceIndex; state: PickerState | null; onClose: () => void; onPick: (it: Item) => void; onGroup: (g: string) => void; photos: HandlePhotos;
 }) {
+  const [zoom, setZoom] = useState<{ title: string; main: string; colors: Record<string, string> } | null>(null);
   const filter = state?.filter;
   const ctx = state?.ctx ?? null;
   const [showAll, setShowAll] = useState(false);
@@ -1003,7 +1007,13 @@ function PickerDialog({ idx, state, onClose, onPick, onGroup }: {
       && (filter ? boxItemMatches(it, filter.box, filter.series)
         : (ctx && !showAll && group.key !== 'all') ? fitsOpening(idx, it, group.key, ctx)
         : (!group.sheets || group.sheets.includes(it.sheet)))
-      && words.every(w => `${itemLabel(it)} ${it.sheet} ${it.section} ${it.sub}`.toLowerCase().includes(w)));
+      && words.every(w => `${itemLabel(it)} ${it.sheet} ${it.section} ${it.sub}`.toLowerCase().includes(w)))
+      // ручки своей линейки (Orange / PROFILDOORS) — первыми
+      .sort((a, b) => {
+        if (!ctx || !/^Дверные ручки/.test(a.sheet) || !/^Дверные ручки/.test(b.sheet)) return 0;
+        const own = ORANGE.includes(ctx.sheet) ? 'Дверные ручки Orange' : 'Дверные ручки';
+        return (a.sheet === own ? 0 : 1) - (b.sheet === own ? 0 : 1);
+      });
   }, [idx, group, q, filter, ctx, showAll]);
   const bySheet = useMemo(() => {
     const m = new Map<string, Item[]>();
@@ -1040,7 +1050,13 @@ function PickerDialog({ idx, state, onClose, onPick, onGroup }: {
               {items.map(it => (
                 <button key={it.id} type="button" onClick={() => onPick(it)}
                   className="w-full flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted">
-                  <span className="min-w-0">{itemLabel(it)}{it.sub && !/^(Категория|Серия|Цвета|Вставки|Ответная)/.test(it.sub) && <span className="block text-[11px] text-muted-foreground truncate">{it.sub}</span>}</span>
+                  {!photos[it.id] && /^Дверные ручки/.test(it.sheet) && <span className="w-12 h-12 shrink-0" />}
+                  {photos[it.id] && (
+                    <img src={photos[it.id][0]} alt="" loading="lazy" referrerPolicy="no-referrer" title="Нажмите, чтобы увеличить"
+                      onClick={e => { e.stopPropagation(); setZoom({ title: itemLabel(it), main: photos[it.id][0], colors: photos[it.id][1] }); }}
+                      className="w-12 h-12 shrink-0 rounded border border-border bg-white object-contain cursor-zoom-in" />
+                  )}
+                  <span className="min-w-0 flex-1">{itemLabel(it)}{it.sub && !/^(Категория|Серия|Цвета|Вставки|Ответная)/.test(it.sub) && <span className="block text-[11px] text-muted-foreground truncate">{it.sub}</span>}</span>
                   <span className="text-xs text-muted-foreground whitespace-nowrap">{money(it.price ?? 0)} / {it.unit || 'шт'}</span>
                 </button>
               ))}
@@ -1048,6 +1064,29 @@ function PickerDialog({ idx, state, onClose, onPick, onGroup }: {
           ))}
           {list.length > 400 && <p className="text-xs text-muted-foreground text-center">Показаны первые 400 — уточните поиск</p>}
         </div>
+      </DialogContent>
+      {zoom && <PhotoDialog {...zoom} onClose={() => setZoom(null)} />}
+    </Dialog>
+  );
+}
+
+/** Фото ручки крупно и в цветах (с profildoors.ru) */
+function PhotoDialog({ title, main, colors, onClose }: { title: string; main: string; colors: Record<string, string>; onClose: () => void }) {
+  const [cur, setCur] = useState(main);
+  return (
+    <Dialog open onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle className="text-base">{title}</DialogTitle></DialogHeader>
+        <img src={cur} alt="" referrerPolicy="no-referrer" className="w-full max-h-[55vh] object-contain bg-white rounded" />
+        {Object.keys(colors).length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            <button type="button" onClick={() => setCur(main)} className={`text-xs rounded-full border px-2.5 py-0.5 ${cur === main ? 'border-primary bg-primary text-primary-foreground' : 'border-border'}`}>общее</button>
+            {Object.entries(colors).map(([c, u]) => (
+              <button key={c} type="button" onClick={() => setCur(u)} className={`text-xs rounded-full border px-2.5 py-0.5 ${cur === u ? 'border-primary bg-primary text-primary-foreground' : 'border-border'}`}>{c}</button>
+            ))}
+          </div>
+        )}
+        <p className="text-[11px] text-muted-foreground">Фото с сайта profildoors.ru.</p>
       </DialogContent>
     </Dialog>
   );
