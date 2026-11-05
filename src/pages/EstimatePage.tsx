@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from 'sonner';
 import {
   loadPrice, PriceIndex, calcEstimate, calcOpening, emptyEstimate, newOpening, itemLabel, money,
-  suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, loadColors, modelColorPhoto, modelDefaultPhoto, swatchFor, loadHandlePhotos, type HandlePhotos, type ColorData, leafOf, leavesWidth, type LeafCfg, finishBlocks, insertBlocks, categoryOption, finishCategory,
+  suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, loadColors, modelColorPhoto, modelDefaultPhoto, swatchFor, loadHandlePhotos, catOfItem, CAT_LABEL, HARDWARE, type Cat, type HandlePhotos, type ColorData, leafOf, leavesWidth, type LeafCfg, finishBlocks, insertBlocks, categoryOption, finishCategory,
   type InfoBlock, type EstimateData, type Opening, type Item, type Line,
 } from '@/lib/price';
 import { sizeLimits, limitWarnings, heightStep, OPEN_KINDS, SIZE_RULES } from '@/lib/sizeRules';
@@ -24,7 +24,8 @@ const PICK_GROUPS: { key: string; label: string; sheets: string[] | null }[] = [
   { key: 'lock', label: 'Замки', sheets: ['Замки'] },
   { key: 'handle', label: 'Ручки', sheets: ['Дверные ручки', 'Дверные ручки Orange'] },
   { key: 'sys', label: 'Системы открывания', sheets: ['Раздвижные системы открывания', 'Раздвижные системы "MAGIC"', 'Складные системы', 'Поворотные системы', 'Системы "Пенал"'] },
-  { key: 'other', label: 'Прочее', sheets: ['Прочая фурнитура', 'Плинтуса алюминиевые', 'Стеновые панели "EGGER"', 'Стеновые панели V', 'Серия "SC" профиля', 'Серия "SC" стекла триплекс', 'Серия "SC" стекла 4 мм'] },
+  { key: 'fitting', label: 'Прочая фурнитура', sheets: ['Прочая фурнитура'] },
+  { key: 'other', label: 'Прочее', sheets: ['Плинтуса алюминиевые', 'Стеновые панели "EGGER"', 'Стеновые панели V', 'Серия "SC" профиля', 'Серия "SC" стекла триплекс', 'Серия "SC" стекла 4 мм'] },
   { key: 'all', label: 'Весь прайс', sheets: null },
 ];
 
@@ -133,6 +134,7 @@ export default function EstimatePage() {
           const fam = hingeFamilyOf(it);
           qty = (fam && sys?.families.includes(fam) ? hingesNeeded(sys, o, hasExtraLoad(idx, o)).total : null) ?? (suggestHinges(it.name, o.sheet, vv?.model.code ?? '', o.height, o.width, hasExtraLoad(idx, o)) ?? 2) * Math.max(1, o.leaves || 1);
         }
+        if (HARDWARE.includes(catOfItem(it))) o.hardware = true;
         o.extras.push({ itemId: it.id, qty, mods: idx.autoMods(it, o.height, o.width, o.leaves || 1, o.openKind || 'swing', catOf(o)), auto: it.sheet === 'Петли' ? true : undefined });
         syncHinges(o);
       } else {
@@ -236,13 +238,24 @@ export default function EstimatePage() {
                 </div>
               ))}
               {totals.items.length > 0 && <div className="flex justify-between text-xs"><span className="text-muted-foreground">Дополнительно</span><span>{money(totals.items.reduce((a, x) => a + x.sum, 0))}</span></div>}
+              <div className="border-t border-border pt-1.5 space-y-0.5">
+                {CAT_ORDER.filter(c => (totals.byCat[c] ?? 0) > 0).map((c, i, arr) => (
+                  <div key={c}>
+                    {HARDWARE.includes(c) && !HARDWARE.includes(arr[i - 1]) && (
+                      <div className="flex justify-between text-xs"><span className="text-muted-foreground">Фурнитура</span><span>{money(HARDWARE.reduce((a, h) => a + (totals.byCat[h] ?? 0), 0))}</span></div>
+                    )}
+                    <div className={`flex justify-between text-xs ${HARDWARE.includes(c) ? 'pl-3 text-[11px]' : ''}`}><span className="text-muted-foreground">{CAT_LABEL[c]}</span><span className={HARDWARE.includes(c) ? 'text-muted-foreground' : ''}>{money(totals.byCat[c] ?? 0)}</span></div>
+                  </div>
+                ))}
+              </div>
               <div className="flex justify-between border-t border-border pt-1.5"><span className="text-muted-foreground">Сумма по прайсу</span><span>{money(totals.sub)}</span></div>
               <div className="flex justify-between items-center gap-2">
                 <span className="text-muted-foreground">Скидка, %</span>
                 <Input type="number" inputMode="decimal" min={0} max={100} className="h-8 w-20 text-right" value={est.discountPct || ''} placeholder="0"
                   onChange={e => update(x => { x.discountPct = Math.max(0, Math.min(100, Number(e.target.value) || 0)); })} />
               </div>
-              {totals.discount > 0 && <div className="flex justify-between text-muted-foreground"><span>Скидка</span><span>−{money(totals.discount)}</span></div>}
+              <DiscountTargets byCat={totals.byCat} value={est.discountOn} onChange={v => update(x => { x.discountOn = v; })} />
+              {totals.discount > 0 && <div className="flex justify-between text-muted-foreground"><span>Скидка{est.discountOn?.length ? ` (${est.discountOn.map(c => CAT_LABEL[c].toLowerCase()).join(', ')})` : ''}</span><span className="whitespace-nowrap">−{money(totals.discount)}</span></div>}
               <div className="flex justify-between text-lg font-semibold border-t border-border pt-1.5"><span>Итого</span><span>{money(totals.total)}</span></div>
             </div>
             <Textarea rows={3} placeholder="Примечание для КП (сроки, монтаж, условия…)" value={est.comment} onChange={e => update(x => { x.comment = e.target.value; })} />
@@ -431,6 +444,27 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
     x.photo = photo?.url; x.photoName = photo?.name;
   });
   const chosen = new Map(o.options.map(l => [l.itemId, l]));
+  const hwLines = o.extras.map((l, k) => ({ l, k, it: idx.byId.get(l.itemId) })).filter(x => x.it && HARDWARE.includes(catOfItem(x.it)));
+  const hwOn = o.hardware ?? hwLines.length > 0;
+  const hwSum = HARDWARE.reduce((a, c) => a + (b.byCat?.[c] ?? 0), 0);
+  const extraRow = (l: Line, k: number) => {
+    const it = idx.byId.get(l.itemId);
+    const vv = o.variantId != null ? idx.variant.get(o.variantId) : undefined;
+    const sys = currentSystem(o.sheet, vv?.model.code ?? o.model, o.openKind === 'book' ? 'book' : o.hingeSys);
+    const fam = it ? hingeFamilyOf(it) : null;
+    const hint = fam && sys?.families.includes(fam) ? hingesNeeded(sys, o, hasExtraLoad(idx, o)).total : null;
+    return (
+      <LineRow key={k} idx={idx} l={l} photo={handlePhotos[l.itemId]} hint={hint != null && hint !== l.qty ? `по прайсу ${hint} шт` : undefined}
+        onQty={q => onChange(x => { x.extras[k].qty = q; x.extras[k].auto = false; })}
+        onMods={m => onChange(x => { x.extras[k].mods = m; })}
+        onRemove={() => onChange(x => { x.extras.splice(k, 1); })}
+        colorCtl={it && idx.modsFor(it).some(m => /погонаж/i.test(m.name) && /категори/i.test(m.name)) ? {
+          door: o.finish, value: l.color,
+          blocks: (() => { const ss = idx.series.get(it.sheet) ?? idx.series.get(o.sheet); return ss ? finishBlocks(ss) : []; })(),
+          onChange: v => onChange(x => { x.extras[k].color = v; }),
+        } : undefined} />
+    );
+  };
   const sections = useMemo(() => {
     const m = new Map<string, Item[]>();
     for (const it of options) { const k = it.section || 'Опции'; if (!m.has(k)) m.set(k, []); m.get(k)!.push(it); }
@@ -723,33 +757,37 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
         </div>
       )}
 
-      {/* Комплектующие */}
+      {/* Комплектующие: короб, погонаж, системы */}
       <div className="space-y-1.5">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-sm mr-1">Комплектующие:</span>
-          {PICK_GROUPS.filter(g => g.key !== 'other').map(g => (
+          {PICK_GROUPS.filter(g => ['box', 'sys', 'all'].includes(g.key)).map(g => (
             <Button key={g.key} size="sm" variant="outline" className="h-7 text-xs" onClick={() => onPick(g.key)}><Plus size={12} className="mr-0.5" />{g.label === 'Весь прайс' ? 'Другое' : g.label}</Button>
           ))}
         </div>
-        {s && o.model && <KitPanel idx={idx} o={o} onChange={onChange} onPick={onPick} />}
-        {o.extras.map((l, k) => {
-          const it = idx.byId.get(l.itemId);
-          const vv = o.variantId != null ? idx.variant.get(o.variantId) : undefined;
-          const sys = currentSystem(o.sheet, vv?.model.code ?? o.model, o.openKind === 'book' ? 'book' : o.hingeSys);
-          const fam = it ? hingeFamilyOf(it) : null;
-          const hint = fam && sys?.families.includes(fam) ? hingesNeeded(sys, o, hasExtraLoad(idx, o)).total : null;
-          return (
-            <LineRow key={k} idx={idx} l={l} photo={handlePhotos[l.itemId]} hint={hint != null && hint !== l.qty ? `по прайсу ${hint} шт` : undefined}
-              onQty={q => onChange(x => { x.extras[k].qty = q; x.extras[k].auto = false; })}
-              onMods={m => onChange(x => { x.extras[k].mods = m; })}
-              onRemove={() => onChange(x => { x.extras.splice(k, 1); })}
-              colorCtl={it && idx.modsFor(it).some(m => /погонаж/i.test(m.name) && /категори/i.test(m.name)) ? {
-                door: o.finish, value: l.color,
-                blocks: (() => { const ss = idx.series.get(it.sheet) ?? idx.series.get(o.sheet); return ss ? finishBlocks(ss) : []; })(),
-                onChange: v => onChange(x => { x.extras[k].color = v; }),
-              } : undefined} />
-          );
-        })}
+        {s && o.model && <KitPanel idx={idx} o={o} onChange={onChange} onPick={onPick} part="box" />}
+        {o.extras.map((l, k) => ({ l, k, it: idx.byId.get(l.itemId) })).filter(x => x.it && !HARDWARE.includes(catOfItem(x.it))).map(({ l, k }) => extraRow(l, k))}
+      </div>
+
+      {/* Фурнитура: петли, замки, ручки — считается отдельно */}
+      <div className={`rounded-lg border ${hwOn ? 'border-primary/30' : 'border-dashed border-border'} p-2.5 space-y-1.5`}>
+        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+          <input type="checkbox" className="h-4 w-4" checked={hwOn} onChange={e => onChange(x => { x.hardware = e.target.checked; })} />
+          <span className="font-medium">Фурнитура</span><span className="text-xs text-muted-foreground">петли, замки, ручки</span>
+          {hwOn && hwSum > 0 && <span className="ml-auto text-sm font-medium">{money(hwSum)}</span>}
+        </label>
+        {!hwOn && hwLines.length > 0 && <p className="text-[11px] text-amber-700">В проёме {hwLines.length} поз. фурнитуры — сейчас не считаются. Поставьте галочку, чтобы учесть.</p>}
+        {hwOn && (
+          <>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {PICK_GROUPS.filter(g => ['hinge', 'lock', 'handle', 'fitting'].includes(g.key)).map(g => (
+                <Button key={g.key} size="sm" variant="outline" className="h-7 text-xs" onClick={() => onPick(g.key)}><Plus size={12} className="mr-0.5" />{g.label}</Button>
+              ))}
+            </div>
+            {s && o.model && <KitPanel idx={idx} o={o} onChange={onChange} onPick={onPick} part="hardware" />}
+            {hwLines.map(({ l, k }) => extraRow(l, k))}
+          </>
+        )}
       </div>
 
       {/* Расчёт */}
@@ -769,13 +807,47 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
           {b.fixedOptions.filter(x => x.sum > 0).map(x => <Row key={x.item.id} l={`${x.item.name}${x.qty > 1 ? ` ×${x.qty}` : ''}`} v={`+${money(x.sum)}`} />)}
           <Row l="Полотно итого" v={money(b.door)} bold />
         </>}
-        {b.extrasSum > 0 && <Row l="Комплектующие" v={money(b.extrasSum)} />}
+        {CAT_ORDER.filter(c => c !== 'door' && (b.byCat?.[c] ?? 0) > 0).map(c => <Row key={c} l={HARDWARE.includes(c) ? `Фурнитура: ${CAT_LABEL[c].toLowerCase()}` : CAT_LABEL[c]} v={money(b.byCat![c]!)} />)}
         {b.warnings.map(w => <p key={w} className="text-amber-700">{w}</p>)}
         <div className="flex justify-between pt-1 mt-1 border-t border-border/60 text-sm font-semibold">
           <span>Проём{o.qty > 1 ? ` × ${o.qty}` : ''}</span><span>{money(b.total)}</span>
         </div>
       </div>
       <Input className="h-8 text-xs" placeholder="Заметка к проёму (сторонность, открывание, монтаж…)" value={o.note} onChange={e => onChange(x => { x.note = e.target.value; })} />
+    </div>
+  );
+}
+
+const CAT_ORDER: Cat[] = ['door', 'box', 'sys', 'hinge', 'lock', 'handle', 'fitting', 'other'];
+/** Чему давать скидку: на всё или выбранным группам (например, только петли и ручки) */
+function DiscountTargets({ byCat, value, onChange }: { byCat: Partial<Record<Cat, number>>; value?: Cat[]; onChange: (v: Cat[] | undefined) => void }) {
+  const [open, setOpen] = useState(!!value?.length);
+  const all = !value?.length;
+  const present = CAT_ORDER.filter(c => (byCat[c] ?? 0) > 0 || value?.includes(c));
+  const toggle = (c: Cat) => { const cur = new Set(value ?? []); if (cur.has(c)) cur.delete(c); else cur.add(c); onChange(cur.size ? CAT_ORDER.filter(x => cur.has(x)) : undefined); };
+  const hwAll = HARDWARE.filter(c => present.includes(c));
+  return (
+    <div className="text-xs">
+      <button type="button" className="text-primary hover:underline" onClick={() => setOpen(v => !v)}>
+        Скидка на: <b>{all ? 'всё' : value!.map(c => CAT_LABEL[c].toLowerCase()).join(', ')}</b> {open ? '▴' : '▾'}
+      </button>
+      {open && (
+        <div className="mt-1 rounded-md border border-border p-2 space-y-1">
+          <label className="flex items-center gap-2"><input type="checkbox" checked={all} onChange={() => onChange(undefined)} />На всё</label>
+          {present.filter(c => !HARDWARE.includes(c)).map(c => (
+            <label key={c} className="flex items-center gap-2"><input type="checkbox" checked={!!value?.includes(c)} onChange={() => toggle(c)} />{CAT_LABEL[c]}<span className="ml-auto text-muted-foreground">{money(byCat[c] ?? 0)}</span></label>
+          ))}
+          {hwAll.length > 0 && (
+            <div className="space-y-1">
+              <label className="flex items-center gap-2 font-medium"><input type="checkbox" checked={hwAll.every(c => value?.includes(c))}
+                onChange={e => { const cur = new Set(value ?? []); hwAll.forEach(c => (e.target.checked ? cur.add(c) : cur.delete(c))); onChange(cur.size ? CAT_ORDER.filter(x => cur.has(x)) : undefined); }} />Фурнитура</label>
+              {hwAll.map(c => (
+                <label key={c} className="flex items-center gap-2 pl-5"><input type="checkbox" checked={!!value?.includes(c)} onChange={() => toggle(c)} />{CAT_LABEL[c]}<span className="ml-auto text-muted-foreground">{money(byCat[c] ?? 0)}</span></label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -840,9 +912,9 @@ function LineRow({ idx, l, hint, onQty, onMods, onRemove, colorCtl, photo }: { i
 }
 
 // ─── Комплектация: петли, короб, замок по правилам прайса ────────────────────
-function KitPanel({ idx, o, onChange, onPick }: {
+function KitPanel({ idx, o, onChange, onPick, part }: {
   idx: PriceIndex; o: Opening; onChange: (fn: (o: Opening) => void) => void;
-  onPick: (group: string, filter?: PickerState['filter']) => void;
+  onPick: (group: string, filter?: PickerState['filter']) => void; part: 'box' | 'hardware';
 }) {
   const systems = hingeSystems(o.sheet, o.model);
   if (!systems.length) return null;
@@ -864,13 +936,14 @@ function KitPanel({ idx, o, onChange, onPick }: {
   const revOpt = sys.reverse ? series?.options.map(id => idx.byId.get(id)).find(it => it && /^Дверное полотно "?REVERSE"?$/i.test(it.name.trim())) : undefined;
   const hasRev = !!revOpt && o.options.some(l => l.itemId === revOpt.id);
   const notes = orderNotes(idx, o);
+  if (part === 'box' && !(kind === 'swing' && systems.length > 1) && !sys.boxes.length && !(sys.reverse && revOpt && !hasRev)) return null;
   const addHinge = (it: Item) => onChange(x => {
     x.extras = x.extras.filter(l => { const f = hingeFamilyOf(idx.byId.get(l.itemId)!); return !f; });
     x.extras.push({ itemId: it.id, qty: need, auto: true });
   });
   return (
     <div className="rounded-lg border border-primary/20 bg-primary/[0.03] p-2.5 space-y-2 text-xs">
-      {kind === 'swing' && systems.length > 1 && (
+      {part === 'box' && kind === 'swing' && systems.length > 1 && (
         <label className="flex flex-wrap items-center gap-2"><span className="text-muted-foreground">Открывание и петли:</span>
           <select className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={sys.key} onChange={e => onChange(x => { x.hingeSys = e.target.value; })}>
             {systems.filter(x => x.key !== 'book').map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
@@ -878,7 +951,7 @@ function KitPanel({ idx, o, onChange, onPick }: {
         </label>
       )}
       {/* Петли */}
-      <div className="space-y-1">
+      {part === 'hardware' && <div className="space-y-1">
         <p><span className="font-medium">Петли:</span> {sys.included ? <span className="text-emerald-700">{sys.included} — {need} шт.</span> : <>нужно <b>{need} шт.</b>{leaves > 1 ? ` (${perTxt})` : ''}{sys.note ? <span className="text-muted-foreground"> · {sys.note}</span> : null}</>}</p>
         {!sys.included && (okHinges.length ? (
           <p className="text-emerald-700">✓ {okHinges.map(x => `${x.it.name.replace('Петля скрытой установки ', '')} — ${x.l.qty} шт.`).join('; ')}{okHinges.some(x => x.l.qty !== need) ? <span className="text-amber-700"> (по прайсу {need})</span> : null}</p>
@@ -892,9 +965,9 @@ function KitPanel({ idx, o, onChange, onPick }: {
           </div>
         ))}
         {badHinges.map(x => <p key={x.it.id} className="text-amber-700">⚠ {x.it.name.replace('Петля скрытой установки ', '')} не подходит к «{sys.label}»</p>)}
-      </div>
+      </div>}
       {/* Короб */}
-      {sys.boxes.length > 0 && (
+      {part === 'box' && sys.boxes.length > 0 && (
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-1">
             <span className="font-medium mr-1">Короб подходит:</span>
@@ -906,11 +979,11 @@ function KitPanel({ idx, o, onChange, onPick }: {
           {badBoxes.map(x => <p key={x.it.id} className="text-amber-700">⚠ Короб {BOX_LABEL[x.key!]} не подходит к «{sys.label}» — нужен: {sys.boxes.map(b => BOX_LABEL[b]).join(', ')}</p>)}
         </div>
       )}
-      {sys.reverse && revOpt && !hasRev && (
+      {part === 'box' && sys.reverse && revOpt && !hasRev && (
         <p className="text-amber-700">⚠ Открывание от себя — нужно полотно REVERSE.{' '}
           <button type="button" className="underline text-primary" onClick={() => onChange(x => { x.options.push({ itemId: revOpt.id, qty: Math.max(1, x.leaves || 1) }); })}>Добавить (+{money((revOpt.price ?? 0) * leaves)})</button></p>
       )}
-      {notes.map(nt => (
+      {part === 'hardware' && notes.map(nt => (
         <p key={nt.text} className="text-foreground/80">• {nt.text}{nt.addIds && <> {' '}<button type="button" className="underline text-primary" onClick={() => onChange(x => { for (const id of nt.addIds!) x.extras.push({ itemId: id, qty: 1 }); })}>добавить</button></>}</p>
       ))}
     </div>

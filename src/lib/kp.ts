@@ -1,5 +1,5 @@
 import { OPEN_KINDS } from '@/lib/sizeRules';
-import { calcEstimate, itemLabel, leafOf, money, modelPhotos, modelColorPhoto, modelDefaultPhoto, type ColorData, type EstimateData, type Opening, type PriceIndex } from '@/lib/price';
+import { calcEstimate, CAT_LABEL, itemLabel, leafOf, money, modelPhotos, modelColorPhoto, modelDefaultPhoto, type ColorData, type EstimateData, type Opening, type PriceIndex } from '@/lib/price';
 import { sideOf } from '@/lib/leaves';
 
 /** Фото полотна i в его цвете */
@@ -82,8 +82,9 @@ export function openKp(idx: PriceIndex, e: EstimateData, photos: Record<string, 
 ${rows.length ? `<h2>Проёмы</h2><table><thead><tr><th>№</th><th>Помещение</th><th>Наименование</th><th>Размер, мм</th><th>Ед.</th><th class="r">Цена</th><th class="r">Кол-во</th><th class="r">Сумма</th></tr></thead><tbody>${rows.join('')}</tbody></table>` : ''}
 ${itemRows ? `<h2>Дополнительно</h2><table><thead><tr><th>№</th><th>Наименование</th><th>Ед.</th><th class="r">Цена</th><th class="r">Кол-во</th><th class="r">Сумма</th></tr></thead><tbody>${itemRows}</tbody></table>` : ''}
 <table class="total">
+  ${(['door', 'box', 'sys', 'hinge', 'lock', 'handle', 'fitting', 'other'] as const).filter(c => (t.byCat[c] ?? 0) > 0).map(c => `<tr><td><small>${['hinge', 'lock', 'handle', 'fitting'].includes(c) ? 'Фурнитура: ' + CAT_LABEL[c].toLowerCase() : CAT_LABEL[c]}</small></td><td class="r"><small>${money(t.byCat[c] ?? 0)}</small></td></tr>`).join('')}
   <tr><td>Сумма</td><td class="r">${money(t.sub)}</td></tr>
-  ${t.discount > 0 ? `<tr><td>Скидка ${e.discountPct}%</td><td class="r">−${money(t.discount)}</td></tr>` : ''}
+  ${t.discount > 0 ? `<tr><td>Скидка ${e.discountPct}%${e.discountOn?.length ? ` <small>(${esc(e.discountOn.map(c => CAT_LABEL[c].toLowerCase()).join(', '))})</small>` : ''}</td><td class="r">−${money(t.discount)}</td></tr>` : ''}
   <tr class="big"><td>Итого</td><td class="r">${money(t.total)}</td></tr>
 </table>
 ${e.comment ? `<p><b>Примечание:</b> ${esc(e.comment)}</p>` : ''}

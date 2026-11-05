@@ -31,6 +31,24 @@ export function loadPrice(): Promise<PriceData> {
 }
 
 export const money = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} ₸`;
+// ─── Категории сметы (для подытогов и скидки) ───────────────────────────────
+export type Cat = 'door' | 'box' | 'sys' | 'hinge' | 'lock' | 'handle' | 'fitting' | 'other';
+export const CAT_LABEL: Record<Cat, string> = {
+  door: 'Полотна', box: 'Короба и погонаж', sys: 'Системы открывания', hinge: 'Петли', lock: 'Замки', handle: 'Ручки', fitting: 'Прочая фурнитура', other: 'Прочее',
+};
+export const HARDWARE: Cat[] = ['hinge', 'lock', 'handle', 'fitting'];
+const SYS_SHEETS_ALL = ['Раздвижные системы открывания', 'Раздвижные системы "MAGIC"', 'Складные системы', 'Поворотные системы', 'Системы "Пенал"'];
+const BOX_SHEETS_ALL = ['Короба INVISIBLE', 'Короб INVISIBLE 60U', 'Короб SLIM', 'INTEGRAL', 'INTEGRAL Reverse', 'Моноблок ЭМАЛЬ', 'Моноблок REVERSE ЭМАЛЬ', 'Моноблок PE.O, NE.O', 'Моноблок Reverse PE.O, NE.O', 'Моноблок Шпон', 'Моноблок Шпон Reverse'];
+export function catOfItem(it: Item): Cat {
+  if (it.sheet === 'Петли') return 'hinge';
+  if (it.sheet === 'Замки') return 'lock';
+  if (/^Дверные ручки/.test(it.sheet)) return 'handle';
+  if (it.sheet === 'Прочая фурнитура') return 'fitting';
+  if (SYS_SHEETS_ALL.includes(it.sheet)) return 'sys';
+  if (BOX_SHEETS_ALL.includes(it.sheet) || /^\s*(Коробк|Короб|Наличник|Добор|Притворная планка|Плинтус|Капитель|Карниз)/i.test(it.name)) return 'box';
+  return 'other';
+}
+
 export const itemLabel = (it: Item) => [it.name, ...it.attrs].filter(Boolean).join(' · ');
 
 /** Строка расчёта: позиция прайса × количество (+ процентные наценки из того же раздела прайса) */
@@ -58,6 +76,7 @@ export interface Opening {
   insert?: string;         // стекло или молдинг во вставке
   photo?: string;          // выбранное фото модели с profildoors.ru
   photoName?: string;      // точное название на сайте (например, «2.3SE»)
+  hardware?: boolean;      // «Фурнитура» в проёме (петли, замки, ручки); выключено — не считается
   leafSet?: LeafCfg[];     // по каждому полотну проёма: [0] — основное (модель/цвет в полях проёма), дальше — свои модель/цвет; сторона у всех
 }
 
@@ -96,6 +115,7 @@ export interface EstimateData {
   openings: Opening[];
   items: Line[];           // общие позиции (плинтус, панели, ручки отдельно…)
   discountPct: number;
+  discountOn?: Cat[];      // чему давать скидку; пусто/нет — на всё
   comment: string;
 }
 
@@ -133,7 +153,8 @@ export interface Breakdown {
   pctOptions: { item: Item; sum: number }[];
   fixedOptions: { item: Item; qty: number; sum: number }[];
   door: number;            // одно полотно со всеми опциями
-  extras: { item: Item; qty: number; unit: number; sum: number; mods: Item[] }[];
+  extras: { item: Item; qty: number; unit: number; sum: number; mods: Item[]; cat?: Cat }[];
+  byCat?: Partial<Record<Cat, number>>;   // на один проём
   extrasSum: number;       // на один проём
   unit: number;            // один проём целиком
   total: number;           // × количество проёмов
@@ -277,12 +298,17 @@ export function calcOpening(idx: PriceIndex, o: Opening): Breakdown {
   } else if (o.sheet) {
     out.error = 'Выберите модель';
   }
+  out.byCat = {};
   for (const l of o.extras) {
     const r = lineSum(idx, l);
     if (!r.item) continue;
-    out.extras.push({ item: r.item, qty: l.qty, unit: r.unit, sum: r.sum, mods: r.mods });
+    const cat = catOfItem(r.item);
+    if (o.hardware === false && HARDWARE.includes(cat)) continue;   // фурнитура выключена — не считаем
+    out.extras.push({ item: r.item, qty: l.qty, unit: r.unit, sum: r.sum, mods: r.mods, cat });
     out.extrasSum += r.sum;
+    out.byCat[cat] = (out.byCat[cat] ?? 0) + r.sum;
   }
+  if (out.door) out.byCat.door = out.door;
   out.unit = out.door + out.extrasSum;
   out.total = out.unit * Math.max(0, o.qty || 0);
   out.ok = !!vv || o.extras.length > 0;
@@ -293,8 +319,13 @@ export function calcEstimate(idx: PriceIndex, e: EstimateData) {
   const openings = e.openings.map(o => ({ o, b: calcOpening(idx, o) }));
   const items = e.items.map(l => ({ l, ...lineSum(idx, l) })).filter(x => x.item);
   const sub = openings.reduce((s, x) => s + x.b.total, 0) + items.reduce((s, x) => s + x.sum, 0);
-  const discount = sub * Math.max(0, Math.min(100, e.discountPct || 0)) / 100;
-  return { openings, items, sub, discount, total: sub - discount };
+  const byCat: Partial<Record<Cat, number>> = {};
+  for (const { o, b } of openings) for (const [k, v] of Object.entries(b.byCat ?? {})) byCat[k as Cat] = (byCat[k as Cat] ?? 0) + (v ?? 0) * Math.max(0, o.qty || 0);
+  for (const x of items) { const c = catOfItem(x.item!); byCat[c] = (byCat[c] ?? 0) + x.sum; }
+  const on = e.discountOn?.length ? e.discountOn : null;
+  const base = on ? on.reduce((s, c) => s + (byCat[c] ?? 0), 0) : sub;
+  const discount = base * Math.max(0, Math.min(100, e.discountPct || 0)) / 100;
+  return { openings, items, sub, byCat, discountBase: base, discount, total: sub - discount };
 }
 
 /** Сколько петель по правилам прайса (подсказка, менеджер может поправить) */
