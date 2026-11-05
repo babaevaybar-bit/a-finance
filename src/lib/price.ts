@@ -139,7 +139,8 @@ export interface Breakdown {
   total: number;           // × количество проёмов
   warnings: string[];
   leaves?: number;
-  catAdd?: { item: Item; sum: number };   // наценка за покрытие на полотно 1 — до наценок за размер
+  catAdd?: { item: Item; sum: number };
+  glassAdd?: { item: Item; sum: number }; // наценка за стекло на полотно 1 — до наценок за размер   // наценка за покрытие на полотно 1 — до наценок за размер
   leafPrices?: { label: string; size: string; base: number; after: number; mk: string }[]; // когда у полотен разные модели или размеры
 }
 
@@ -219,26 +220,39 @@ export function calcOpening(idx: PriceIndex, o: Opening): Breakdown {
       const it = c != null && c >= 2 ? categoryOption(idx, s, c) : null;
       return it && it.kind === 'price' && opts.some(x => x.it.id === it.id) ? it : null;
     };
+    // наценка за стекло («Стекло 2» у PD) — тоже до наценок за размер
+    const glassLine = (ins: string | undefined, model: string, variantLabel: string) => {
+      if (!ins) return null;
+      const bl = insertBlocks(s, model, variantLabel).find(b => b.lists.some(l => l.items.includes(ins)));
+      if (bl?.cat == null || bl.cat < 2) return null;
+      const g = opts.find(x => x.it.kind === 'price' && /остеклени/i.test(x.it.name) && x.it.name.includes(`Стекло ${bl.cat}`))?.it;
+      return g ?? null;
+    };
     const catSet = new Set<number>();
     const c0 = catLine(o.finish, o.model);
+    const g0 = glassLine(o.insert, o.model, vv.v.label);
     if (c0) { catSet.add(c0.id); out.catAdd = { item: c0, sum: c0.price ?? 0 }; }
-    out.afterSize = (out.base + (c0?.price ?? 0)) * k;  // одно полотно с наценками
+    if (g0) { catSet.add(g0.id); out.glassAdd = { item: g0, sum: g0.price ?? 0 }; }
+    const add0 = (c0?.price ?? 0) + (g0?.price ?? 0);
+    out.afterSize = (out.base + add0) * k;  // одно полотно с наценками: (цена + стекло + покрытие) × размер
     // у полотен 2…N может быть своя модель — тогда и своя цена
     const mkTxt = (h: Markup | null, w: Markup | null) => [h && `выс. +${h.pct}%`, w && `шир. ${w.pct > 0 ? '+' : ''}${w.pct}%`].filter(Boolean).join(', ');
     let leafSum = out.afterSize;
-    const lp = [{ label: vv.model.code, size: `${o.height}×${o.width}`, base: out.base + (c0?.price ?? 0), after: out.afterSize, mk: mkTxt(out.heightMk, out.widthMk) }];
+    const lp = [{ label: vv.model.code, size: `${o.height}×${o.width}`, base: out.base + add0, after: out.afterSize, mk: mkTxt(out.heightMk, out.widthMk) }];
     let differ = false;
     for (let i = 1; i < leaves; i++) {
       const lf = leafOf(o, i);
       const v2 = lf.own && lf.variantId != null ? idx.variant.get(lf.variantId) : undefined;
       const cl = catLine(lf.finish, lf.model);
+      const gl = glassLine(lf.insert, lf.model, (v2 ?? vv).v.label);
       if (cl) catSet.add(cl.id);
-      const b2 = (v2 ? v2.v.price : out.base) + (cl?.price ?? 0);
+      if (gl) catSet.add(gl.id);
+      const b2 = (v2 ? v2.v.price : out.base) + (cl?.price ?? 0) + (gl?.price ?? 0);
       // свой размер полотна — свои наценки на высоту/ширину
       const hm = lf.ownSize ? pickMarkup(s.height, lf.height, o.group) : out.heightMk;
       const wm = lf.ownSize ? pickMarkup(s.width, lf.width, o.group) : out.widthMk;
       const k2 = (1 + (hm?.pct ?? 0) / 100) * (1 + (wm?.pct ?? 0) / 100);
-      if (b2 !== out.base + (c0?.price ?? 0) || lf.ownSize) differ = true;
+      if (b2 !== out.base + add0 || lf.ownSize) differ = true;
       lp.push({ label: v2 ? v2.model.code : vv.model.code, size: `${lf.height}×${lf.width}`, base: b2, after: b2 * k2, mk: mkTxt(hm, wm) });
       leafSum += b2 * k2;
     }
