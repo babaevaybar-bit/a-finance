@@ -1,3 +1,4 @@
+import ClientHistoryButton from '@/components/client/ClientHistoryButton';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -210,6 +211,7 @@ export default function LeadSheet({ leadId, initialTab = 'card', stages, lostRea
                 <SheetDescription className="mt-0.5 truncate">
                   {[showPhone(lead.client_phone) || 'нет телефона', lead.source, lead.amount ? formatCurrency(lead.amount) : null].filter(Boolean).join(' · ')}
                 </SheetDescription>
+                <ClientHistoryButton phone={lead.client_phone} name={lead.client_name} label className="-ml-1 mt-0.5" />
               </div>
             </div>
 

@@ -13,8 +13,10 @@ import {
 } from '@/lib/price';
 import { sizeLimits, limitWarnings, heightStep, OPEN_KINDS, SIZE_RULES } from '@/lib/sizeRules';
 import { hingeSystems, currentSystem, hingeFamilyOf, boxKeyOf, boxItemMatches, orderNotes, fitsOpening, emptyReason, BOX_LABEL, ORANGE, type BoxKey, type PickCtx } from '@/lib/kit';
-import { listEstimates, saveEstimate, deleteEstimate, type EstimateRow } from '@/lib/estimates';
+import { listEstimates, saveEstimate, deleteEstimate, getEstimate, type EstimateRow } from '@/lib/estimates';
+import { useSearchParams } from 'react-router-dom';
 import { openKp } from '@/lib/kp';
+import ClientHistoryButton from '@/components/client/ClientHistoryButton';
 import { sideOf, syncLeafSurcharges, hingesNeeded } from '@/lib/leaves';
 import { Info, Calculator, Copy, FileText, FolderOpen, Loader2, Plus, Save, Search, Trash2, X, ChevronDown } from 'lucide-react';
 
@@ -112,6 +114,14 @@ export default function EstimatePage() {
     setMeta({ id: r.id, number: r.number, client_name: r.client_name ?? '', client_phone: r.client_phone ?? '', title: r.title ?? '' });
     setDirty(false); setListOpen(false);
   }
+  // ?id=… — открыть сохранённый просчёт (например, из карточки клиента)
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    const id = params.get('id');
+    if (!id) return;
+    getEstimate(id).then(r => { if (r) openRow(r); else toast.error('Просчёт не найден'); }).catch(() => toast.error('Не удалось открыть просчёт'))
+      .finally(() => setParams(p => { p.delete('id'); return p; }, { replace: true }));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   function newEstimate() {
     if (dirty && !window.confirm('Есть несохранённые изменения. Начать новый просчёт?')) return;
     setEst({ ...emptyEstimate(), openings: [newOpening()] }); setMeta({ id: null, number: null, client_name: '', client_phone: '', title: '' }); setDirty(false);
@@ -168,6 +178,7 @@ export default function EstimatePage() {
       <p className="text-sm font-medium">Клиент</p>
       <Input placeholder="Имя клиента" value={meta.client_name} onChange={e => { setMeta(m => ({ ...m, client_name: e.target.value })); setDirty(true); }} />
       <Input placeholder="Телефон" inputMode="tel" value={meta.client_phone} onChange={e => { setMeta(m => ({ ...m, client_phone: e.target.value })); setDirty(true); }} />
+      <ClientHistoryButton phone={meta.client_phone} name={meta.client_name} label />
       <Input placeholder="Объект (ЖК, квартира…)" value={meta.title} onChange={e => { setMeta(m => ({ ...m, title: e.target.value })); setDirty(true); }} />
     </div>
   );

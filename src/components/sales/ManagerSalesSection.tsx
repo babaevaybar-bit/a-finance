@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import ClientHistoryButton from '@/components/client/ClientHistoryButton';
 import DealCompleteness from './DealCompleteness';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -310,6 +311,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                             {managerNames ? `${managerNames[d.manager_id] ?? '—'} · ` : ''}{formatDate(d.deal_date)}{d.contract_number ? ` · №${d.contract_number}` : d.has_contract === false ? ' · без договора' : ''} · {d.payment_method}
                           </div>
                         </button>
+                        <ClientHistoryButton phone={d.client_phone} name={d.client_name} className="mt-0.5" />
                         <Badge className={`text-[11px] font-normal shrink-0 ${STATUS_BADGE_VARIANT[d.status] || ''}`} variant="secondary">
                           {DEAL_STATUS_LABELS[d.status] || d.status}
                         </Badge>
@@ -379,6 +381,7 @@ export default React.memo(function ManagerSalesSection({ manager, monthYear, dea
                           <div className="flex items-center gap-1.5 min-w-0">
                             <DealCompleteness deal={d} />
                             <span className="font-medium truncate" title={d.client_name || undefined}>{d.client_name || '—'}</span>
+                            <ClientHistoryButton phone={d.client_phone} name={d.client_name} />
                           </div>
                           <div className="text-[11px] text-muted-foreground truncate mt-0.5">
                             {managerNames && <span className="font-medium text-foreground/80">{managerNames[d.manager_id] ?? '—'} · </span>}

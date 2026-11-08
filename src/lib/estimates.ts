@@ -24,6 +24,13 @@ export async function listEstimates(): Promise<EstimateRow[]> {
   return (data ?? []) as EstimateRow[];
 }
 
+export async function getEstimate(id: string): Promise<EstimateRow | null> {
+  const { data, error } = await supabase.from('price_estimates')
+    .select('id, number, manager_id, created_by, client_name, client_phone, title, total, price_title, created_at, updated_at, data').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return (data as EstimateRow | null) ?? null;
+}
+
 export async function saveEstimate(row: { id?: string | null; client_name: string; client_phone: string; title: string; data: EstimateData; total: number; price_title: string }): Promise<EstimateRow> {
   const body = {
     client_name: row.client_name.trim() || null,

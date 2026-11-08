@@ -1,3 +1,4 @@
+import { phoneKeys } from '@/lib/phone';
 import { supabase } from '@/db/supabase';
 import { CHANNELS, SPLIT_PAYMENT_METHOD } from '@/types/types';
 import type { Manager, Profile, SalesPlan, Deal, Expense, Income, Transfer, SalarySetting, EmployeePermission, ProfitRow, DailyReport, ClientReport, ClientInteraction, ClientTask, ClientChangeLog, InteractionType, DealStage, ClientQuality, DealPayment, AppNotification, RecurringExpenseTemplate, PaymentScheduleItem } from '@/types/types';
@@ -221,10 +222,11 @@ function formatCurrencyPlain(n: number): string {
 // ─── Глобальный поиск клиента по имени/телефону — по «Продажам» и «Ежедневному
 // отчёту» одним запросом, чтобы не искать вручную по каждому разделу отдельно ──
 export async function searchDealsByQuery(q: string): Promise<(Deal & { manager_name?: string })[]> {
-  const { data, error } = await supabase
-    .from('deals')
-    .select('*')
-    .or(`client_name.ilike.%${q}%,client_phone.ilike.%${q}%,contract_number.ilike.%${q}%`)
+  const keys = phoneKeys(q);
+  const base = supabase.from('deals').select('*');
+  // номер телефона в любом виде (8 777…, +7 777…, 7771…) — ищем по нормализованным ключам
+  const { data, error } = await (keys.length ? base.overlaps('phone_keys', keys) : base
+    .or(`client_name.ilike.%${q}%,client_phone.ilike.%${q}%,contract_number.ilike.%${q}%`))
     .order('deal_date', { ascending: false })
     .limit(30);
   if (error) throw error;
@@ -232,10 +234,10 @@ export async function searchDealsByQuery(q: string): Promise<(Deal & { manager_n
 }
 
 export async function searchClientReportsByQuery(q: string): Promise<ClientReport[]> {
-  const { data, error } = await supabase
-    .from('client_reports')
-    .select('*')
-    .or(`client_name.ilike.%${q}%,client_phone.ilike.%${q}%`)
+  const keys = phoneKeys(q);
+  const base = supabase.from('client_reports').select('*');
+  const { data, error } = await (keys.length ? base.overlaps('phone_keys', keys) : base
+    .or(`client_name.ilike.%${q}%,client_phone.ilike.%${q}%`))
     .order('report_date', { ascending: false })
     .limit(30);
   if (error) throw error;

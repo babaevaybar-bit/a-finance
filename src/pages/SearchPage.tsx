@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Phone, MapPin, TrendingUp, ClipboardList } from 'lucide-react';
+import { Phone, MapPin, TrendingUp, ClipboardList, Users } from 'lucide-react';
 import { searchDealsByQuery, searchClientReportsByQuery, getManagers } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, ClientReport, Manager } from '@/types/types';
@@ -11,6 +11,8 @@ import { CLIENT_QUALITY_LABELS, DEAL_STAGE_LABELS } from '@/types/types';
 import TrelloLookup from '@/components/trello/TrelloLookup';
 import DealFormDialog from '@/components/sales/DealFormDialog';
 import DealCompleteness from '@/components/sales/DealCompleteness';
+import ClientHistorySheet from '@/components/client/ClientHistorySheet';
+import { phoneKeys, fmtPhoneKey } from '@/lib/phone';
 
 const STATUS_LABELS: Record<string, string> = { pending: 'на проверке', approved: 'подтверждена', rejected: 'отклонена' };
 const STATUS_COLORS: Record<string, string> = {
@@ -29,6 +31,7 @@ export default function SearchPage() {
   const [clients, setClients] = useState<ClientReport[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [loading, setLoading] = useState(false);
+  const [card, setCard] = useState<{ phone: string; name?: string | null } | null>(null);
 
   useEffect(() => { setInput(q); }, [q]);
 
@@ -50,6 +53,22 @@ export default function SearchPage() {
     setSearchParams(input.trim() ? { q: input.trim() } : {});
   }
 
+  // Найденные клиенты: записи с одним номером (в любом написании) — один клиент
+  const people = (() => {
+    const m = new Map<string, { key: string; names: Set<string>; deals: number; sum: number; reports: number }>();
+    const add = (phone: string | null, name: string | null, deal?: number) => {
+      for (const k of phoneKeys(phone)) {
+        if (!m.has(k)) m.set(k, { key: k, names: new Set(), deals: 0, sum: 0, reports: 0 });
+        const x = m.get(k)!;
+        if (name?.trim()) x.names.add(name.trim());
+        if (deal != null) { x.deals++; x.sum += deal; } else x.reports++;
+      }
+    };
+    deals.forEach(d => add(d.client_phone, d.client_name, d.status === 'rejected' ? 0 : Number(d.total_amount) || 0));
+    clients.forEach(c => add(c.client_phone, c.client_name));
+    return [...m.values()].sort((a, b) => b.deals - a.deals || b.reports - a.reports);
+  })();
+
   const nothingFound = q.trim().length >= 2 && !loading && deals.length === 0 && clients.length === 0;
 
   return (
@@ -57,7 +76,7 @@ export default function SearchPage() {
       <div className="space-y-6 max-w-3xl">
         <div>
           <h1 className="text-xl font-semibold">Поиск клиента</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">По имени или телефону — сразу по «Продажам» и «Ежедневному отчёту»</p>
+          <p className="text-sm text-muted-foreground mt-0.5">По имени, договору или телефону в любом виде (8 777…, +7 777…, 777…) — с карточкой клиента и историей покупок</p>
         </div>
 
         <form onSubmit={submit}>
@@ -78,6 +97,27 @@ export default function SearchPage() {
 
         {nothingFound && (
           <p className="text-sm text-muted-foreground">Ничего не найдено по запросу «{q}»</p>
+        )}
+
+        {people.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2"><Users size={14} />Карточки клиентов ({people.length})</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0 divide-y divide-border">
+              {people.map(p => (
+                <button key={p.key} type="button" onClick={() => setCard({ phone: p.key, name: [...p.names][0] })}
+                  className="w-full px-4 py-3 text-left hover:bg-muted/40 flex items-center justify-between gap-3">
+                  <span className="min-w-0">
+                    <span className="font-medium text-sm">{[...p.names][0] || 'Без имени'}</span>
+                    {p.names.size > 1 && <span className="text-xs text-muted-foreground"> · также: {[...p.names].slice(1, 3).join(', ')}</span>}
+                    <span className="block text-xs text-muted-foreground">{fmtPhoneKey(p.key)} · покупок: {p.deals}{p.reports ? ` · в отчёте: ${p.reports}` : ''}</span>
+                  </span>
+                  <span className="text-right whitespace-nowrap text-sm font-medium">{p.sum > 0 ? formatCurrency(p.sum) : ''}<span className="block text-xs text-primary font-normal">история →</span></span>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
         )}
 
         {deals.length > 0 && (
@@ -157,6 +197,7 @@ export default function SearchPage() {
           </Card>
         )}
       </div>
+      <ClientHistorySheet open={!!card} phone={card?.phone ?? null} name={card?.name} onClose={() => setCard(null)} />
       {editDeal && (
         <DealFormDialog
           open={!!editDeal}
