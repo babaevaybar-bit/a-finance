@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Phone, MessageCircle, Search, AlertTriangle, CalendarClock, Wallet, Factory } from 'lucide-react';
 import { getAllDeals, getManagers } from '@/lib/api';
+import { supabase } from '@/db/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Deal, Manager } from '@/types/types';
 import DealPayments from '@/components/sales/DealPayments';
@@ -43,6 +44,7 @@ export default function DebtorsPage() {
   const [managerId, setManagerId] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
+  const [lastPay, setLastPay] = useState<Map<string, { amount: number; date: string; n: number }>>(new Map());
 
   // «Доступ» → Должники: «Только свои» — только должники по своим сделкам
   const { profile, seesAll } = useAuth();
@@ -53,8 +55,20 @@ export default function DebtorsPage() {
     if (!silent) setLoading(true);
     try {
       const [d, m] = await Promise.all([getAllDeals(), getManagers()]);
-      setDeals(own ? d.filter(x => x.manager_id === myId) : d);
+      const mine = own ? d.filter(x => x.manager_id === myId) : d;
+      setDeals(mine);
       setManagers(m);
+      // последняя оплата по каждому должнику — для середины строки
+      const ids = mine.filter(x => Number(x.total_amount) - Number(x.paid_amount) > 0).map(x => x.id);
+      const lp = new Map<string, { amount: number; date: string; n: number }>();
+      for (let i = 0; i < ids.length; i += 150) {
+        const { data } = await supabase.from('deal_payments').select('deal_id, amount, payment_date').in('deal_id', ids.slice(i, i + 150)).order('payment_date', { ascending: true });
+        for (const p of (data ?? []) as { deal_id: string; amount: number; payment_date: string }[]) {
+          const cur = lp.get(p.deal_id);
+          lp.set(p.deal_id, { amount: Number(p.amount) || 0, date: p.payment_date, n: (cur?.n ?? 0) + 1 });
+        }
+      }
+      setLastPay(lp);
     } catch { /* silent */ }
     finally { if (!silent) setLoading(false); }
   }, [own, myId]);
@@ -177,7 +191,9 @@ export default function DebtorsPage() {
                     const wa = waLink(d.client_phone);
                     const total = Number(d.total_amount) || 0;
                     const pct = total > 0 ? Math.min(100, Math.round(((total - rest) / total) * 100)) : 0;
-                    const when = waitingForWarehouse(d) ? `ждёт склада · ${d.production_stage}`
+                    const lp = lastPay.get(d.id);
+                    const stageDays = d.production_stage_at ? daysBetween(d.production_stage_at.slice(0, 10), today) : null;
+                    const when = waitingForWarehouse(d) ? 'ждёт склада'
                       : !due ? 'после склада'
                       : overdueDays > 0 ? `просрочено ${overdueDays} дн. · с ${formatDate(due)}`
                       : due === today ? 'сегодня' : formatDate(due);
@@ -190,10 +206,30 @@ export default function DebtorsPage() {
                           </span>
                           <span className="block text-[11px] text-muted-foreground truncate">
                             {[managerName(d.manager_id), d.contract_number ? `№${d.contract_number}` : d.has_contract === false ? 'без договора' : null].filter(Boolean).join(' · ')}
-                            <span className="hidden sm:inline">{' · '}<span className={overdueDays > 0 ? 'text-destructive font-medium' : due === today ? 'text-amber-700 font-medium' : ''}>{when}</span></span>
+                            <span className="hidden sm:inline">{' · '}<span className={overdueDays > 0 ? 'text-destructive font-medium' : due === today ? 'text-amber-700 font-medium' : ''}>{when}</span>{d.production_stage && <span className="lg:hidden"> · {d.production_stage}</span>}</span>
                           </span>
-                          <span className={`sm:hidden block text-[11px] truncate ${overdueDays > 0 ? 'text-destructive font-medium' : due === today ? 'text-amber-700 font-medium' : 'text-muted-foreground'}`}>{when}</span>
+                          <span className={`sm:hidden block text-[11px] truncate ${overdueDays > 0 ? 'text-destructive font-medium' : due === today ? 'text-amber-700 font-medium' : 'text-muted-foreground'}`}>{when}{d.production_stage ? ` · ${d.production_stage}` : ''}</span>
                         </button>
+                        {/* Середина строки: что заказали, где производство, когда платили */}
+                        <div className="hidden lg:grid grid-cols-3 gap-4 flex-[1.6] min-w-0 text-[11px] leading-tight">
+                          <div className="min-w-0">
+                            <p className="text-muted-foreground">Заказ</p>
+                            <p className="truncate text-foreground" title={d.door_model ?? undefined}>{d.door_model || '—'}</p>
+                            {d.address && <p className="truncate text-muted-foreground" title={d.address}>{d.address}</p>}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-muted-foreground">Производство</p>
+                            {d.production_stage
+                              ? <p className="truncate text-foreground" title={d.production_stage}>{d.production_stage}</p>
+                              : <p className="text-muted-foreground">нет карточки</p>}
+                            {stageDays != null && d.production_stage && <p className={stageDays > 14 ? 'text-amber-700' : 'text-muted-foreground'}>{stageDays === 0 ? 'сегодня' : `${stageDays} дн. на этапе`}</p>}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-muted-foreground">Последняя оплата</p>
+                            {lp ? <p className="truncate text-foreground">{formatDate(lp.date)} · {formatCurrency(lp.amount)}</p> : <p className="text-muted-foreground">—</p>}
+                            <p className="truncate text-muted-foreground">{lp && lp.n > 1 ? `${lp.n} оплат · ` : ''}сделка от {formatDate(d.deal_date)}</p>
+                          </div>
+                        </div>
                         <div className="hidden md:block w-28 shrink-0" title={`Оплачено ${pct}%`}>
                           <div className="h-1.5 rounded-full bg-muted overflow-hidden"><div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} /></div>
                           <p className="text-[10px] text-muted-foreground mt-0.5 text-center">оплачено {pct}%</p>
