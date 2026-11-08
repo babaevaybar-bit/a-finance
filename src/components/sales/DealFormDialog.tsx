@@ -106,7 +106,8 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
     if (form.total_amount <= 0) { toast.error('Общая сумма должна быть больше 0'); return; }
     if (form.paid_amount > form.total_amount) { toast.error('Оплачено не может превышать общую сумму'); return; }
     const split = form.payment_method === SPLIT_PAYMENT_METHOD ? (form.payment_split ?? []).filter(r => Number(r.amount) > 0) : null;
-    if (split && Number(form.paid_amount) > 0) {
+    // у подтверждённой сделки «Оплачено» складывается из истории оплат, а части — это первая оплата: не сверяем
+    if (split && Number(form.paid_amount) > 0 && deal?.status !== 'approved') {
       const splitSum = split.reduce((s, r) => s + Number(r.amount), 0);
       if (split.length < 2) { toast.error('Для «Несколько способов» укажите минимум две части оплаты'); return; }
       if (Math.round(splitSum) !== Math.round(Number(form.paid_amount))) {
@@ -114,7 +115,12 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
       }
     }
     if (form.salary_amount !== null && Number(form.salary_amount) < 0) { toast.error('Сумма для ЗП не может быть отрицательной'); return; }
-    if (form.has_contract && !/\d/.test(form.contract_number || '')) { toast.error('Укажите номер договора или снимите галочку «Есть договор»'); return; }
+    if (form.has_contract && !/\d/.test(form.contract_number || '')) {
+      // старые (импортированные) сделки без номера договора — не мешаем исправить другое поле, только напоминаем
+      const hadNoNumber = !!deal && !/\d/.test(deal.contract_number || '');
+      if (!hadNoNumber) { toast.error('Укажите номер договора или снимите галочку «Есть договор»'); return; }
+      toast.warning('Номер договора не указан — добавьте его, когда будет');
+    }
 
     setSaving(true);
     try {
