@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import TrelloLookup from '@/components/trello/TrelloLookup';
+import ClientHistoryButton from '@/components/client/ClientHistoryButton';
 import DealPayments from '@/components/sales/DealPayments';
 import {
   Phone, MapPin, Flame, Thermometer, Snowflake, Plus, Trash2,
@@ -279,7 +280,7 @@ export default function ClientCard({ client, open, onClose, managers, onClientUp
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                 <Row label="Телефон">
                   {client.client_phone
-                    ? <a href={`tel:${client.client_phone}`} className="flex items-center gap-1 text-primary hover:underline"><Phone size={12} />{client.client_phone}</a>
+                    ? <span className="flex flex-wrap items-center gap-1"><a href={`tel:${client.client_phone}`} className="flex items-center gap-1 text-primary hover:underline"><Phone size={12} />{client.client_phone}</a><ClientHistoryButton phone={client.client_phone} name={client.client_name} label /></span>
                     : <Dash />}
                 </Row>
                 <Row label="Менеджер">{managerName}</Row>

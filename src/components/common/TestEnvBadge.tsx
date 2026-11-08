@@ -13,6 +13,7 @@ import { RotateCcw } from 'lucide-react';
 export default function TestEnvBadge() {
   const { isDirector, user } = useAuth();
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [lastReset, setLastReset] = useState<string | null>(null);
 
@@ -52,14 +53,27 @@ export default function TestEnvBadge() {
 
   return (
     <>
-      <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-1 rounded-full bg-amber-500 text-white text-xs font-semibold pl-3 pr-1 py-1 shadow-lg">
-        <span className="pointer-events-none">ТЕСТОВАЯ ВЕРСИЯ</span>
-        {isDirector ? (
-          <button type="button" onClick={() => setOpen(true)} disabled={busy}
-            className="ml-1 inline-flex items-center gap-1 rounded-full bg-white/20 hover:bg-white/30 px-2 py-0.5 font-medium">
-            <RotateCcw size={12} />Сбросить к боевой
-          </button>
-        ) : <span className="pr-2" />}
+      {/* тонкая полоса сверху + маленький ярлычок «ТЕСТ»: не закрывает кнопки и низ экрана на телефоне */}
+      <div className="fixed top-0 inset-x-0 h-[3px] bg-amber-500 z-[100] pointer-events-none" />
+      <div className="fixed top-0 right-3 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 z-[100]">
+        <button type="button" onClick={() => setExpanded(v => !v)} title="Тестовая версия сайта"
+          className="rounded-b-md bg-amber-500 text-white text-[10px] leading-none font-semibold px-2 pt-0.5 pb-1 shadow">
+          ТЕСТ
+        </button>
+        {expanded && (
+          <div className="absolute top-full right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 mt-1 w-max max-w-[90vw] rounded-lg bg-amber-500 text-white text-xs shadow-lg p-2 space-y-1.5">
+            <p className="font-semibold">Тестовая версия — изменения здесь не попадают на основной сайт</p>
+            <div className="flex items-center gap-1.5">
+              {isDirector && (
+                <button type="button" onClick={() => { setExpanded(false); setOpen(true); }} disabled={busy}
+                  className="inline-flex items-center gap-1 rounded-full bg-white/20 hover:bg-white/30 px-2 py-0.5 font-medium">
+                  <RotateCcw size={12} />Сбросить к боевой
+                </button>
+              )}
+              <button type="button" onClick={() => setExpanded(false)} className="rounded-full bg-white/20 hover:bg-white/30 px-2 py-0.5">Скрыть</button>
+            </div>
+          </div>
+        )}
       </div>
       <AlertDialog open={open} onOpenChange={setOpen}>
         <AlertDialogContent>

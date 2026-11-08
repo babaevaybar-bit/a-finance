@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Menu, Settings, Activity, ChevronDown, GraduationCap, LayoutDashboard, TrendingUp, Wallet, BarChart2,
+  Menu, Settings, Activity, ChevronDown, GraduationCap, Calculator, LayoutDashboard, TrendingUp, Wallet, BarChart2,
   Users, Banknote, CheckSquare, ShieldCheck, LogOut, User, TrendingDown, ClipboardList, Layers, Search, Wrench, Bell, HandCoins, KanbanSquare, Contact, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { useAuth, IN_DEVELOPMENT } from '@/contexts/AuthContext';
@@ -24,6 +24,7 @@ export const navItems = [
   { path: '/sales',        label: 'Продажи',           icon: TrendingUp,      adminOnly: false, pageKey: 'sales',        group: 'Продажи' },
   { path: '/debtors',      label: 'Должники',          icon: HandCoins,       adminOnly: false, pageKey: 'debtors',      group: 'Продажи' },
   { path: '/approvals',    label: 'Подтверждения',     icon: CheckSquare,     adminOnly: true,  pageKey: 'approvals',    group: 'Продажи' },
+  { path: '/estimate',     label: 'Просчёт',           icon: Calculator,      adminOnly: false, pageKey: 'estimate',     group: 'Продажи' },
   { path: '/finance',      label: 'Финансы',           icon: Wallet,          adminOnly: true,  pageKey: 'finance',      group: 'Деньги' },
   { path: '/reports',      label: 'Отчёты',            icon: BarChart2,       adminOnly: true,  pageKey: 'reports',      group: 'Деньги' },
   { path: '/salary',       label: 'Зарплаты',          icon: Banknote,        adminOnly: true,  pageKey: 'salary',       group: 'Деньги' },
@@ -114,6 +115,9 @@ function NavLinks({ onClose, mini = false }: { onClose?: () => void; mini?: bool
       )}
       {path === '/boards' && (
         <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold shrink-0">бета</span>
+      )}
+      {path === '/estimate' && (
+        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold shrink-0 whitespace-nowrap">New beta</span>
       )}
       {path === '/approvals' && pendingCount > 0 && (
         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-semibold shrink-0">{pendingCount}</span>

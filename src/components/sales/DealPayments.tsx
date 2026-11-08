@@ -20,10 +20,20 @@ import { PAYMENT_METHODS, CHANNELS } from '@/types/types';
  * доплата и ОДНА кнопка «Оплаты». Всё управление — в окне:
  * 1) сводка, 2) «Внести оплату», 3) план будущих доплат, 4) история.
  */
-export default function DealPayments({ deal, onChanged, suggestedAmount, suggestedChannel }: {
+export default function DealPayments({ deal, onChanged, suggestedAmount, suggestedChannel, compact }: {
   deal: Deal; onChanged: () => void; suggestedAmount?: number; suggestedChannel?: string; scheduleOpen?: boolean;
+  compact?: boolean;   // только кнопка «Оплаты» (без полоски) — для компактных списков
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  if (compact) return (
+    <>
+      <Button size="sm" variant="outline" className="h-8 text-xs px-2 sm:px-2.5" title="Оплаты" onClick={e => { e.stopPropagation(); setDialogOpen(true); }}>
+        <Wallet size={14} className="sm:mr-1" /><span className="hidden sm:inline">Оплаты</span>
+      </Button>
+      <PaymentsDialog open={dialogOpen} onClose={() => setDialogOpen(false)} deal={deal} onChanged={onChanged}
+        suggestedAmount={suggestedAmount} suggestedChannel={suggestedChannel} />
+    </>
+  );
 
   const total = Number(deal.total_amount);
   const paid = Number(deal.paid_amount);
