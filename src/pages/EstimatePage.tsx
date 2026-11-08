@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from 'sonner';
 import {
   loadPrice, PriceIndex, calcEstimate, calcOpening, emptyEstimate, newOpening, itemLabel, money,
-  suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, loadColors, modelColorPhoto, modelDefaultPhoto, swatchFor, loadHandlePhotos, catOfItem, CAT_LABEL, HARDWARE, type Cat, type HandlePhotos, type ColorData, leafOf, leavesWidth, type LeafCfg, finishBlocks, insertBlocks, categoryOption, finishCategory,
+  suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, loadColors, modelColorPhoto, modelDefaultPhoto, swatchFor, loadHandlePhotos, isBLeafItem, catOfItem, CAT_LABEL, HARDWARE, type Cat, type HandlePhotos, type ColorData, leafOf, leavesWidth, type LeafCfg, finishBlocks, insertBlocks, categoryOption, finishCategory,
   type InfoBlock, type EstimateData, type Opening, type Item, type Line,
 } from '@/lib/price';
 import { sizeLimits, limitWarnings, heightStep, OPEN_KINDS, SIZE_RULES } from '@/lib/sizeRules';
@@ -349,7 +349,7 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
   const options = (s?.options ?? []).map(id => idx.byId.get(id)).filter((x): x is Item => {
     if (!x) return false;
     const nm = x.name.trim();
-    if (/^(Коробка|Наличник|Добор|Плинтус)|погонаж|^Притворная планка \d/i.test(nm)) return false;
+    if (/^(Коробка|Наличник|Добор|Плинтус)|погонаж|^Притворная планка/i.test(nm)) return false;   // притворные планки — через «Другое», не в опциях полотна
     if (/^Наценка на полотна (в покрытии|с остеклением)/i.test(nm)) return false;
     const c = nm.match(/Категори[яи]\s*"?(\d)/i)?.[1];
     return !c || Number(c) === optCat;
@@ -379,6 +379,10 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
   const swatch = colors && s && !tinted && o.finish ? swatchFor(colors, s.sheet, o.finish) : null;
   const swatchOf = (name: string) => (colors && s ? swatchFor(colors, s.sheet, name) : null);
   const nLeaves = Math.max(1, o.leaves || 1);
+  const bOpt = s?.options.map(id => idx.byId.get(id)).find((it): it is Item => !!it && isBLeafItem(it));
+  // какие полотна — ответные «B»: отмечены на фото; если не отмечали, но опция стоит — все, кроме первого
+  const bMarked = Array.from({ length: nLeaves }, (_, i) => o.leafSet?.[i]?.b);
+  const bLeaves = Array.from({ length: nLeaves }, (_, i) => i).filter(i => bMarked.some(v => v !== undefined) ? !!bMarked[i] : (!!bOpt && o.options.some(l => l.itemId === bOpt.id) && i > 0));
   const [leafEdit, setLeafEdit] = useState<number | null>(null);
   const [gridLeaf, setGridLeaf] = useState(0);
   /** Фото полотна i: его модель, цвет и стекло */
@@ -505,6 +509,7 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
                     {nLeaves > 1 ? `${i + 1} · ` : ''}{side ? (side === 'L' ? 'левая' : 'правая') : (lp?.name || o.model || '')}
                     {nLeaves > 1 && <span className={`block ${lf.ownSize ? 'text-primary font-medium' : ''}`}>{lf.height}×{lf.width}</span>}
                   </span>
+                  {nLeaves > 1 && bLeaves.includes(i) && <span className="absolute top-1 right-1 rounded-full bg-amber-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center shadow" title="Ответное B-полотно">B</span>}
                   {nLeaves > 1 && lf.own && lf.model !== o.model && <span className="absolute top-0.5 inset-x-0.5 rounded bg-primary text-primary-foreground text-[9px] px-1 truncate text-center">{lp?.name || lf.model}</span>}
                 </button>
               );
@@ -655,6 +660,17 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
                           className={`text-xs rounded-md border px-3 py-1.5 ${side === k ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted'}`}>{k === 'L' ? '⟲ Левая · петли слева' : 'Правая · петли справа ⟳'}</button>
                       ))}
                     </div>
+                    {bOpt && nLeaves > 1 && (
+                      <label className="flex items-center gap-2 text-sm cursor-pointer select-none pt-1">
+                        <input type="checkbox" className="h-4 w-4" checked={bLeaves.includes(i)}
+                          onChange={e => onChange(x => {
+                            const cur = bLeaves;
+                            x.leafSet = Array.from({ length: nLeaves }, (_, k) => ({ ...(x.leafSet?.[k] ?? {}), b: k === i ? e.target.checked : cur.includes(k) }));
+                          })} />
+                        <span><b>B-полотно</b> (ответное) <span className="text-xs text-muted-foreground">+{money(bOpt.price ?? 0)}</span></span>
+                      </label>
+                    )}
+                    {bOpt && nLeaves > 1 && bLeaves.length === nLeaves && <p className="text-[11px] text-amber-700">Все полотна отмечены как B — обычно одно полотно основное.</p>}
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       <Button size="sm" variant="outline" onClick={() => { setGridLeaf(i); setGridOpen(true); }}>Другая модель по фото</Button>
                       {i > 0 && lf.own && <Button size="sm" variant="ghost" onClick={() => setLeaf(i, c => { delete c.model; delete c.variantId; delete c.finish; delete c.insert; delete c.photo; delete c.photoName; })}>Как полотно 1</Button>}
@@ -738,10 +754,18 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
                       return (
                         <label key={it.id} className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer ${l ? 'bg-primary/10' : 'hover:bg-muted/60'}`}>
                           <input type="checkbox" checked={!!l} onChange={e => onChange(x => {
+                            const n = Math.max(1, x.leaves || 1);
+                            if (isBLeafItem(it) && n > 1) {
+                              // «B»-полотно в двустворчатом проёме: по умолчанию — все, кроме первого; какое именно — выбирается на фото
+                              x.leafSet = Array.from({ length: n }, (_, k) => ({ ...(x.leafSet?.[k] ?? {}), b: e.target.checked ? k > 0 : false }));
+                              return;
+                            }
                             if (e.target.checked) x.options.push({ itemId: it.id, qty: defaultOptQty(it, x.leaves || 1) }); else x.options = x.options.filter(y => y.itemId !== it.id);
                           })} />
-                          <span className="flex-1 min-w-0">{itemLabel(it)}</span>
-                          {l && it.kind === 'price' && (/к-кт|шт|компл/.test(it.unit) || (o.leaves ?? 1) > 1) && (
+                          <span className="flex-1 min-w-0">{itemLabel(it)}
+                            {l && isBLeafItem(it) && nLeaves > 1 && <span className="block text-[11px] text-primary">полотно {bLeaves.map(i => i + 1).join(', ') || '—'} · какое — нажмите на дверь на фото</span>}
+                          </span>
+                          {l && it.kind === 'price' && !(isBLeafItem(it) && nLeaves > 1) && (/к-кт|шт|компл/.test(it.unit) || (o.leaves ?? 1) > 1) && (
                             <Input type="number" min={1} className="h-7 w-14 px-1 text-xs" value={l.qty} onClick={e => e.preventDefault()}
                               onChange={e => onChange(x => { const y = x.options.find(z => z.itemId === it.id); if (y) y.qty = Math.max(1, Number(e.target.value) || 1); })} />
                           )}

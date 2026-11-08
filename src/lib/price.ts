@@ -89,9 +89,12 @@ export interface LeafCfg {
   photo?: string;
   photoName?: string;
   side?: 'L' | 'R';        // L — петли слева, R — петли справа
+  b?: boolean;             // это ответное «B»-полотно
   height?: number;         // свой размер полотна (пусто — как у полотна 1)
   width?: number;
 }
+/** Опция «Дверное "B" полотно» (ответное полотно двустворчатой двери) */
+export const isBLeafItem = (it: Item) => /[BВ]["»]?[\s-]*полотн/i.test(it.name);
 export const SIDE_LABEL: Record<'L' | 'R', string> = { L: 'левая (петли слева)', R: 'правая (петли справа)' };
 
 /** Что стоит на полотне i: своё или как у полотна 1 */

@@ -1,4 +1,4 @@
-import { categoryOption, finishCategory, insertBlocks, leafOf, type Item, type Opening, type PriceIndex } from '@/lib/price';
+import { categoryOption, finishCategory, insertBlocks, isBLeafItem, leafOf, type Item, type Opening, type PriceIndex } from '@/lib/price';
 
 /** Сторона полотна: своя или по умолчанию (в двустворчатых — левые слева, правые справа) */
 export function sideOf(o: Opening, i: number): 'L' | 'R' | undefined {
@@ -35,6 +35,14 @@ export function syncLeafSurcharges(idx: PriceIndex, x: Opening) {
     const m = s.models.find(mm => mm.code === c.model);
     const v = cat != null ? m?.variants.find(vv => new RegExp(`Категория ${cat}(\\D|$)`).test(vv.label)) : undefined;
     if (v) c.variantId = v.id;
+  }
+  // «B»-полотно: сколько полотен отмечено как ответные — столько и опций
+  const bOpt = s.options.map(id => idx.byId.get(id)).find((it): it is Item => !!it && isBLeafItem(it));
+  const marks = Array.from({ length: n }, (_, i) => x.leafSet?.[i]?.b);
+  if (bOpt && n > 1 && marks.some(v => v !== undefined)) {
+    const cnt = marks.filter(Boolean).length;
+    x.options = x.options.filter(l => l.itemId !== bOpt.id);
+    if (cnt) x.options.push({ itemId: bOpt.id, qty: cnt });
   }
   const catItems = new Map<number, { it: Item; cnt: number }>();
   for (const c of [1, 2, 3, 4]) { const it = categoryOption(idx, s, c); if (it && !catItems.has(it.id)) catItems.set(it.id, { it, cnt: 0 }); }
