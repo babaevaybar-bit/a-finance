@@ -116,6 +116,9 @@ function NavLinks({ onClose, mini = false }: { onClose?: () => void; mini?: bool
       {path === '/boards' && (
         <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold shrink-0">бета</span>
       )}
+      {path === '/estimate' && (
+        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold shrink-0 whitespace-nowrap">New beta</span>
+      )}
       {path === '/approvals' && pendingCount > 0 && (
         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-semibold shrink-0">{pendingCount}</span>
       )}

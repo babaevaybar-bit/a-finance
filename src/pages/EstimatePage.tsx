@@ -198,7 +198,7 @@ export default function EstimatePage() {
       <div className="space-y-4 pb-24 lg:pb-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-xl font-semibold flex items-center gap-2"><Calculator size={20} />Просчёт{meta.number ? ` №${meta.number}` : ''}{dirty && <span className="text-xs font-normal text-amber-600">не сохранён</span>}</h1>
+            <h1 className="text-xl font-semibold flex items-center gap-2"><Calculator size={20} />Просчёт{meta.number ? ` №${meta.number}` : ''}<span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">New beta</span>{dirty && <span className="text-xs font-normal text-amber-600">не сохранён</span>}</h1>
             <p className="text-xs text-muted-foreground mt-0.5">{idx.data.title || 'Прайс PROFILDOORS'} · цены в тенге</p>
           </div>
           <div className="flex flex-wrap gap-2">
