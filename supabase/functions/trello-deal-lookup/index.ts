@@ -181,7 +181,7 @@ Deno.serve(async (req) => {
           labels: (card.labels ?? []).map((lb: any) => ({ name: lb.name, color: lb.color })),
         };
         const code = cardCode(card.name);
-        if (targetContract && code && contractsMatch(contractKey(code), targetContract)) {
+        if (targetContract && code && (contractsMatch(contractKey(code), targetContract) || sameFamily(contractKey(code), targetContract))) {
           byContract.push({ ...item, matchedBy: 'contract' });
           continue;
         }
