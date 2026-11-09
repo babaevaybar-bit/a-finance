@@ -156,6 +156,8 @@ Deno.serve(async (req) => {
       dealsByPhone.set(k, [...(dealsByPhone.get(k) ?? []), d]);
     }
     const { data: managersData } = await supabaseAdmin.from('managers').select('id, phone');
+    const { data: partsData } = await supabaseAdmin.from('deal_parts').select('deal_id, trello_card_id');
+    const partOf = new Map<string, string>((partsData ?? []).map((p: any) => [p.trello_card_id, p.deal_id]));
     const managerPhone = new Map((managersData ?? []).map((m: any) => [m.id, m.phone]));
 
     let notified = 0;
@@ -231,6 +233,10 @@ Deno.serve(async (req) => {
         const byPhone = currentCards.filter(c => c.phone === dPhone);
         if (byPhone.length === 1 && (dealsByPhone.get(dPhone)?.length ?? 0) === 1) matched = byPhone;
       }
+      // Части заказа, привязанные вручную в карточке клиента (26-53 → части 1…4): всегда этой сделки,
+      // и не считаются чужими сделками
+      matched = matched.filter(c => !partOf.has(c.id) || partOf.get(c.id) === deal.id);
+      for (const c of currentCards) if (partOf.get(c.id) === deal.id && !matched.some(m => m.id === c.id)) matched.push(c);
       if (matched.length === 0) continue;
       if (mode === 'dry') {
         if (matched.length === 1 && dContract && !dContract.startsWith(':') && matched[0].contract === dContract) {
