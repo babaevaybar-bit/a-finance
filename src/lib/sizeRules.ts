@@ -189,3 +189,22 @@ export function limitWarnings(l: Limits, o: Opening): string[] {
   if (l.stepW && l.stepW > 1 && o.width && o.width % l.stepW) out.push(`Ширина ${o.width} мм не по шагу ${l.stepW} мм`);
   return out;
 }
+
+const KIND_SHORT: Record<OpenKind, string> = { swing: 'распашных', slide: 'раздвижных', pivot: 'Pivot', penal: 'пенала', magic: 'Magic Uniq', book: '«Книжки»' };
+/**
+ * Наценка за размер к текущему проёму не относится (диапазон наценки вне допустимых размеров)?
+ * Возвращает пометку «только для раздвижных и Pivot» или null, если наценка подходит.
+ */
+export function markupScope(s: Series, o: Opening, dim: 'h' | 'w', range: { min: number; max: number }, lim: Limits): string | null {
+  const cur = dim === 'h' ? lim.h : lim.w;
+  if (!cur) return null;
+  const overlaps = (r: R) => range.min <= r[1] && range.max > r[0];
+  if (overlaps(cur)) return null;
+  if (dim === 'h') return 'не для этой модели';
+  const rules = SIZE_RULES[s.sheet];
+  const full = o.model.trim();
+  const mr = rules?.models?.[full] ?? rules?.models?.[modelKey(full)];
+  const widths: Widths = (mr?.w ?? rules?.w ?? {}) as Widths;
+  const kinds = (Object.entries(widths) as [OpenKind, R][]).filter(([k, r]) => r && overlaps(r) && (!mr?.only || mr.only.includes(k))).map(([k]) => KIND_SHORT[k]);
+  return kinds.length ? `только для ${kinds.join(' и ')}` : 'не для этой модели';
+}

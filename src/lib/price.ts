@@ -509,5 +509,12 @@ export function swatchFor(c: ColorData, sheet: string, name: string): string | n
   for (const tab of ['', ':glass', ':profile']) for (const s of keys) for (const [n, u] of Object.entries(c.s[s + tab] ?? {})) if (colorKey(n) === k) return colorUrl(u);
   // у серии своих образцов нет (PD, P/N…) — те же эмали фабрики берём из других серий
   for (const [sk, m] of Object.entries(c.s)) if (!sk.includes(':')) for (const [n, u] of Object.entries(m)) if (colorKey(n) === k) return colorUrl(u);
+  // шпон (VE, VT): образцов на сайте нет — берём фото другой модели этой серии в этом шпоне (в кружке видна фактура)
+  const suf = (SUFFIX[sheet] ?? []).filter(Boolean);
+  for (const [mk, rec] of Object.entries(c.m)) {
+    if (!suf.some(x => mk.endsWith(x))) continue;
+    const hit = Object.entries(rec[1] ?? {}).find(([n, u]) => u && colorKey(n) === k);
+    if (hit) return colorUrl(hit[1]);
+  }
   return null;
 }

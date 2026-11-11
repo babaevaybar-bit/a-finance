@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppLayout from '@/components/layouts/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -11,14 +11,15 @@ import {
   suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, loadColors, modelColorPhoto, modelDefaultPhoto, swatchFor, loadHandlePhotos, isBLeafItem, catOfItem, CAT_LABEL, HARDWARE, type Cat, type HandlePhotos, type ColorData, leafOf, leavesWidth, type LeafCfg, finishBlocks, insertBlocks, categoryOption, finishCategory,
   type InfoBlock, type EstimateData, type Opening, type Item, type Line,
 } from '@/lib/price';
-import { sizeLimits, limitWarnings, heightStep, OPEN_KINDS, SIZE_RULES } from '@/lib/sizeRules';
-import { hingeSystems, currentSystem, hingeFamilyOf, boxKeyOf, boxItemMatches, orderNotes, fitsOpening, emptyReason, BOX_LABEL, ORANGE, type BoxKey, type PickCtx } from '@/lib/kit';
+import { sizeLimits, limitWarnings, heightStep, OPEN_KINDS, SIZE_RULES, markupScope } from '@/lib/sizeRules';
+import { hwColors, brandLabel, hardwareChecklist, PD_COLORS_NOTE } from '@/lib/hwKit';
+import { hingeSystems, currentSystem, hingeFamilyOf, boxKeyOf, boxItemMatches, orderNotes, fitsOpening, emptyReason, BOX_LABEL, ORANGE, type BoxKey, type PickCtx, type HingeSys } from '@/lib/kit';
 import { listEstimates, saveEstimate, deleteEstimate, getEstimate, type EstimateRow } from '@/lib/estimates';
 import { useSearchParams } from 'react-router-dom';
-import { openKp } from '@/lib/kp';
+import { buildKp, type KpMode } from '@/lib/kp';
 import ClientHistoryButton from '@/components/client/ClientHistoryButton';
 import { sideOf, syncLeafSurcharges, hingesNeeded } from '@/lib/leaves';
-import { Info, Calculator, Copy, FileText, FolderOpen, Loader2, Plus, Save, Search, Trash2, X, ChevronDown } from 'lucide-react';
+import { Info, Calculator, Copy, FileText, FolderOpen, Loader2, Plus, Save, Search, Trash2, X, ChevronDown, ArrowLeft, Printer, Share2 } from 'lucide-react';
 
 const PICK_GROUPS: { key: string; label: string; sheets: string[] | null }[] = [
   { key: 'box', label: 'Короба', sheets: ['Короба INVISIBLE', 'Короб INVISIBLE 60U', 'Короб SLIM', 'INTEGRAL', 'INTEGRAL Reverse', 'Моноблок ЭМАЛЬ', 'Моноблок REVERSE ЭМАЛЬ', 'Моноблок PE.O, NE.O', 'Моноблок Reverse PE.O, NE.O', 'Моноблок Шпон', 'Моноблок Шпон Reverse'] },
@@ -42,6 +43,7 @@ export default function EstimatePage() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [listOpen, setListOpen] = useState(false);
+  const [kpMode, setKpMode] = useState<KpMode | null>(null);
   const [picker, setPicker] = useState<PickerState | null>(null);
 
   useEffect(() => { loadPrice().then(d => setIdx(new PriceIndex(d))).catch(() => toast.error('Не удалось загрузить прайс')); }, []);
@@ -132,7 +134,7 @@ export default function EstimatePage() {
     toast.info('Это копия — сохраните, чтобы получить новый номер');
   }
 
-  function addItem(target: { opening: string | null }, it: Item) {
+  function addItem(target: { opening: string | null }, it: Item, color?: string) {
     if (!idx) return;
     update(e => {
       if (target.opening) {
@@ -145,13 +147,13 @@ export default function EstimatePage() {
           qty = (fam && sys?.families.includes(fam) ? hingesNeeded(sys, o, hasExtraLoad(idx, o)).total : null) ?? (suggestHinges(it.name, o.sheet, vv?.model.code ?? '', o.height, o.width, hasExtraLoad(idx, o)) ?? 2) * Math.max(1, o.leaves || 1);
         }
         if (HARDWARE.includes(catOfItem(it))) o.hardware = true;
-        o.extras.push({ itemId: it.id, qty, mods: idx.autoMods(it, o.height, o.width, o.leaves || 1, o.openKind || 'swing', catOf(o)), auto: it.sheet === 'Петли' ? true : undefined });
+        o.extras.push({ itemId: it.id, qty, mods: idx.autoMods(it, o.height, o.width, o.leaves || 1, o.openKind || 'swing', catOf(o)), auto: it.sheet === 'Петли' ? true : undefined, ...(color ? { color } : {}) });
         syncHinges(o);
       } else {
-        e.items.push({ itemId: it.id, qty: 1, mods: [] });
+        e.items.push({ itemId: it.id, qty: 1, mods: [], ...(color ? { color } : {}) });
       }
     });
-    toast.success(`Добавлено: ${it.name}`);
+    toast.success(`Добавлено: ${it.name}${color ? ` (${color})` : ''}`);
   }
 
   /** Наценки комплектующих, зависящие от размера и числа полотен (короб для полотна свыше 2400 мм, распашное исполнение короба) — пересчитываем сами */
@@ -182,10 +184,8 @@ export default function EstimatePage() {
       <Input placeholder="Объект (ЖК, квартира…)" value={meta.title} onChange={e => { setMeta(m => ({ ...m, title: e.target.value })); setDirty(true); }} />
     </div>
   );
-  const kp = () => {
-    if (!openKp(idx, est, photos, colors, { number: meta.number, clientName: meta.client_name, clientPhone: meta.client_phone, managerName: profile?.name && !profile.name.includes('@') ? profile.name : '', date: new Date().toLocaleDateString('ru-RU'), priceTitle: idx.data.title }, handlePhotos))
-      toast.error('Браузер заблокировал новое окно — разрешите всплывающие окна');
-  };
+  const kpHtml = (mode: KpMode) => buildKp(idx, est, photos, colors, { number: meta.number, clientName: meta.client_name, clientPhone: meta.client_phone, managerName: profile?.name && !profile.name.includes('@') ? profile.name : '', date: new Date().toLocaleDateString('ru-RU'), priceTitle: idx.data.title }, handlePhotos, mode);
+  const kp = () => setKpMode('client');
   const addOpening = () => update(e => {
     const last = e.openings[e.openings.length - 1];
     const o = newOpening(last?.sheet ?? '');
@@ -218,7 +218,7 @@ export default function EstimatePage() {
                 onSize={(k, v) => setSize(o, k, v)}
                 onRemove={() => update(e => { e.openings = e.openings.filter(x => x.id !== o.id); })}
                 onDuplicate={() => update(e => { const c = clone(o); c.id = newOpening().id; c.room = o.room ? `${o.room} (2)` : ''; e.openings.splice(i + 1, 0, c); })}
-                onPick={(group, filter) => setPicker({ target: { opening: o.id }, group, filter, ctx: o.sheet ? { sheet: o.sheet, model: o.model, openKind: o.openKind, hingeSys: o.hingeSys, finishCat: catOf(o) } : null })} />
+                onPick={(group, filter) => setPicker({ target: { opening: o.id }, group, filter, ctx: o.sheet ? { sheet: o.sheet, model: o.model, openKind: o.openKind, hingeSys: o.hingeSys, finishCat: catOf(o), profile: o.profile } : null })} />
             ))}
             <Button variant="outline" className="w-full h-12 border-dashed" onClick={addOpening}><Plus size={15} className="mr-1.5" />{est.openings.length ? 'Добавить ещё проём' : 'Добавить проём'}</Button>
 
@@ -292,7 +292,8 @@ export default function EstimatePage() {
         </div>
       </div>
 
-      <PickerDialog idx={idx} photos={handlePhotos} state={picker} onClose={() => setPicker(null)} onPick={it => picker && addItem(picker.target, it)}
+      {kpMode && <KpViewer mode={kpMode} setMode={setKpMode} html={kpHtml(kpMode)} title={meta.client_name} />}
+      <PickerDialog idx={idx} photos={handlePhotos} state={picker} onClose={() => setPicker(null)} onPick={(it, c) => picker && addItem(picker.target, it, c)}
         onGroup={g => setPicker(p => p ? { ...p, group: g, filter: undefined } : p)} />
       <ListDialog open={listOpen} onClose={() => setListOpen(false)} onOpen={openRow} currentId={meta.id} />
     </AppLayout>
@@ -473,6 +474,7 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
         onQty={q => onChange(x => { x.extras[k].qty = q; x.extras[k].auto = false; })}
         onMods={m => onChange(x => { x.extras[k].mods = m; })}
         onRemove={() => onChange(x => { x.extras.splice(k, 1); })}
+        onHwColor={it && hwColors(it) ? (c => onChange(x => { x.extras[k].color = c; })) : undefined}
         colorCtl={it && idx.modsFor(it).some(m => /погонаж/i.test(m.name) && /категори/i.test(m.name)) ? {
           door: o.finish, value: l.color,
           blocks: (() => { const ss = idx.series.get(it.sheet) ?? idx.series.get(o.sheet); return ss ? finishBlocks(ss) : []; })(),
@@ -513,7 +515,7 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
                   {lp ? (
                     <span className="relative w-full h-[150px] sm:h-[200px] flex items-center justify-center">
                       <img key={lp.url} src={lp.url} alt="" referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain" style={side === 'L' ? { transform: 'scaleX(-1)' } : undefined} />
-                      {lp.swatch && <img src={lp.swatch} alt="" referrerPolicy="no-referrer" title={`Цвет: ${lf.finish} (фото модели в этом цвете на сайте фабрики нет)`} className="absolute bottom-1 right-1 w-5 h-5 rounded-full border border-white shadow object-cover" />}
+                      {lp.swatch && <img src={lp.swatch} alt="" referrerPolicy="no-referrer" title={`Цвет: ${lf.finish} (фото модели в этом цвете на сайте фабрики нет)`} className="absolute bottom-1 right-1 w-8 h-8 rounded-full border-2 border-white shadow object-cover" style={{ objectPosition: '50% 35%' }} />}
                     </span>
                   ) : <span className="h-[150px] sm:h-[200px] flex items-center px-1 text-center text-[10px] text-muted-foreground">Выбрать по фото</span>}
                   <span className="w-full text-[10px] leading-tight text-center text-muted-foreground py-0.5 truncate px-0.5">
@@ -526,6 +528,9 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
               );
             })}
           </div>
+          {o.model && Array.from({ length: nLeaves }, (_, i) => leafPhoto(i)).some(lp => lp?.swatch) && (
+            <p className="text-[10px] leading-tight text-amber-700 text-center mt-0.5 max-w-[170px] mx-auto">У фабрики нет фото этой модели в цвете «{o.finish}» — в кружке образец цвета</p>
+          )}
           {o.model && <p className="text-[10px] leading-tight text-muted-foreground text-center mt-0.5 max-w-[150px] mx-auto">{nLeaves > 1 ? 'Нажмите на полотно — модель, цвет, сторона' : 'Нажмите — модель, цвет, сторона'}</p>}
         </div>
       )}
@@ -576,8 +581,10 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
             {rulesOpen && (
               <div className="space-y-0.5 text-foreground/80">
                 {lim.notes.map(t => <p key={t}>• {t}</p>)}
-                {s.height.filter(m => m.range && (m.group || '') === (o.group || '')).map(m => <p key={m.id}>• {m.name}: +{m.pct}%</p>)}
-                {s.width.filter(m => m.range && (m.group || '') === (o.group || '')).map(m => <p key={m.id}>• {m.name}: {m.pct > 0 ? '+' : ''}{m.pct}%</p>)}
+                {([['h', s.height], ['w', s.width]] as const).flatMap(([dim, list]) => list.filter(m => m.range && (m.group || '') === (o.group || '')).map(m => {
+                  const scope = markupScope(s, o, dim, m.range!, lim);
+                  return <p key={m.id} className={scope ? 'text-muted-foreground/60' : ''}>• {m.name}: {m.pct > 0 ? '+' : ''}{m.pct}%{scope && <span className="italic"> — {scope}</span>}</p>;
+                }))}
               </div>
             )}
             {!rulesOpen && lim.notes.filter(t => !sizeWarn.includes(t)).length > 0 && <p>{lim.notes.filter(t => !sizeWarn.includes(t)).join(' · ')}</p>}
@@ -892,7 +899,7 @@ const Row = ({ l, v, bold }: { l: string; v: string; bold?: boolean }) => (
 );
 
 interface ColorCtl { door?: string; blocks: InfoBlock[]; value?: string; onChange: (v: string | undefined) => void }
-function LineRow({ idx, l, hint, onQty, onMods, onRemove, colorCtl, photo }: { idx: PriceIndex; l: Line; hint?: string; onQty: (q: number) => void; onMods: (m: number[]) => void; onRemove: () => void; colorCtl?: ColorCtl; photo?: [string, Record<string, string>] }) {
+function LineRow({ idx, l, hint, onQty, onMods, onRemove, colorCtl, photo, onHwColor }: { idx: PriceIndex; l: Line; hint?: string; onQty: (q: number) => void; onMods: (m: number[]) => void; onRemove: () => void; colorCtl?: ColorCtl; photo?: [string, Record<string, string>]; onHwColor?: (c: string | undefined) => void }) {
   const [zoom, setZoom] = useState(false);
   const it = idx.byId.get(l.itemId);
   if (!it) return null;
@@ -915,6 +922,15 @@ function LineRow({ idx, l, hint, onQty, onMods, onRemove, colorCtl, photo }: { i
         <span className="ml-auto sm:ml-0 w-24 text-right text-sm font-medium whitespace-nowrap">{money(sum)}</span>
         <button type="button" className="text-muted-foreground hover:text-destructive" onClick={onRemove} title="Убрать"><X size={15} /></button>
       </div>
+      {(() => { const cols = onHwColor ? hwColors(it) : undefined; return cols ? (
+        <label className="flex flex-wrap items-center gap-1 mt-1 text-[11px] text-muted-foreground">Цвет{/PROFILDOORS/i.test(it.attrs.join()) ? ' (покраска в цвет кромки)' : ''}:
+          <select className={`h-6 rounded-full border px-1.5 text-[11px] bg-background ${l.color ? 'border-primary text-primary' : 'border-amber-400 text-amber-700'}`}
+            value={l.color ?? ''} onChange={e => onHwColor!(e.target.value || undefined)}>
+            <option value="">— выберите цвет —</option>
+            {cols.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+      ) : null; })()}
       {(mods.length > 0 || colorCtl) && (
         <div className="flex flex-wrap items-center gap-1 mt-1">
           {colorCtl && (
@@ -971,6 +987,11 @@ function KitPanel({ idx, o, onChange, onPick, part }: {
   const revOpt = sys.reverse ? series?.options.map(id => idx.byId.get(id)).find(it => it && /^Дверное полотно "?REVERSE"?$/i.test(it.name.trim())) : undefined;
   const hasRev = !!revOpt && o.options.some(l => l.itemId === revOpt.id);
   const notes = orderNotes(idx, o);
+  const otherBoxes: { b: BoxKey; s: HingeSys }[] = [];
+  for (const s2 of systems) {
+    if (s2.key === 'book' || s2.key === sys.key) continue;
+    for (const b of s2.boxes) if (!sys.boxes.includes(b) && !otherBoxes.some(x => x.b === b)) otherBoxes.push({ b, s: s2 });
+  }
   if (part === 'box' && !(kind === 'swing' && systems.length > 1) && !sys.boxes.length && !(sys.reverse && revOpt && !hasRev)) return null;
   const addHinge = (it: Item) => onChange(x => {
     x.extras = x.extras.filter(l => { const f = hingeFamilyOf(idx.byId.get(l.itemId)!); return !f; });
@@ -1011,6 +1032,19 @@ function KitPanel({ idx, o, onChange, onPick, part }: {
                 className={`rounded-full border px-2 py-0.5 ${boxLines.some(x => x.key === b) ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:border-primary'}`}>{BOX_LABEL[b]}</button>
             ))}
           </div>
+          {/* Короба серии с другими петлями (например, моноблок у PE.O — на петлях Eclipse): выбор короба сам переключает петли */}
+          {kind === 'swing' && otherBoxes.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="text-muted-foreground mr-1">С другими петлями:</span>
+              {otherBoxes.map(({ b, s }) => (
+                <button key={b} type="button" title={`Переключит открывание на «${s.label}»`}
+                  onClick={() => { onChange(x => { x.hingeSys = s.key; }); onPick('box', { box: b, series: o.sheet }); }}
+                  className="rounded-full border border-dashed border-border bg-background px-2 py-0.5 hover:border-primary">
+                  {BOX_LABEL[b]} <span className="text-muted-foreground">· {s.label.split('·').pop()!.trim()}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {badBoxes.map(x => <p key={x.it.id} className="text-amber-700">⚠ Короб {BOX_LABEL[x.key!]} не подходит к «{sys.label}» — нужен: {sys.boxes.map(b => BOX_LABEL[b]).join(', ')}</p>)}
         </div>
       )}
@@ -1018,6 +1052,17 @@ function KitPanel({ idx, o, onChange, onPick, part }: {
         <p className="text-amber-700">⚠ Открывание от себя — нужно полотно REVERSE.{' '}
           <button type="button" className="underline text-primary" onClick={() => onChange(x => { x.options.push({ itemId: revOpt.id, qty: Math.max(1, x.leaves || 1) }); })}>Добавить (+{money((revOpt.price ?? 0) * leaves)})</button></p>
       )}
+      {part === 'hardware' && (() => { const rows = hardwareChecklist(idx, o); return rows.length ? (
+        <div className="rounded-md border border-border bg-background p-2 space-y-0.5">
+          <p className="font-medium">Комплект фурнитуры на дверь</p>
+          {rows.map(r => (
+            <p key={r.label} className={r.ok === false ? 'text-amber-700' : r.ok ? 'text-emerald-700' : 'text-muted-foreground'}>
+              {r.ok === false ? '○' : r.ok ? '✓' : '·'} <b className="font-medium">{r.label}:</b> {r.text}
+            </p>
+          ))}
+          <p className="text-[11px] text-muted-foreground pt-0.5">{PD_COLORS_NOTE}{o.profile ? ` Кромка этой двери: ${o.profile}.` : ''}</p>
+        </div>
+      ) : null; })()}
       {part === 'hardware' && notes.map(nt => (
         <p key={nt.text} className="text-foreground/80">• {nt.text}{nt.addIds && <> {' '}<button type="button" className="underline text-primary" onClick={() => onChange(x => { for (const id of nt.addIds!) x.extras.push({ itemId: id, qty: 1 }); })}>добавить</button></>}</p>
       ))}
@@ -1101,7 +1146,7 @@ function ModelGrid({ open, onClose, sheet, models, photos, wood, current, onPick
 interface PickerState { target: { opening: string | null }; group: string; filter?: { box: BoxKey; series: string }; ctx?: PickCtx | null }
 
 function PickerDialog({ idx, state, onClose, onPick, onGroup, photos }: {
-  idx: PriceIndex; state: PickerState | null; onClose: () => void; onPick: (it: Item) => void; onGroup: (g: string) => void; photos: HandlePhotos;
+  idx: PriceIndex; state: PickerState | null; onClose: () => void; onPick: (it: Item, color?: string) => void; onGroup: (g: string) => void; photos: HandlePhotos;
 }) {
   const [zoom, setZoom] = useState<{ title: string; main: string; colors: Record<string, string> } | null>(null);
   const filter = state?.filter;
@@ -1154,7 +1199,7 @@ function PickerDialog({ idx, state, onClose, onPick, onGroup, photos }: {
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input autoFocus className="pl-8" placeholder="Поиск: invisible, eclipse, touch, ручка sly…" value={q} onChange={e => setQ(e.target.value)} />
         </div>
-        {isHandles ? <HandleGrid key={`${state?.target.opening}`} items={list} photos={photos} onPick={onPick} onDetail={setDetail} /> : (
+        {isHandles ? <HandleGrid key={`${state?.target.opening}`} items={list} photos={photos} onPick={onPick} onDetail={setDetail} profile={ctx?.profile} /> : (
         <div className="flex-1 overflow-y-auto -mx-2 px-2 space-y-3">
           {bySheet.length === 0 && <p className="text-sm text-muted-foreground py-6 text-center">{(!showAll && !q && ctx && emptyReason(group.key, ctx)) || 'Ничего не найдено'}</p>}
           {!showAll && ctx && !filter && group.key === 'lock' && bySheet.length > 0 && <p className="text-[11px] text-muted-foreground">Touch, Wave и Vitra выбираются в «Опциях полотна» — там они сразу считаются с полотном.</p>}
@@ -1188,7 +1233,8 @@ function PickerDialog({ idx, state, onClose, onPick, onGroup, photos }: {
 // ─── Ручки: карточки с крупными фото, внутри — цвета, варианты и фурнитура серии ───
 const ACCESSORY = /^\s*(завертка|розетка|накладка|цилиндр|планка|вставка|фиксатор)/i;
 interface HandleCard { key: string; sheet: string; section: string; name: string; variants: Item[]; photo?: [string, Record<string, string>] }
-function HandleGrid({ items, photos, onPick, onDetail }: { items: Item[]; photos: HandlePhotos; onPick: (it: Item) => void; onDetail: (v: boolean) => void }) {
+function HandleGrid({ items, photos, onPick, onDetail, profile }: { items: Item[]; photos: HandlePhotos; onPick: (it: Item, color?: string) => void; onDetail: (v: boolean) => void; profile?: string }) {
+  const [lastColor, setLastColor] = useState('');
   const [open, setOpenRaw] = useState<HandleCard | null>(null);
   const setOpen = (c: HandleCard | null) => { setOpenRaw(c); onDetail(!!c); };
   const [cur, setCur] = useState<string>('');
@@ -1209,10 +1255,6 @@ function HandleGrid({ items, photos, onPick, onDetail }: { items: Item[]; photos
   }, [items, photos]);
   const brandName = (sheet: string) => (sheet === 'Дверные ручки Orange' ? 'Ручки Orange' : 'Ручки PROFILDOORS');
   const secName = (sec: string) => sec.replace(/^РУЧКИ\s*/i, '').replace(/,\s*ИТАЛИЯ|,\s*ГЕРМАНИЯ/i, '').toLowerCase();
-  const variantName = (it: Item) => {
-    const brand = it.attrs[it.attrs.length - 1] ?? '';
-    return /PROFILDOORS/.test(brand) && it.attrs.length === 1 ? 'в покраске PROFILDOORS' : (brand && !/шт/.test(brand) ? brand : 'стандарт');
-  };
   const accName = (a: Item) => `${a.name}${a.attrs.length === 1 && /PROFILDOORS/.test(a.attrs[0]) ? ' (покраска PROFILDOORS)' : ''}`;
   /** Завертка и розетка под цилиндр к ручке: по розетке (RO02, RO80, 277…) или из той же серии Orange */
   const accFor = (c: HandleCard) => {
@@ -1251,12 +1293,32 @@ function HandleGrid({ items, photos, onPick, onDetail }: { items: Item[]; photos
               {kit && <p className="text-xs text-muted-foreground mt-1">В комплекте: {kit}</p>}
             </div>
             <div className="space-y-1.5">
-              {open.variants.map(v => (
-                <div key={v.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
-                  <span className="text-sm">{variantName(v)}<span className="block text-xs text-muted-foreground">{money(v.price ?? 0)} / {v.unit || 'шт'}</span></span>
-                  <Button size="sm" onClick={() => onPick(v)}><Plus size={14} className="mr-1" />Добавить</Button>
-                </div>
-              ))}
+              {open.variants.map(v => {
+                const cols = hwColors(v);
+                return (
+                  <div key={v.id} className="rounded-md border border-border px-3 py-2 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm">{brandLabel(v)}<span className="block text-xs text-muted-foreground">{money(v.price ?? 0)} / {v.unit || 'комплект'}</span></span>
+                      {!cols && <Button size="sm" onClick={() => onPick(v)}><Plus size={14} className="mr-1" />Добавить</Button>}
+                    </div>
+                    {cols && (
+                      <div className="flex flex-wrap gap-1">
+                        {cols.map(c => {
+                          const edge = !!profile && c.toLowerCase() === profile.toLowerCase();
+                          return (
+                            <button key={c} type="button" onClick={() => { setLastColor(c); onPick(v, c); }}
+                              title={edge ? 'Совпадает с цветом кромки двери' : 'Добавить в этом цвете'}
+                              className={`rounded-full border px-2.5 py-1 text-xs hover:border-primary hover:bg-primary/5 ${edge ? 'border-primary text-primary font-medium' : 'border-border'}`}>
+                              + {c}{edge ? ' · как кромка' : ''}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <p className="text-[11px] text-muted-foreground">{PD_COLORS_NOTE}{profile ? ` Кромка этой двери: ${profile}.` : ''}</p>
             </div>
             {kitAcc.length > 0 && (
               <div>
@@ -1265,14 +1327,14 @@ function HandleGrid({ items, photos, onPick, onDetail }: { items: Item[]; photos
                   {kitAcc.map(a => (
                     <div key={a.id} className="flex items-center gap-2 rounded-md border border-border/70 px-2 py-1.5">
                       {photos[a.id] ? <img src={photos[a.id][0]} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-12 h-12 shrink-0 object-contain bg-white rounded" /> : null}
-                      <span className="flex-1 min-w-0 text-xs">{accName(a)}<span className="block text-muted-foreground">{money(a.price ?? 0)}</span></span>
-                      <Button size="sm" variant="outline" onClick={() => onPick(a)}><Plus size={13} className="mr-1" />Добавить</Button>
+                      <span className="flex-1 min-w-0 text-xs">{accName(a)}<span className="block text-muted-foreground">{money(a.price ?? 0)}{(() => { const c = hwColors(a); return c && lastColor && c.includes(lastColor) ? ` · будет ${lastColor}, как ручка` : c ? ` · цвет: ${c.join(', ')}` : ''; })()}</span></span>
+                      <Button size="sm" variant="outline" onClick={() => { const c = hwColors(a); onPick(a, c && lastColor && c.includes(lastColor) ? lastColor : undefined); }}><Plus size={13} className="mr-1" />Добавить</Button>
                     </div>
                   ))}
                 </div>
               </div>
             )}
-            <p className="text-[11px] text-muted-foreground">Окно не закрывается — можно сразу добавить ручку, завертку и розетку. Фото с сайта profildoors.ru; нужный цвет укажите в примечании к проёму.</p>
+            <p className="text-[11px] text-muted-foreground">Окно не закрывается — можно сразу добавить ручку, завертку и розетку: завертка и розетка встанут в цвет ручки. Фото с сайта profildoors.ru.</p>
           </div>
         </div>
       </div>
@@ -1374,5 +1436,45 @@ function ListDialog({ open, onClose, onOpen, currentId }: { open: boolean; onClo
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** КП внутри приложения (на телефоне сайт открыт как приложение — без кнопки «назад» новое окно было бы ловушкой) */
+function KpViewer({ mode, setMode, html, title }: { mode: KpMode; setMode: (m: KpMode | null) => void; html: string; title: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  // системная «назад» (Android, жест) закрывает КП, а не уводит со страницы
+  useEffect(() => {
+    window.history.pushState({ kp: true }, '');
+    const onPop = () => setMode(null);
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const close = () => { if (window.history.state?.kp) window.history.back(); else setMode(null); };
+  const print = () => { try { ref.current?.contentWindow?.focus(); ref.current?.contentWindow?.print(); } catch { toast.error('Не удалось открыть печать'); } };
+  const share = async () => {
+    const file = new File([html], `КП ${title || 'клиент'}.html`, { type: 'text/html' });
+    try {
+      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: 'Коммерческое предложение' });
+      else { const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
+    } catch { /* отменили */ }
+  };
+  return (
+    <div className="fixed inset-0 z-[60] bg-background flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+        <Button variant="ghost" size="sm" onClick={close}><ArrowLeft size={16} className="mr-1" />Назад</Button>
+        <div className="inline-flex rounded-lg border border-border p-0.5 text-sm">
+          {([['client', 'Для клиента'], ['manager', 'Для менеджера']] as const).map(([k, l]) => (
+            <button key={k} type="button" onClick={() => setMode(k)}
+              className={`rounded-md px-3 py-1 ${mode === k ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}>{l}</button>
+          ))}
+        </div>
+        <div className="ml-auto flex gap-2">
+          <Button variant="outline" size="sm" onClick={share}><Share2 size={15} className="mr-1" />Отправить</Button>
+          <Button size="sm" onClick={print}><Printer size={15} className="mr-1" />Печать / PDF</Button>
+        </div>
+      </div>
+      {mode === 'manager' && <p className="bg-amber-50 text-amber-800 text-xs px-3 py-1 border-b border-amber-200">Полный расчёт с размерами и комплектующими — только для салона, клиенту не отправляйте.</p>}
+      <iframe ref={ref} title="КП" srcDoc={html} className="flex-1 w-full bg-white" />
+    </div>
   );
 }
