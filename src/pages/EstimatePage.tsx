@@ -12,7 +12,7 @@ import {
   type InfoBlock, type EstimateData, type Opening, type Item, type Line,
 } from '@/lib/price';
 import { sizeLimits, limitWarnings, heightStep, OPEN_KINDS, SIZE_RULES } from '@/lib/sizeRules';
-import { hingeSystems, currentSystem, hingeFamilyOf, boxKeyOf, boxItemMatches, orderNotes, fitsOpening, emptyReason, BOX_LABEL, ORANGE, type BoxKey, type PickCtx } from '@/lib/kit';
+import { hingeSystems, currentSystem, hingeFamilyOf, boxKeyOf, boxItemMatches, orderNotes, fitsOpening, emptyReason, BOX_LABEL, ORANGE, type BoxKey, type PickCtx, type HingeSys } from '@/lib/kit';
 import { listEstimates, saveEstimate, deleteEstimate, getEstimate, type EstimateRow } from '@/lib/estimates';
 import { useSearchParams } from 'react-router-dom';
 import { openKp } from '@/lib/kp';
@@ -971,6 +971,11 @@ function KitPanel({ idx, o, onChange, onPick, part }: {
   const revOpt = sys.reverse ? series?.options.map(id => idx.byId.get(id)).find(it => it && /^Дверное полотно "?REVERSE"?$/i.test(it.name.trim())) : undefined;
   const hasRev = !!revOpt && o.options.some(l => l.itemId === revOpt.id);
   const notes = orderNotes(idx, o);
+  const otherBoxes: { b: BoxKey; s: HingeSys }[] = [];
+  for (const s2 of systems) {
+    if (s2.key === 'book' || s2.key === sys.key) continue;
+    for (const b of s2.boxes) if (!sys.boxes.includes(b) && !otherBoxes.some(x => x.b === b)) otherBoxes.push({ b, s: s2 });
+  }
   if (part === 'box' && !(kind === 'swing' && systems.length > 1) && !sys.boxes.length && !(sys.reverse && revOpt && !hasRev)) return null;
   const addHinge = (it: Item) => onChange(x => {
     x.extras = x.extras.filter(l => { const f = hingeFamilyOf(idx.byId.get(l.itemId)!); return !f; });
@@ -1011,6 +1016,19 @@ function KitPanel({ idx, o, onChange, onPick, part }: {
                 className={`rounded-full border px-2 py-0.5 ${boxLines.some(x => x.key === b) ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:border-primary'}`}>{BOX_LABEL[b]}</button>
             ))}
           </div>
+          {/* Короба серии с другими петлями (например, моноблок у PE.O — на петлях Eclipse): выбор короба сам переключает петли */}
+          {kind === 'swing' && otherBoxes.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="text-muted-foreground mr-1">С другими петлями:</span>
+              {otherBoxes.map(({ b, s }) => (
+                <button key={b} type="button" title={`Переключит открывание на «${s.label}»`}
+                  onClick={() => { onChange(x => { x.hingeSys = s.key; }); onPick('box', { box: b, series: o.sheet }); }}
+                  className="rounded-full border border-dashed border-border bg-background px-2 py-0.5 hover:border-primary">
+                  {BOX_LABEL[b]} <span className="text-muted-foreground">· {s.label.split('·').pop()!.trim()}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {badBoxes.map(x => <p key={x.it.id} className="text-amber-700">⚠ Короб {BOX_LABEL[x.key!]} не подходит к «{sys.label}» — нужен: {sys.boxes.map(b => BOX_LABEL[b]).join(', ')}</p>)}
         </div>
       )}
