@@ -34,7 +34,7 @@ interface Transition {
   lead_id: number; lead_name: string; from_status: string | null; to_status: string | null;
   changed_at: number; manager_name: string | null;
 }
-interface TodayStats { newLeads: number; leadsFrom?: number; calls: number; callsIn: number; callsOut: number; statusChanges: number; }
+interface TodayStats { newLeads: number; lostLeads?: number; repeatLeads?: number; leadsFrom?: number; calls: number; callsIn: number; callsOut: number; statusChanges: number; }
 // Подпись рабочего дня (20:00–20:00): «с 20:00 вчера до 20:00 сегодня»
 function leadsWindowLabel(from?: number): string {
   if (!from) return '';
@@ -174,6 +174,11 @@ export default function AmoCrmPage() {
               <div className="rounded-lg border border-border p-3">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground"><UserPlus size={13} /> Новых лидов сегодня</div>
                 <p className="text-lg font-semibold mt-1">{today?.newLeads ?? (loading ? '…' : '—')}</p>
+                {today?.lostLeads != null && (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    в работе {today.newLeads - today.lostLeads}{today.lostLeads ? ` · нецелевые ${today.lostLeads}` : ''}{today.repeatLeads ? ` · повторных не считали ${today.repeatLeads}` : ''}
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground mt-0.5">{leadsWindowLabel(today?.leadsFrom)}</p>
               </div>
               <div className="rounded-lg border border-border p-3">
