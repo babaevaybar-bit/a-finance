@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppLayout from '@/components/layouts/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -16,10 +16,10 @@ import { hwColors, brandLabel, hardwareChecklist, PD_COLORS_NOTE } from '@/lib/h
 import { hingeSystems, currentSystem, hingeFamilyOf, boxKeyOf, boxItemMatches, orderNotes, fitsOpening, emptyReason, BOX_LABEL, ORANGE, type BoxKey, type PickCtx, type HingeSys } from '@/lib/kit';
 import { listEstimates, saveEstimate, deleteEstimate, getEstimate, type EstimateRow } from '@/lib/estimates';
 import { useSearchParams } from 'react-router-dom';
-import { openKp } from '@/lib/kp';
+import { buildKp, type KpMode } from '@/lib/kp';
 import ClientHistoryButton from '@/components/client/ClientHistoryButton';
 import { sideOf, syncLeafSurcharges, hingesNeeded } from '@/lib/leaves';
-import { Info, Calculator, Copy, FileText, FolderOpen, Loader2, Plus, Save, Search, Trash2, X, ChevronDown } from 'lucide-react';
+import { Info, Calculator, Copy, FileText, FolderOpen, Loader2, Plus, Save, Search, Trash2, X, ChevronDown, ArrowLeft, Printer, Share2 } from 'lucide-react';
 
 const PICK_GROUPS: { key: string; label: string; sheets: string[] | null }[] = [
   { key: 'box', label: 'Короба', sheets: ['Короба INVISIBLE', 'Короб INVISIBLE 60U', 'Короб SLIM', 'INTEGRAL', 'INTEGRAL Reverse', 'Моноблок ЭМАЛЬ', 'Моноблок REVERSE ЭМАЛЬ', 'Моноблок PE.O, NE.O', 'Моноблок Reverse PE.O, NE.O', 'Моноблок Шпон', 'Моноблок Шпон Reverse'] },
@@ -43,6 +43,7 @@ export default function EstimatePage() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [listOpen, setListOpen] = useState(false);
+  const [kpMode, setKpMode] = useState<KpMode | null>(null);
   const [picker, setPicker] = useState<PickerState | null>(null);
 
   useEffect(() => { loadPrice().then(d => setIdx(new PriceIndex(d))).catch(() => toast.error('Не удалось загрузить прайс')); }, []);
@@ -183,10 +184,8 @@ export default function EstimatePage() {
       <Input placeholder="Объект (ЖК, квартира…)" value={meta.title} onChange={e => { setMeta(m => ({ ...m, title: e.target.value })); setDirty(true); }} />
     </div>
   );
-  const kp = () => {
-    if (!openKp(idx, est, photos, colors, { number: meta.number, clientName: meta.client_name, clientPhone: meta.client_phone, managerName: profile?.name && !profile.name.includes('@') ? profile.name : '', date: new Date().toLocaleDateString('ru-RU'), priceTitle: idx.data.title }, handlePhotos))
-      toast.error('Браузер заблокировал новое окно — разрешите всплывающие окна');
-  };
+  const kpHtml = (mode: KpMode) => buildKp(idx, est, photos, colors, { number: meta.number, clientName: meta.client_name, clientPhone: meta.client_phone, managerName: profile?.name && !profile.name.includes('@') ? profile.name : '', date: new Date().toLocaleDateString('ru-RU'), priceTitle: idx.data.title }, handlePhotos, mode);
+  const kp = () => setKpMode('client');
   const addOpening = () => update(e => {
     const last = e.openings[e.openings.length - 1];
     const o = newOpening(last?.sheet ?? '');
@@ -293,6 +292,7 @@ export default function EstimatePage() {
         </div>
       </div>
 
+      {kpMode && <KpViewer mode={kpMode} setMode={setKpMode} html={kpHtml(kpMode)} title={meta.client_name} />}
       <PickerDialog idx={idx} photos={handlePhotos} state={picker} onClose={() => setPicker(null)} onPick={(it, c) => picker && addItem(picker.target, it, c)}
         onGroup={g => setPicker(p => p ? { ...p, group: g, filter: undefined } : p)} />
       <ListDialog open={listOpen} onClose={() => setListOpen(false)} onOpen={openRow} currentId={meta.id} />
@@ -515,7 +515,7 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
                   {lp ? (
                     <span className="relative w-full h-[150px] sm:h-[200px] flex items-center justify-center">
                       <img key={lp.url} src={lp.url} alt="" referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain" style={side === 'L' ? { transform: 'scaleX(-1)' } : undefined} />
-                      {lp.swatch && <img src={lp.swatch} alt="" referrerPolicy="no-referrer" title={`Цвет: ${lf.finish} (фото модели в этом цвете на сайте фабрики нет)`} className="absolute bottom-1 right-1 w-5 h-5 rounded-full border border-white shadow object-cover" />}
+                      {lp.swatch && <img src={lp.swatch} alt="" referrerPolicy="no-referrer" title={`Цвет: ${lf.finish} (фото модели в этом цвете на сайте фабрики нет)`} className="absolute bottom-1 right-1 w-8 h-8 rounded-full border-2 border-white shadow object-cover" style={{ objectPosition: '50% 35%' }} />}
                     </span>
                   ) : <span className="h-[150px] sm:h-[200px] flex items-center px-1 text-center text-[10px] text-muted-foreground">Выбрать по фото</span>}
                   <span className="w-full text-[10px] leading-tight text-center text-muted-foreground py-0.5 truncate px-0.5">
@@ -528,6 +528,9 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
               );
             })}
           </div>
+          {o.model && Array.from({ length: nLeaves }, (_, i) => leafPhoto(i)).some(lp => lp?.swatch) && (
+            <p className="text-[10px] leading-tight text-amber-700 text-center mt-0.5 max-w-[170px] mx-auto">У фабрики нет фото этой модели в цвете «{o.finish}» — в кружке образец цвета</p>
+          )}
           {o.model && <p className="text-[10px] leading-tight text-muted-foreground text-center mt-0.5 max-w-[150px] mx-auto">{nLeaves > 1 ? 'Нажмите на полотно — модель, цвет, сторона' : 'Нажмите — модель, цвет, сторона'}</p>}
         </div>
       )}
@@ -1431,5 +1434,45 @@ function ListDialog({ open, onClose, onOpen, currentId }: { open: boolean; onClo
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** КП внутри приложения (на телефоне сайт открыт как приложение — без кнопки «назад» новое окно было бы ловушкой) */
+function KpViewer({ mode, setMode, html, title }: { mode: KpMode; setMode: (m: KpMode | null) => void; html: string; title: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  // системная «назад» (Android, жест) закрывает КП, а не уводит со страницы
+  useEffect(() => {
+    window.history.pushState({ kp: true }, '');
+    const onPop = () => setMode(null);
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const close = () => { if (window.history.state?.kp) window.history.back(); else setMode(null); };
+  const print = () => { try { ref.current?.contentWindow?.focus(); ref.current?.contentWindow?.print(); } catch { toast.error('Не удалось открыть печать'); } };
+  const share = async () => {
+    const file = new File([html], `КП ${title || 'клиент'}.html`, { type: 'text/html' });
+    try {
+      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: 'Коммерческое предложение' });
+      else { const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
+    } catch { /* отменили */ }
+  };
+  return (
+    <div className="fixed inset-0 z-[60] bg-background flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+        <Button variant="ghost" size="sm" onClick={close}><ArrowLeft size={16} className="mr-1" />Назад</Button>
+        <div className="inline-flex rounded-lg border border-border p-0.5 text-sm">
+          {([['client', 'Для клиента'], ['manager', 'Для менеджера']] as const).map(([k, l]) => (
+            <button key={k} type="button" onClick={() => setMode(k)}
+              className={`rounded-md px-3 py-1 ${mode === k ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}>{l}</button>
+          ))}
+        </div>
+        <div className="ml-auto flex gap-2">
+          <Button variant="outline" size="sm" onClick={share}><Share2 size={15} className="mr-1" />Отправить</Button>
+          <Button size="sm" onClick={print}><Printer size={15} className="mr-1" />Печать / PDF</Button>
+        </div>
+      </div>
+      {mode === 'manager' && <p className="bg-amber-50 text-amber-800 text-xs px-3 py-1 border-b border-amber-200">Полный расчёт с размерами и комплектующими — только для салона, клиенту не отправляйте.</p>}
+      <iframe ref={ref} title="КП" srcDoc={html} className="flex-1 w-full bg-white" />
+    </div>
   );
 }
