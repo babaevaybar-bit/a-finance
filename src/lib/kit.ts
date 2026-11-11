@@ -170,7 +170,7 @@ const SYS_SHEETS: Record<string, string[]> = {
   penal: ['Системы "Пенал"'],
 };
 
-export interface PickCtx { sheet: string; model: string; openKind?: string; hingeSys?: string; finishCat?: number | null }
+export interface PickCtx { sheet: string; model: string; openKind?: string; hingeSys?: string; finishCat?: number | null; profile?: string }
 
 /** Подходит ли позиция к серии/открыванию проёма. null — серия не выбрана, показываем всё */
 export function fitsOpening(idx: PriceIndex, it: Item, group: string, c: PickCtx | null): boolean {
