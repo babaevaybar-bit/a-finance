@@ -3,6 +3,7 @@ import AppLayout from '@/components/layouts/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumInput } from '@/components/common/NumInput';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
@@ -262,8 +263,8 @@ export default function EstimatePage() {
               <div className="flex justify-between border-t border-border pt-1.5"><span className="text-muted-foreground">Сумма по прайсу</span><span>{money(totals.sub)}</span></div>
               <div className="flex justify-between items-center gap-2">
                 <span className="text-muted-foreground">Скидка, %</span>
-                <Input type="number" inputMode="decimal" min={0} max={100} className="h-8 w-20 text-right" value={est.discountPct || ''} placeholder="0"
-                  onChange={e => update(x => { x.discountPct = Math.max(0, Math.min(100, Number(e.target.value) || 0)); })} />
+                <NumInput min={0} max={100} className="h-8 w-20 text-right" value={est.discountPct || 0} placeholder="0"
+                  onValue={n => update(x => { x.discountPct = n; })} />
               </div>
               <DiscountTargets byCat={totals.byCat} value={est.discountOn} onChange={v => update(x => { x.discountOn = v; })} />
               {totals.discount > 0 && <div className="flex justify-between text-muted-foreground"><span>Скидка{est.discountOn?.length ? ` (${est.discountOn.map(c => CAT_LABEL[c].toLowerCase()).join(', ')})` : ''}</span><span className="whitespace-nowrap">−{money(totals.discount)}</span></div>}
@@ -495,7 +496,7 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
         <Input className="h-9" placeholder="Помещение (спальня, санузел…)" value={o.room} onChange={e => onChange(x => { x.room = e.target.value; })} />
         <div className="flex items-center gap-1 shrink-0">
           <span className="text-xs text-muted-foreground">×</span>
-          <Input type="number" min={1} className="h-9 w-16" value={o.qty} onChange={e => onChange(x => { x.qty = Math.max(1, Number(e.target.value) || 1); })} title="Одинаковых проёмов" />
+          <NumInput min={1} decimals={false} className="h-9 w-16" value={o.qty} onValue={n => onChange(x => { x.qty = n; })} title="Одинаковых проёмов" />
         </div>
         <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" title="Дублировать" onClick={onDuplicate}><Copy size={14} /></Button>
         <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive" title="Удалить проём" onClick={onRemove}><Trash2 size={14} /></Button>
@@ -784,8 +785,8 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
                             {l && isBLeafItem(it) && nLeaves > 1 && <span className="block text-[11px] text-primary">полотно {bLeaves.map(i => i + 1).join(', ') || '—'} · какое — нажмите на дверь на фото</span>}
                           </span>
                           {l && it.kind === 'price' && !(isBLeafItem(it) && nLeaves > 1) && (/к-кт|шт|компл/.test(it.unit) || (o.leaves ?? 1) > 1) && (
-                            <Input type="number" min={1} className="h-7 w-14 px-1 text-xs" value={l.qty} onClick={e => e.preventDefault()}
-                              onChange={e => onChange(x => { const y = x.options.find(z => z.itemId === it.id); if (y) y.qty = Math.max(1, Number(e.target.value) || 1); })} />
+                            <NumInput min={1} className="h-7 w-14 px-1 text-xs" value={l.qty} onClick={e => e.preventDefault()}
+                              onValue={n => onChange(x => { const y = x.options.find(z => z.itemId === it.id); if (y) y.qty = n; })} />
                           )}
                           <span className="text-xs text-muted-foreground whitespace-nowrap">{it.kind === 'pct' ? `${it.pct! > 0 ? '+' : ''}${it.pct}%` : money(it.price ?? 0)}</span>
                         </label>
@@ -918,7 +919,7 @@ function LineRow({ idx, l, hint, onQty, onMods, onRemove, colorCtl, photo, onHwC
           <p className="text-sm sm:truncate" title={itemLabel(it)}>{itemLabel(it)}</p>
           <p className="text-[11px] text-muted-foreground truncate">{it.sheet}{it.section ? ` · ${it.section}` : ''} · {money(it.price ?? 0)} / {it.unit || 'шт'}{hint && <span className="text-amber-700"> · {hint}</span>}</p>
         </div>
-        <Input type="number" min={0} step="any" className="h-8 w-16 px-1.5 text-sm" value={l.qty} onChange={e => onQty(Math.max(0, Number(e.target.value) || 0))} />
+        <NumInput min={0} className="h-8 w-16 px-1.5 text-sm" value={l.qty} onValue={onQty} />
         <span className="ml-auto sm:ml-0 w-24 text-right text-sm font-medium whitespace-nowrap">{money(sum)}</span>
         <button type="button" className="text-muted-foreground hover:text-destructive" onClick={onRemove} title="Убрать"><X size={15} /></button>
       </div>
