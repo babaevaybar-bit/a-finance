@@ -11,7 +11,7 @@ import {
   suggestHinges, hasExtraLoad, loadPhotos, modelPhotos, loadColors, modelColorPhoto, modelDefaultPhoto, swatchFor, loadHandlePhotos, isBLeafItem, catOfItem, CAT_LABEL, HARDWARE, type Cat, type HandlePhotos, type ColorData, leafOf, leavesWidth, type LeafCfg, finishBlocks, insertBlocks, categoryOption, finishCategory,
   type InfoBlock, type EstimateData, type Opening, type Item, type Line,
 } from '@/lib/price';
-import { sizeLimits, limitWarnings, heightStep, OPEN_KINDS, SIZE_RULES } from '@/lib/sizeRules';
+import { sizeLimits, limitWarnings, heightStep, OPEN_KINDS, SIZE_RULES, markupScope } from '@/lib/sizeRules';
 import { hwColors, brandLabel, hardwareChecklist, PD_COLORS_NOTE } from '@/lib/hwKit';
 import { hingeSystems, currentSystem, hingeFamilyOf, boxKeyOf, boxItemMatches, orderNotes, fitsOpening, emptyReason, BOX_LABEL, ORANGE, type BoxKey, type PickCtx, type HingeSys } from '@/lib/kit';
 import { listEstimates, saveEstimate, deleteEstimate, getEstimate, type EstimateRow } from '@/lib/estimates';
@@ -581,8 +581,10 @@ function OpeningCard({ idx, photos, colors, handlePhotos, o, n, onChange, onSize
             {rulesOpen && (
               <div className="space-y-0.5 text-foreground/80">
                 {lim.notes.map(t => <p key={t}>• {t}</p>)}
-                {s.height.filter(m => m.range && (m.group || '') === (o.group || '')).map(m => <p key={m.id}>• {m.name}: +{m.pct}%</p>)}
-                {s.width.filter(m => m.range && (m.group || '') === (o.group || '')).map(m => <p key={m.id}>• {m.name}: {m.pct > 0 ? '+' : ''}{m.pct}%</p>)}
+                {([['h', s.height], ['w', s.width]] as const).flatMap(([dim, list]) => list.filter(m => m.range && (m.group || '') === (o.group || '')).map(m => {
+                  const scope = markupScope(s, o, dim, m.range!, lim);
+                  return <p key={m.id} className={scope ? 'text-muted-foreground/60' : ''}>• {m.name}: {m.pct > 0 ? '+' : ''}{m.pct}%{scope && <span className="italic"> — {scope}</span>}</p>;
+                }))}
               </div>
             )}
             {!rulesOpen && lim.notes.filter(t => !sizeWarn.includes(t)).length > 0 && <p>{lim.notes.filter(t => !sizeWarn.includes(t)).join(' · ')}</p>}
