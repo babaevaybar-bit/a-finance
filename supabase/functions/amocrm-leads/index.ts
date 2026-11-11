@@ -238,9 +238,46 @@ Deno.serve(async (req) => {
     // все поступившие лиды, в том числе позже закрытые как нецелевые — как в ежедневном отчёте
     const leadsInRangeFiltered = allLeadsFiltered.filter((l: any) => l.created_at >= from30);
 
+    // Повторные обращения за сегодня не считаем (как в ежедневном отчёте): у контакта или у номера
+    // из названия лида уже был лид раньше. id лидов в amoCRM растут по времени — «раньше» = меньший id.
+    const repeatIds = new Set<number>();
+    try {
+      const todays = leadsInRangeFiltered.filter((l: any) => l.created_at >= leadDayStart);
+      const withContacts: any[] = [];
+      for (let i = 0; i < todays.length; i += 50) {
+        const q = todays.slice(i, i + 50).map((l: any) => `filter[id][]=${l.id}`).join('&');
+        const d = await amoGet(`/api/v4/leads?with=contacts&limit=50&${q}`);
+        withContacts.push(...(d?._embedded?.leads ?? []));
+      }
+      const contactIds = [...new Set(withContacts.flatMap((l: any) => (l._embedded?.contacts ?? []).map((c: any) => c.id)))];
+      const contactLeads: Record<string, number[]> = {};
+      for (let i = 0; i < contactIds.length; i += 50) {
+        const q = contactIds.slice(i, i + 50).map(id => `filter[id][]=${id}`).join('&');
+        const d = await amoGet(`/api/v4/contacts?with=leads&limit=50&${q}`);
+        for (const c of d?._embedded?.contacts ?? []) contactLeads[c.id] = (c._embedded?.leads ?? []).map((x: any) => x.id);
+      }
+      for (const l of withContacts) {
+        const contacts = l._embedded?.contacts ?? [];
+        let earlier = contacts.some((c: any) => (contactLeads[c.id] ?? []).some((id: number) => id < l.id));
+        if (!earlier && !contacts.length) {
+          const ph = String(l.name ?? '').replace(/\D/g, '').slice(-10);
+          if (ph.length === 10) {
+            const [ls, cs] = await Promise.all([amoGet(`/api/v4/leads?query=${ph}&limit=50`), amoGet(`/api/v4/contacts?query=${ph}&with=leads&limit=50`)]);
+            const other = [
+              ...(ls?._embedded?.leads ?? []).map((x: any) => x.id),
+              ...(cs?._embedded?.contacts ?? []).flatMap((c: any) => (c._embedded?.leads ?? []).map((x: any) => x.id)),
+            ];
+            earlier = other.some((id: number) => id < l.id);
+          }
+        }
+        if (earlier) repeatIds.add(l.id);
+      }
+    } catch { /* не удалось проверить — считаем как раньше */ }
+    const countedLeads = leadsInRangeFiltered.filter((l: any) => !(l.created_at >= leadDayStart && repeatIds.has(l.id)));
+
     // Лиды по дням — день считается с 20:00 до 20:00
     const leadsByDayMap: Record<string, number> = {};
-    for (const lead of leadsInRangeFiltered) {
+    for (const lead of countedLeads) {
       const k = leadDayKey(lead.created_at);
       leadsByDayMap[k] = (leadsByDayMap[k] ?? 0) + 1;
     }
@@ -312,7 +349,9 @@ Deno.serve(async (req) => {
         };
       });
 
-    const newLeadsToday = leadsInRangeFiltered.filter((l: any) => l.created_at >= leadDayStart).length;
+    const leadsTodayList = countedLeads.filter((l: any) => l.created_at >= leadDayStart);
+    const newLeadsToday = leadsTodayList.length;
+    const lostToday = leadsTodayList.filter((l: any) => Number(l.status_id) === 143).length;
 
     const byUser: Record<string, { newLeads: number; callsIn: number; callsOut: number; chats: number }> = {};
     function ensureUser(id: string | number) {
@@ -321,7 +360,7 @@ Deno.serve(async (req) => {
       return byUser[key];
     }
 
-    for (const lead of leadsInRangeFiltered) {
+    for (const lead of countedLeads) {
       if (lead.created_at >= leadDayStart) {
         ensureUser(lead.responsible_user_id).newLeads += 1;
       }
@@ -389,6 +428,8 @@ Deno.serve(async (req) => {
       hasMore: leadsRaw.length === Number(limit),
       todayStats: {
         newLeads: newLeadsToday,
+        lostLeads: lostToday,
+        repeatLeads: repeatIds.size,
         leadsFrom: leadDayStart,
         calls: callsToday,
         callsIn: callsInToday,
