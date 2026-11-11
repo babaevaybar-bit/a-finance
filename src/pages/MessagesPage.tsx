@@ -14,7 +14,7 @@ import AssignmentsPanel from '@/components/assignments/AssignmentsPanel';
 import { waitingCount } from '@/lib/assignments';
 import { supabase } from '@/db/supabase';
 
-type Tab = 'tasks' | 'important' | 'production' | 'all';
+type Tab = 'tasks' | 'important' | 'production' | 'fixed' | 'all';
 interface Entry { key: string; day: string; type: string; items: AppNotification[] }
 const kzDay = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Qyzylorda' }).format(new Date(iso));
 const hm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Qyzylorda' });
@@ -25,6 +25,15 @@ function dayTitle(d: string) {
   if (d === yest) return 'Вчера';
   return new Date(`${d}T12:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
 }
+
+// «В Trello (2 карточки): 3 575 551 ₸, …» → 3575551
+function trelloSumOf(body: string): number | null {
+  const m = body.match(/В Trello[^:]*:\s*([\d\s\u00a0\u202f]+)₸/);
+  if (!m) return null;
+  const n = Number(m[1].replace(/\D/g, ''));
+  return Number.isFinite(n) && m[1].replace(/\D/g, '') ? n : null;
+}
+type DealLite = Pick<Deal, 'id' | 'total_amount' | 'paid_amount' | 'amo_mismatch' | 'status'>;
 
 const lineName = (line: string) => line.replace(/^•\s*/, '').split(' — ')[0].trim();
 async function findDealByPrefix(name: string): Promise<Deal | null> {
@@ -46,6 +55,9 @@ export default function MessagesPage() {
   const [lineReady, setLineReady] = useState(false);
   // руководитель видит «Дозаполните сделки» всех — подписываем, чьё это
   const [mgrNames, setMgrNames] = useState<Record<string, string>>({});
+  // Текущее состояние сделок из сообщений — чтобы понять, что уже исправлено
+  const [msgDeals, setMsgDeals] = useState<Record<string, DealLite>>({});
+  const [msgDealsReady, setMsgDealsReady] = useState(false);
   useEffect(() => { if (canViewAllManagers) getManagers().then(ms => setMgrNames(Object.fromEntries(ms.map(m => [m.id, m.name])))).catch(() => {}); }, [canViewAllManagers]);
 
   const load = useCallback(async () => {
@@ -79,6 +91,37 @@ export default function MessagesPage() {
     setLineReady(true);
   }, []);
   useEffect(() => { refreshLineDeals(items).catch(() => setLineReady(true)); }, [items, refreshLineDeals]);
+
+  const refreshMsgDeals = useCallback(async (list: AppNotification[]) => {
+    const ids = [...new Set(list.filter(n => n.deal_id && (n.type === 'amount_mismatch' || n.type === 'payment_due')).map(n => n.deal_id!))];
+    const map: Record<string, DealLite> = {};
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data } = await supabase.from('deals').select('id, total_amount, paid_amount, amo_mismatch, status').in('id', ids.slice(i, i + 100));
+      for (const d of (data as DealLite[] | null) ?? []) map[d.id] = d;
+    }
+    setMsgDeals(map);
+    setMsgDealsReady(true);
+  }, []);
+  useEffect(() => { refreshMsgDeals(items).catch(() => setMsgDealsReady(true)); }, [items, refreshMsgDeals]);
+
+  /** Сообщение уже неактуально: расхождение исправили, доплату внесли, пришло более новое сообщение по той же сделке */
+  const fixedReason = useCallback((n: AppNotification): string | null => {
+    if (!n.deal_id || (n.type !== 'amount_mismatch' && n.type !== 'payment_due')) return null;
+    const d = msgDeals[n.deal_id];
+    if (!msgDealsReady) return null;
+    if (!d || d.status === 'rejected') return 'сделка удалена';
+    const total = Math.round(Number(d.total_amount) || 0);
+    if (n.type === 'payment_due') return Number(d.paid_amount) >= Number(d.total_amount) - 100 ? 'оплачено полностью' : null;
+    if (n.title.startsWith('amoCRM')) {
+      return !d.amo_mismatch ? 'суммы совпадают' : d.amo_mismatch !== n.body ? 'заменено новым сообщением' : null;
+    }
+    const tr = trelloSumOf(n.body ?? '');
+    if (tr != null && Math.abs(tr - total) < 100) return 'суммы совпадают';
+    // по этой сделке пришло более свежее сообщение о расхождении — старое уже не про текущие суммы
+    const newer = items.some(o => o.id !== n.id && o.type === 'amount_mismatch' && o.deal_id === n.deal_id
+      && !o.title.startsWith('amoCRM') && o.created_at > n.created_at);
+    return newer ? 'заменено новым сообщением' : null;
+  }, [msgDeals, msgDealsReady, items]);
 
   /** Что из перечисленного в строке ещё не заполнено; null — сделка не найдена */
   function lineStatus(line: string): string[] | null {
@@ -169,9 +212,22 @@ export default function MessagesPage() {
     return order.map(k => map.get(k)!);
   }, [items]);
   const isImportant = (t: string) => t !== 'stage_changed';
-  const visible = entries.filter(e => tab === 'all' || (tab === 'important' ? isImportant(e.type) : !isImportant(e.type)));
+  const isFixed = (e: Entry) => fixedReason(e.items[0]) !== null;
+  const visible = entries.filter(e => tab === 'all' ? true
+    : tab === 'fixed' ? isFixed(e)
+    : tab === 'important' ? isImportant(e.type) && !isFixed(e)
+    : !isImportant(e.type));
   const unreadEntries = entries.filter(e => e.items.some(i => !i.is_read)).length;
-  const unreadIn = (pred: (t: string) => boolean) => entries.filter(e => pred(e.type) && e.items.some(i => !i.is_read)).length;
+  const unreadIn = (pred: (t: string) => boolean) => entries.filter(e => pred(e.type) && !isFixed(e) && e.items.some(i => !i.is_read)).length;
+  const fixedCount = entries.filter(isFixed).length;
+  // исправленные — сразу прочитанные, чтобы не горели в счётчике
+  useEffect(() => {
+    if (!msgDealsReady) return;
+    const ids = entries.filter(isFixed).flatMap(e => e.items.filter(i => !i.is_read).map(i => i.id));
+    if (!ids.length) return;
+    setItems(prev => prev.map(i => ids.includes(i.id) ? { ...i, is_read: true } : i));
+    markNotificationsRead(ids).then(notifyCountersChanged).catch(() => {});
+  }, [msgDealsReady, msgDeals]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function openEntry(e: Entry) {
     const unread = e.items.filter(i => !i.is_read).map(i => i.id);
@@ -264,6 +320,9 @@ export default function MessagesPage() {
                         <div className="flex items-center gap-2">
                           <p className={`text-sm ${unread ? 'font-semibold' : 'font-medium'}`}>{title}</p>
                           {unread && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+                          {(() => { const r = fixedReason(n); return r ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 shrink-0"><CheckCircle2 size={12} />исправлено · {r}</span>
+                          ) : null; })()}
                           {e.type === 'incomplete_deals' && lines.length > 0 && lines.every(l => { const x = lineStatus(l); return x !== null && x.length === 0; }) && (
                             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5"><CheckCircle2 size={12} />всё исправлено</span>
                           )}
@@ -308,6 +367,7 @@ export default function MessagesPage() {
               ['tasks', 'Поручения', waiting, ClipboardCheck, 'задания сотрудникам'],
               ['important', 'Важное', unreadIn(isImportant), Bell, 'оплаты, суммы, сделки'],
               ['production', 'Производство', unreadIn(t => !isImportant(t)), Factory, 'этапы заказов'],
+              ['fixed', 'Исправленные', 0, CheckCircle2, fixedCount ? `уже неактуальные · ${fixedCount}` : 'уже неактуальные'],
               ['all', 'Все', 0, Inbox, 'вся лента'],
             ] as const).map(([k, l, c, Icon, sub]) => (
               <button key={k} type="button" onClick={() => setTab(k as Tab)}
