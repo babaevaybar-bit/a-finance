@@ -21,9 +21,12 @@ function leafSwatch(photos: Record<string, string>, colors: ColorData | null, o:
 }
 const doorImg = (photos: Record<string, string>, colors: ColorData | null, o: Opening, k: number, u: string) => {
   const sw = leafSwatch(photos, colors, o, k);
-  return `<span class="dw"><img class="door" src="${esc(u)}" referrerpolicy="no-referrer"${sideOf(o, k) === 'L' ? ' style="transform:scaleX(-1)"' : ''}>${sw ? `<img class="sw" src="${esc(sw)}" referrerpolicy="no-referrer">` : ''}</span>`;
+  return `<span class="dw"><img class="door" src="${esc(viaProxy(u))}" referrerpolicy="no-referrer"${sideOf(o, k) === 'L' ? ' style="transform:scaleX(-1)"' : ''}>${sw ? `<img class="sw" src="${esc(viaProxy(sw))}" referrerpolicy="no-referrer">` : ''}</span>`;
 };
 
+/** Фото с сайта фабрики — через наш img-proxy: в КП, PDF и пересланном файле они грузятся надёжно */
+const SB = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? '';
+const viaProxy = (u: string) => (SB && /^https:\/\/(www\.)?profildoors\.ru\/upload\//.test(u) ? `${SB}/functions/v1/img-proxy?u=${encodeURIComponent(u)}` : u);
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
 export interface KpMeta { number?: number | null; clientName: string; clientPhone: string; managerName: string; date: string; priceTitle: string }
@@ -38,7 +41,7 @@ export type KpMode = 'client' | 'manager';
  */
 export function buildKp(idx: PriceIndex, e: EstimateData, photos: Record<string, string>, colors: ColorData | null, meta: KpMeta, handlePhotos: Record<string, [string, Record<string, string>]> = {}, mode: KpMode = 'manager'): string {
   if (mode === 'client') return buildClientKp(idx, e, photos, colors, meta);
-  const hp = (id: number) => { const u = handlePhotos[id]?.[0]; return u ? `<img class="part" src="${esc(u)}" referrerpolicy="no-referrer">` : ''; };
+  const hp = (id: number) => { const u = handlePhotos[id]?.[0]; return u ? `<img class="part" src="${esc(viaProxy(u))}" referrerpolicy="no-referrer">` : ''; };
   const t = calcEstimate(idx, e);
   const rows: string[] = [];
   t.openings.forEach(({ o, b }, i) => {
