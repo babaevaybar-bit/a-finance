@@ -18,9 +18,10 @@ import { hingeSystems, currentSystem, hingeFamilyOf, boxKeyOf, boxItemMatches, o
 import { listEstimates, saveEstimate, deleteEstimate, getEstimate, type EstimateRow } from '@/lib/estimates';
 import { useSearchParams } from 'react-router-dom';
 import { buildKp, type KpMode } from '@/lib/kp';
+import { kpToPdf } from '@/lib/kpPdf';
 import ClientHistoryButton from '@/components/client/ClientHistoryButton';
 import { sideOf, syncLeafSurcharges, hingesNeeded } from '@/lib/leaves';
-import { Info, Calculator, Copy, FileText, FolderOpen, Loader2, Plus, Save, Search, Trash2, X, ChevronDown, ArrowLeft, Printer, Share2 } from 'lucide-react';
+import { Info, Calculator, Copy, FileText, FolderOpen, Loader2, Plus, Save, Search, Trash2, X, ChevronDown, ArrowLeft, Printer, Share2, Download } from 'lucide-react';
 
 const PICK_GROUPS: { key: string; label: string; sheets: string[] | null }[] = [
   { key: 'box', label: 'Короба', sheets: ['Короба INVISIBLE', 'Короб INVISIBLE 60U', 'Короб SLIM', 'INTEGRAL', 'INTEGRAL Reverse', 'Моноблок ЭМАЛЬ', 'Моноблок REVERSE ЭМАЛЬ', 'Моноблок PE.O, NE.O', 'Моноблок Reverse PE.O, NE.O', 'Моноблок Шпон', 'Моноблок Шпон Reverse'] },
@@ -1452,12 +1453,22 @@ function KpViewer({ mode, setMode, html, title }: { mode: KpMode; setMode: (m: K
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const close = () => { if (window.history.state?.kp) window.history.back(); else setMode(null); };
   const print = () => { try { ref.current?.contentWindow?.focus(); ref.current?.contentWindow?.print(); } catch { toast.error('Не удалось открыть печать'); } };
-  const share = async () => {
-    const file = new File([html], `КП ${title || 'клиент'}.html`, { type: 'text/html' });
+  const [busy, setBusy] = useState<'' | 'share' | 'save'>('');
+  const fileName = `${mode === 'client' ? 'КП' : 'Расчёт'} ${title || 'клиент'}`.replace(/[\\/:*?"<>|]+/g, ' ').trim();
+  const pdf = async (how: 'share' | 'save') => {
+    setBusy(how);
     try {
-      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: 'Коммерческое предложение' });
-      else { const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
-    } catch { /* отменили */ }
+      const file = await kpToPdf(html, fileName);
+      if (how === 'share' && navigator.canShare?.({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: fileName }); } catch { /* отменили */ }
+      } else {
+        const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name;
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+        if (how === 'share') toast.info('Отправка файлов здесь недоступна — PDF сохранён, отправьте его из «Загрузок»');
+      }
+    } catch (err) {
+      console.error(err); toast.error('Не удалось сделать PDF');
+    } finally { setBusy(''); }
   };
   return (
     <div className="fixed inset-0 z-[60] bg-background flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -1470,8 +1481,9 @@ function KpViewer({ mode, setMode, html, title }: { mode: KpMode; setMode: (m: K
           ))}
         </div>
         <div className="ml-auto flex gap-2">
-          <Button variant="outline" size="sm" onClick={share}><Share2 size={15} className="mr-1" />Отправить</Button>
-          <Button size="sm" onClick={print}><Printer size={15} className="mr-1" />Печать / PDF</Button>
+          <Button variant="outline" size="sm" disabled={!!busy} onClick={() => pdf('share')}>{busy === 'share' ? <Loader2 size={15} className="mr-1 animate-spin" /> : <Share2 size={15} className="mr-1" />}Отправить PDF</Button>
+          <Button size="sm" disabled={!!busy} onClick={() => pdf('save')}>{busy === 'save' ? <Loader2 size={15} className="mr-1 animate-spin" /> : <Download size={15} className="mr-1" />}Скачать PDF</Button>
+          <Button variant="ghost" size="sm" className="hidden md:inline-flex" onClick={print}><Printer size={15} className="mr-1" />Печать</Button>
         </div>
       </div>
       {mode === 'manager' && <p className="bg-amber-50 text-amber-800 text-xs px-3 py-1 border-b border-amber-200">Полный расчёт с размерами и комплектующими — только для салона, клиенту не отправляйте.</p>}
