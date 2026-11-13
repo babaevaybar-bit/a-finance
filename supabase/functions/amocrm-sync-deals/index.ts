@@ -376,7 +376,9 @@ Deno.serve(async (req) => {
     const dry: any[] = [];
     async function propose(deal: any, field: string, value: unknown, source = 'amoCRM') {
       const changed = changedInAmo(curLeadId, field, value);
-      if (!changed && mode !== 'all' && mode !== 'dry') return;
+      // Сделка ещё не подтверждена — данные amoCRM предлагаем всегда, когда они отличаются
+      // (иначе предоплата, впервые вписанная в amoCRM уже после импорта, так и не доходила до A-Finance)
+      if (!changed && deal.status !== 'pending' && mode !== 'all' && mode !== 'dry') return;
       const isNum = field === 'total_amount' || field === 'paid_amount';
       const oldV = deal[field];
       if (isNum ? Math.abs(Number(value) - Number(oldV ?? 0)) < 1 : normText(value).toLowerCase() === normText(oldV).toLowerCase()) return;
