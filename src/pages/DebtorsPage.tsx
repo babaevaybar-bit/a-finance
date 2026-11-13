@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import AppLayout from '@/components/layouts/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -42,7 +43,10 @@ export default function DebtorsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('all');
   const [managerId, setManagerId] = useState<string>('all');
-  const [search, setSearch] = useState('');
+  // ?q= — переход из карточки клиента («Открыть в Должниках»)
+  const location = useLocation();
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
+  useEffect(() => { const q = new URLSearchParams(location.search).get('q'); if (q != null) setSearch(q); }, [location.search]);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
   const [lastPay, setLastPay] = useState<Map<string, { amount: number; date: string; n: number }>>(new Map());
 
@@ -241,7 +245,8 @@ export default function DebtorsPage() {
                         <div className="flex items-center gap-0.5 shrink-0">
                           {d.client_phone && <a href={`tel:${d.client_phone.replace(/[^\d+]/g, '')}`} title={`Позвонить ${d.client_phone}`} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-primary hover:bg-primary/10"><Phone size={15} /></a>}
                           {wa && <a href={wa} target="_blank" rel="noopener noreferrer" title="WhatsApp" className="h-8 w-8 hidden sm:inline-flex items-center justify-center rounded-md text-green-700 hover:bg-green-50"><MessageCircle size={15} /></a>}
-                          <ClientHistoryButton phone={d.client_phone} name={d.client_name} className="h-8 w-8 justify-center hidden sm:inline-flex" />
+                          <ClientHistoryButton phone={d.client_phone} name={d.client_name} label="Все сделки" className="h-8 px-2 hidden sm:inline-flex" />
+                          <ClientHistoryButton phone={d.client_phone} name={d.client_name} className="h-8 w-8 justify-center sm:hidden" />
                           <DealPayments deal={d} onChanged={() => load(true)} compact />
                         </div>
                       </div>
