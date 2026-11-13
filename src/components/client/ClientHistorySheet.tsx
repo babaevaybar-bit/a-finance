@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
-import { Phone, MessageCircle, ChevronDown, ChevronRight, ShoppingBag, Users, FileText, Calculator, Hammer, Loader2 } from 'lucide-react';
+import { Phone, MessageCircle, ChevronDown, ChevronRight, ShoppingBag, Users, FileText, Calculator, Hammer, Loader2, Wallet, HandCoins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -28,6 +28,8 @@ export default function ClientHistorySheet({ phone, name, open, onClose }: { pho
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [parts, setParts] = useState<DealPart[]>([]);
+  const [tab, setTab] = useState<'deals' | 'pays' | 'leads' | 'prod'>('deals');
+  const navigate = useNavigate();
   const keys = phoneKeys(phone);
   const keyStr = keys.join(',');
   useEffect(() => {
@@ -40,7 +42,11 @@ export default function ClientHistorySheet({ phone, name, open, onClose }: { pho
   const real = (h?.deals ?? []).filter(d => d.status !== 'rejected');
   const sum = real.reduce((a, d) => a + d.total_amount, 0);
   const paid = real.reduce((a, d) => a + d.paid_amount, 0);
+  const debt = Math.max(0, sum - paid);
   const title = h?.names[0] || name || 'Клиент';
+  const allPays = real.flatMap(d => d.payments.map(p => ({ ...p, d }))).sort((a, b) => b.payment_date.localeCompare(a.payment_date));
+  const leadsCount = (h?.leads.length ?? 0) + (h?.reports.length ?? 0) + (h?.offline.length ?? 0) + (h?.estimates.length ?? 0);
+  const toDebtors = () => { onClose(); navigate(`/debtors?q=${encodeURIComponent(keys[0] ? fmtPhoneKey(keys[0]) : title)}`); };
   const wa = keys[0] ? `https://wa.me/7${keys[0]}` : null;
 
   return (
@@ -62,49 +68,86 @@ export default function ClientHistorySheet({ phone, name, open, onClose }: { pho
           {err && <p className="text-destructive">{err}</p>}
           {h && !loading && (
             <>
-              <div className="grid grid-cols-3 gap-2">
-                <Stat l="Покупок" v={String(real.length)} />
-                <Stat l="На сумму" v={formatCurrency(sum)} />
-                <Stat l={sum - paid > 0 ? 'Остаток' : 'Оплачено'} v={formatCurrency(sum - paid > 0 ? sum - paid : paid)} warn={sum - paid > 0} />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <Stat l="Сделок" v={String(real.length)} />
+                <Stat l="По договорам" v={formatCurrency(sum)} />
+                <Stat l="Оплачено" v={formatCurrency(paid)} />
+                <Stat l="Долг" v={debt > 0 ? formatCurrency(debt) : 'нет'} warn={debt > 0} />
+              </div>
+              {debt > 0 && (
+                <Button size="sm" variant="outline" className="w-full border-amber-300 text-amber-800 hover:bg-amber-50" onClick={toDebtors}>
+                  <HandCoins size={14} className="mr-1.5" />Открыть в «Должниках»
+                </Button>
+              )}
+
+              <div className="flex gap-1 rounded-lg border border-border p-0.5 text-xs sticky top-0 bg-background z-10">
+                {([['deals', 'Сделки', real.length, ShoppingBag], ['pays', 'Оплаты', allPays.length, Wallet], ['leads', 'Заявки и просчёты', leadsCount, Users], ['prod', 'Производство', parts.length || null, Hammer]] as const).map(([k, l, n, Icon]) => (
+                  <button key={k} type="button" onClick={() => setTab(k)}
+                    className={`flex-1 inline-flex items-center justify-center gap-1 rounded-md px-1.5 py-1.5 ${tab === k ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}>
+                    <Icon size={13} className="hidden sm:inline" />{l}{n ? <span className="opacity-70">· {n}</span> : null}
+                  </button>
+                ))}
               </div>
 
-              <Section icon={<ShoppingBag size={15} />} title="История покупок" count={h.deals.length}>
-                {h.deals.length === 0 && <p className="text-xs text-muted-foreground">Сделок по этому номеру нет</p>}
-                {h.deals.map(d => <DealItem key={d.id} d={d} manager={h.managers.get(d.manager_id ?? '')} parts={parts.filter(p => p.deal_id === d.id)} />)}
-              </Section>
+              {tab === 'deals' && (
+                <div className="space-y-1.5">
+                  {h.deals.length === 0 && <p className="text-xs text-muted-foreground">Сделок по этому номеру нет</p>}
+                  {h.deals.map(d => <DealItem key={d.id} d={d} manager={h.managers.get(d.manager_id ?? '')} parts={parts.filter(p => p.deal_id === d.id)} />)}
+                </div>
+              )}
 
-              <Section icon={<Hammer size={15} />} title="Производство (Trello)">
+              {tab === 'pays' && (
+                <div className="space-y-1.5">
+                  {allPays.length === 0 && <p className="text-xs text-muted-foreground">Оплат пока нет{paid > 0 ? ` (в сделках указано оплачено ${formatCurrency(paid)})` : ''}</p>}
+                  {allPays.map(p => (
+                    <Line key={p.id} left={<>{formatCurrency(p.amount)}<span className="block text-[11px] text-muted-foreground">{p.channel}{p.d.contract_number ? ` · дог. ${p.d.contract_number}` : ''}{p.comment ? ` · ${p.comment}` : ''}</span></>}
+                      right={<span className="text-[11px] text-muted-foreground">{formatDate(p.payment_date)}</span>} />
+                  ))}
+                  {real.length > 0 && (
+                    <div className="rounded-md bg-muted/40 px-2.5 py-2 text-xs space-y-0.5">
+                      {real.map(d => {
+                        const rest = Math.max(0, d.total_amount - d.paid_amount);
+                        return <p key={d.id} className="flex justify-between gap-2"><span>{d.contract_number ? `Дог. ${d.contract_number}` : formatDate(d.deal_date)}: {formatCurrency(d.paid_amount)} из {formatCurrency(d.total_amount)}</span><span className={rest > 0 ? 'text-amber-700' : 'text-green-700'}>{rest > 0 ? `долг ${formatCurrency(rest)}` : 'оплачено'}</span></p>;
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {tab === 'prod' && (
                 <TrelloParts h={h} parts={parts} onChanged={() => listDealParts(h.deals.map(d => d.id)).then(setParts).catch(() => {})} />
-              </Section>
-
-              {h.leads.length > 0 && (
-                <Section icon={<Users size={15} />} title="Лиды CRM" count={h.leads.length}>
-                  {h.leads.map(l => (
-                    <Line key={l.id} left={<>{l.client_name}<span className="block text-[11px] text-muted-foreground">{l.pipeline} · {l.stage}{l.lost_reason ? ` · отказ: ${l.lost_reason}` : ''}{l.manager_id ? ` · ${h.managers.get(l.manager_id) ?? ''}` : ''}</span></>}
-                      right={<>{l.amount > 0 && <span className="block">{formatCurrency(l.amount)}</span>}<span className="text-[11px] text-muted-foreground">{formatDate(l.created_at)}</span></>} />
-                  ))}
-                </Section>
               )}
 
-              {h.reports.length > 0 && (
-                <Section icon={<FileText size={15} />} title="Ежедневный отчёт" count={h.reports.length}>
-                  {h.reports.map(r => (
-                    <Line key={r.id} left={<>{r.client_name}<span className="block text-[11px] text-muted-foreground">{DEAL_STAGE_LABELS[r.deal_stage as keyof typeof DEAL_STAGE_LABELS] ?? r.deal_stage} · {CLIENT_QUALITY_LABELS[r.client_quality as keyof typeof CLIENT_QUALITY_LABELS] ?? r.client_quality}{r.manager_id ? ` · ${h.managers.get(r.manager_id) ?? ''}` : ''}{r.comment ? ` · ${r.comment}` : ''}</span></>}
-                      right={<>{r.budget ? <span className="block">{formatCurrency(r.budget)}</span> : null}<span className="text-[11px] text-muted-foreground">{formatDate(r.report_date)}</span></>} />
-                  ))}
-                </Section>
-              )}
-
-              {h.offline.length > 0 && (
-                <Section icon={<Users size={15} />} title="Офлайн-лиды (салон)" count={h.offline.length}>
-                  {h.offline.map(o => <Line key={o.id} left={o.client_name || 'без имени'} right={<span className="text-[11px] text-muted-foreground">{formatDate(o.created_at)}</span>} />)}
-                </Section>
-              )}
-
-              {h.estimates.length > 0 && (
-                <Section icon={<Calculator size={15} />} title="Просчёты" count={h.estimates.length}>
-                  {h.estimates.map(e => <EstimateLine key={e.id} e={e} />)}
-                </Section>
+              {tab === 'leads' && (
+                <div className="space-y-4">
+                  {leadsCount === 0 && <p className="text-xs text-muted-foreground">Заявок, отчётов и просчётов по этому номеру нет</p>}
+                  {h.leads.length > 0 && (
+                    <Section icon={<Users size={15} />} title="Лиды CRM" count={h.leads.length}>
+                      {h.leads.map(l => (
+                        <Line key={l.id} left={<>{l.client_name}<span className="block text-[11px] text-muted-foreground">{l.pipeline} · {l.stage}{l.lost_reason ? ` · отказ: ${l.lost_reason}` : ''}{l.manager_id ? ` · ${h.managers.get(l.manager_id) ?? ''}` : ''}</span></>}
+                          right={<>{l.amount > 0 && <span className="block">{formatCurrency(l.amount)}</span>}<span className="text-[11px] text-muted-foreground">{formatDate(l.created_at)}</span></>} />
+                      ))}
+                    </Section>
+                  )}
+                  {h.reports.length > 0 && (
+                    <Section icon={<FileText size={15} />} title="Ежедневный отчёт" count={h.reports.length}>
+                      {h.reports.map(r => (
+                        <Line key={r.id} left={<>{r.client_name}<span className="block text-[11px] text-muted-foreground">{DEAL_STAGE_LABELS[r.deal_stage as keyof typeof DEAL_STAGE_LABELS] ?? r.deal_stage} · {CLIENT_QUALITY_LABELS[r.client_quality as keyof typeof CLIENT_QUALITY_LABELS] ?? r.client_quality}{r.manager_id ? ` · ${h.managers.get(r.manager_id) ?? ''}` : ''}{r.comment ? ` · ${r.comment}` : ''}</span></>}
+                          right={<>{r.budget ? <span className="block">{formatCurrency(r.budget)}</span> : null}<span className="text-[11px] text-muted-foreground">{formatDate(r.report_date)}</span></>} />
+                      ))}
+                    </Section>
+                  )}
+                  {h.offline.length > 0 && (
+                    <Section icon={<Users size={15} />} title="Офлайн-лиды (салон)" count={h.offline.length}>
+                      {h.offline.map(o => <Line key={o.id} left={o.client_name || 'без имени'} right={<span className="text-[11px] text-muted-foreground">{formatDate(o.created_at)}</span>} />)}
+                    </Section>
+                  )}
+                  {h.estimates.length > 0 && (
+                    <Section icon={<Calculator size={15} />} title="Просчёты" count={h.estimates.length}>
+                      {h.estimates.map(e => <EstimateLine key={e.id} e={e} />)}
+                    </Section>
+                  )}
+                </div>
               )}
             </>
           )}

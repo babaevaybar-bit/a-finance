@@ -1,4 +1,5 @@
 import TrelloLookup from '@/components/trello/TrelloLookup';
+import ClientHistoryButton from '@/components/client/ClientHistoryButton';
 import { Checkbox } from '@/components/ui/checkbox';
 import React, { useState, useEffect } from 'react';
 import {
@@ -201,7 +202,7 @@ export default function DealFormDialog({ open, onClose, onSaved, managerId, mont
             <Input placeholder="Иванов Иван" value={form.client_name || ''} onChange={e => set('client_name', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>Телефон клиента</Label>
+            <div className="flex items-center justify-between gap-2"><Label>Телефон клиента</Label><ClientHistoryButton phone={form.client_phone} name={form.client_name} label="Все сделки клиента" /></div>
             <Input placeholder="+7 700 000 0000" value={form.client_phone || ''} onChange={e => set('client_phone', e.target.value)} />
           </div>
           <div className="space-y-1">
