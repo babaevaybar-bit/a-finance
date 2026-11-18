@@ -37,6 +37,9 @@ const PICK_GROUPS: { key: string; label: string; sheets: string[] | null }[] = [
 const selCls = 'h-9 w-full rounded-md border border-input bg-background px-2 text-sm';
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
+/** Прайс фабрики поменялся, а новый ещё не загружен — предупреждение на странице просчёта. После загрузки нового прайса поставить false. */
+const PRICES_OUTDATED = true;
+
 export default function EstimatePage() {
   const { profile } = useAuth();
   const [idx, setIdx] = useState<PriceIndex | null>(null);
@@ -209,6 +212,15 @@ export default function EstimatePage() {
             {meta.id && <Button variant="outline" size="sm" onClick={copyEstimate}><Copy size={14} className="mr-1.5" />Копия</Button>}
           </div>
         </div>
+        {PRICES_OUTDATED && (
+          <div className="rounded-lg border-2 border-red-300 bg-red-50 px-4 py-3 text-red-800 flex items-start gap-2.5">
+            <Info size={18} className="shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">Цены в просчёте сейчас не актуальные</p>
+              <p className="text-sm">Фабрика изменила прайс, новые цены ещё не загружены. Перед тем как называть сумму клиенту, сверяйте её с актуальным прайсом.</p>
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px] items-start">
           {/* Левая часть: проёмы и позиции */}
