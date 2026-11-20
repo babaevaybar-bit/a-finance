@@ -8,7 +8,8 @@ import csv, io, json, re, sys
 
 DOOR_SHEETS = ['Под покраску', 'AG', 'AGX', 'P, N', 'PD', 'PE.O, NE.O', 'GE', 'SE.O', 'SE', 'ST', 'VE', 'VT', 'AGN', 'AT', 'Серия FT EI30']
 UNITS = {'шт', 'шт.', 'к-кт', 'м2', 'кв м', 'кв.м.', 'пог.м', 'комплект', 'метр', 'компл', 'к-т'}
-PRICE = re.compile(r'^\s*(\d[\d\s ]*)\s*[₽₸]\s*$')
+# «339 735 ₽» (старые выгрузки) и «₸363 326» (с ноября 2026 знак валюты впереди)
+PRICE = re.compile(r'^\s*(?:[₽₸]\s*(\d[\d\s\u00a0]*?)|(\d[\d\s\u00a0]*?)\s*[₽₸])\s*$')
 PCT = re.compile(r'^\s*(-?\d+(?:[.,]\d+)?)\s*%\s*$')
 
 
@@ -59,7 +60,7 @@ def parse(text):
             for c in reversed(cols):
                 m = PRICE.match(c)
                 if m:
-                    price = int(re.sub(r'\D', '', m.group(1)))
+                    price = int(re.sub(r'\D', '', (m.group(1) or m.group(2))))
                     break
                 m = PCT.match(c)
                 if m:

@@ -45,7 +45,7 @@ for sheet in SHEETS:
             after_colors = True
             continue
         # строка позиции: есть цена в последней непустой ячейке
-        if re.search(r'\d[\d\s]*\s*[₸₽]\s*$', line) and len(cells) >= 3:
+        if re.search(r'(\d[\d\s]*\s*[₸₽]|[₸₽]\s*\d[\d\s]*)\s*$', line) and len(cells) >= 3:
             name = cells[0] or last_name
             if not name: continue
             if after_colors: pending = []; after_colors = False

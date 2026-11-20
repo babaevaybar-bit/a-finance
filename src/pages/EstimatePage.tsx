@@ -38,7 +38,7 @@ const selCls = 'h-9 w-full rounded-md border border-input bg-background px-2 tex
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
 /** Прайс фабрики поменялся, а новый ещё не загружен — предупреждение на странице просчёта. После загрузки нового прайса поставить false. */
-const PRICES_OUTDATED = true;
+const PRICES_OUTDATED = false;
 
 export default function EstimatePage() {
   const { profile } = useAuth();

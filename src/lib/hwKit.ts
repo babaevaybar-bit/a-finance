@@ -17,7 +17,7 @@ export function hwBrand(it: Item): string {
   const b = (it.attrs[it.attrs.length - 1] ?? '').trim();
   return b && !/шт/.test(b) ? b : '';
 }
-export const PD_COLORS_NOTE = 'Цвета PROFILDOORS — фурнитура окрашивается в цвета алюминиевой кромки двери (Серебро, Черный, Вайт, Шампань, Никель). Цвета COMIT, AGB и др. — заводские покрытия (хром, золото, бронза…).';
+export const PD_COLORS_NOTE = 'Цвета PROFILDOORS — фурнитура окрашивается в цвета алюминиевой кромки двери (Медь, Черный, Вайт, Шампань, Никель). Цвета COMIT, AGB и др. — заводские покрытия (хром, золото, бронза…).';
 export function brandLabel(it: Item): string {
   const b = hwBrand(it);
   if (/PROFILDOORS/i.test(b)) return 'Покраска PROFILDOORS — в цвет кромки двери';
